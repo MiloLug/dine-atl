@@ -1,4 +1,17 @@
 ## Dependencies
+
+### Devcontainer
+
+A devcontainer can be used for a consistent development environment across Linux distributions.
+
+Install Docker Engine: https://docs.docker.com/engine/
+
+Follow IDE-specific instructions:
+- Visual Studio Code: https://code.visualstudio.com/docs/devcontainers/containers
+- Intellij IDEA Ultimate: https://www.jetbrains.com/help/idea/connect-to-devcontainer.html
+
+This provides an Alpine environment ready for [building](#build).
+
 ### Debian
 ```sh
 sudo apt install libasound2-dev libavcodec-dev libcap-dev  libdrm-dev libglib2.0-dev libgtk-4-dev libgudev-1.0-dev libopenxr-dev libportal-dev libsqlite3-dev
