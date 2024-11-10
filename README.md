@@ -23,7 +23,14 @@
 
 ## About the Project
 
-![Angry Birds 3.2.0, Worms 2 Armageddon, and Gravity Defied running side by side by side](https://gitlab.com/android_translation_layer/android_translation_layer/-/raw/master/screenshot.png)
+<div align="center">
+
+  ![Angry Birds](doc/usage/screenshots/Angry%20Birds.png){width=40%}
+
+  ![Angry Birds](doc/usage/screenshots/Flappy%20Bird.png){width=20%}
+  ![Subway Surfers](doc/usage/screenshots/Subway%20Surfers.png){width=20%}
+
+</div>
 
 ATL is a translation layer that allows running Android apps on a Linux system. It is different from projects such as Waydroid in that it does not rely on a virtual machine running Android in the background. Instead our philosophy is to reuse as much of the standard Linux stack as possible, decoupling the app from android as early as possible.
 
@@ -36,20 +43,11 @@ ATL is powered by the following projects:
 
 ## Getting Started
 
-<!--
- * [Flathub Installation](#flathub-installation)
-
-### ATL in Action
-
-Try it yourself by running XXX on your device. Simply install it from flathub!
-
-[![Get it on Flathub][flathub-badge]][flathub]
-
--->
+To get started with ATL, you can either build it from source or install it from your distributions (currently only alpine edge).
 
 ### Building ATL
 
-See our [build documentation](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/Build.md) to get started. We provide information to build ATL from source on different distributions including Fedora, Debian and Alpine.
+See our [build documentation](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/Build.md) to build ATL from source. We provide information to build ATL from source on different distributions including Fedora, Debian and Alpine.
 
 ### Run in builddir
 
