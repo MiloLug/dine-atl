@@ -14,7 +14,7 @@ sudo dnf install java-17-openjdk-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pk
 
 ### Alpine Edge
 
-Alpine has ATL already packaged in their testing repository. This means that if you are running Alpine edge --- either as your host OS or in a container --- you can install ATL or its development dependencies through `apk`. If you are not using Alpine edge, you can get a containerized setup running using 
+Alpine has ATL already packaged in their testing repository. This means that if you are running Alpine edge --- either as your host OS or in a container --- you can install ATL or its development dependencies through `apk`.
 
 You will need to add the testing repository to your apk configuration:
 
