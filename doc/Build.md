@@ -1,6 +1,6 @@
 ## Dependencies
 
-If you are not using one of the distributions below you can also use an [Alpine container](#alpine-container).
+An [Alpine container](#alpine-container) is also available with all dependencies installed..
 
 ### Debian
 ```sh
