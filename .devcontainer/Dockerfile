@@ -1,4 +1,4 @@
-FROM alpine
+FROM quay.io/toolbx-images/alpine-toolbox
 
 RUN apk add alpine-sdk openssh
 
