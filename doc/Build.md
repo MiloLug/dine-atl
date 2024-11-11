@@ -20,6 +20,8 @@ Follow instructions for your preferred implementation:
 
 #### Toolbox
 
+Note: A similar method works with Distrobox, a Toolbox alternative available on most Linux distributions.
+
 Install Toolbox:
 
 ```sh
