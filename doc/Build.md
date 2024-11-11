@@ -1,41 +1,25 @@
 ## Dependencies
 
-### Alpine Container
+If you are not using one of the distributions below you can also use an [Alpine container](#alpine-container).
 
-Containerization can be used for a consistent development environment across Linux distributions.
-
-Devcontainers provide an ephemeral environment kept in sync with the repository. If you prefer a persistent environment, consider using Toolbox instead.
-
-Either method will provide an Alpine environment ready for [building](#build).
-
-#### Devcontainers
-
-Install Docker Engine: https://docs.docker.com/engine/
-
-Follow instructions for your preferred implementation:
-- Visual Studio Code: https://code.visualstudio.com/docs/devcontainers/containers
-- Intellij IDEA Ultimate: https://www.jetbrains.com/help/idea/connect-to-devcontainer.html
-- DevPod: https://devpod.sh/
-- Dev Container CLI: https://github.com/devcontainers/cli
-
-#### Toolbox
-
-Note: A similar method works with Distrobox, a Toolbox alternative available on most Linux distributions.
-
-Install Toolbox:
-
+### Debian
 ```sh
-sudo dnf install toolbox
+sudo apt install libasound2-dev libavcodec-dev libcap-dev  libdrm-dev libglib2.0-dev libgtk-4-dev libgudev-1.0-dev libopenxr-dev libportal-dev libsqlite3-dev
 ```
 
-Build image using podman:
+### Fedora
 ```sh
-podman build -t atl_dev .devcontainer
+sudo dnf install java-17-openjdk-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)'
 ```
 
-Create toolbox:
+### Alpine Edge
+
+Alpine has ATL already packaged in their testing repository. This means that if you are running Alpine edge --- either as your host OS or in a container --- you can install ATL or its development dependencies through `apk`. If you are not using Alpine edge, you can get a containerized setup running using 
+
+You will need to add the testing repository to your apk configuration:
+
 ```sh
-toolbox create --image atl_dev atl_dev
+echo "https://dl-cdn.alpinelinux.org/alpine/edge/testing" | sudo tee -a /etc/apk/repositories
 ```
 
 #### Installing the ATL package
@@ -48,17 +32,17 @@ sudo apk add android-translation-layer
 
 #### Installing ATL from source
 
-If you want to build ATL from source, you can skip the Additional Dependencies section and continue with the build steps from below.
+If you want to build ATL from source, you can take advantage of the packages for its dependencies. With this you can skip the Additional Dependency section below.
 
-### Debian
 ```sh
-sudo apt install libasound2-dev libavcodec-dev libcap-dev  libdrm-dev libglib2.0-dev libgtk-4-dev libgudev-1.0-dev libopenxr-dev libportal-dev libsqlite3-dev
+sudo apk add build-base meson java-common openjdk8-jdk \
+    pc:alsa pc:glib-2.0 pc:gtk4 pc:gudev-1.0 pc:libportal \
+    pc:openxr pc:vulkan pc:webkitgtk-6.0 ffmpeg-dev \
+    bionic_translation-dev art_standalone-dev skia-sharp-dev
 ```
 
-### Fedora
-```sh
-sudo dnf install java-17-openjdk-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)'
-```
+You can now skip the Additional Dependencies section and continue with the build steps from below.
+
 
 ## Additional Dependencies
 ### Skia
@@ -125,6 +109,44 @@ meson setup builddir
 cd builddir
 meson compile
 sudo meson install
+```
+
+### Alpine Container
+
+Containerization can be used for a consistent development environment across Linux distributions.
+
+Devcontainers provide an ephemeral environment kept in sync with the repository. If you prefer a persistent environment, consider using Toolbox instead.
+
+Either method will provide an Alpine environment ready for building.
+
+#### Devcontainers
+
+Install Docker Engine: https://docs.docker.com/engine/
+
+Follow instructions for your preferred implementation:
+- Visual Studio Code: https://code.visualstudio.com/docs/devcontainers/containers
+- Intellij IDEA Ultimate: https://www.jetbrains.com/help/idea/connect-to-devcontainer.html
+- DevPod: https://devpod.sh/
+- Dev Container CLI: https://github.com/devcontainers/cli
+
+#### Toolbox
+
+Note: A similar method works with Distrobox, a Toolbox alternative available on most Linux distributions.
+
+Install Toolbox:
+
+```sh
+sudo dnf install toolbox
+```
+
+Build image using podman:
+```sh
+podman build -t atl_dev .devcontainer
+```
+
+Create toolbox:
+```sh
+toolbox create --image atl_dev atl_dev
 ```
 
 ## Build
