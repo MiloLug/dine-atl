@@ -41,9 +41,6 @@ sudo apk add build-base meson java-common openjdk8-jdk \
     bionic_translation-dev art_standalone-dev skia-sharp-dev
 ```
 
-You can now skip the Additional Dependencies section and continue with the build steps from below.
-
-
 ## Additional Dependencies
 ### Skia
 If you distro ships this already (e.g. `skia-sharp` on Alpine), you can just install the package and skip this step.
