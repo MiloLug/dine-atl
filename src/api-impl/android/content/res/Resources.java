@@ -1460,6 +1460,15 @@ public class Resources {
 			mAssets.releaseTheme(theme);
 		}
 
+		/**
+		 * Rebases the theme against the parent Resource object's current
+		 * configuration by re-applying the styles passed to
+		 * {@link #applyStyle(int, boolean)}.
+		 */
+		public void rebase() {
+			return;
+		}
+
 		/*package*/ Theme() {
 			mAssets = Resources.this.mAssets;
 			theme = mAssets.createTheme();

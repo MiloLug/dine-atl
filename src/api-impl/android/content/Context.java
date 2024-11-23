@@ -1,6 +1,7 @@
 package android.content;
 
 import android.R;
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
@@ -224,6 +225,8 @@ public class Context extends Object {
 				return new BluetoothManager();
 			case "jobscheduler":
 				return new JobScheduler();
+			case "account":
+				return new AccountManager();
 
 			default:
 				Slog.e(TAG, "!!!!!!! getSystemService: case >" + name + "< is not implemented yet");
@@ -653,5 +656,9 @@ public class Context extends Object {
 
 	public void revokeUriPermission(Uri uri, int mode) {
 		System.out.println("revokeUriPermission(" + uri + ", " + mode + ") called");
+	}
+
+	public boolean isDeviceProtectedStorage() {
+		return false;
 	}
 }

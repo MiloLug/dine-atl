@@ -80,4 +80,7 @@ public class ActivityManager {
 	}
 
 	public int getLargeMemoryClass() {return getMemoryClass();}
+	public List<ApplicationExitInfo> getHistoricalProcessExitReasons(String packageName, int pid, int maxNum) {
+		return new ArrayList<>();
+	}
 }
