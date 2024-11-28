@@ -473,8 +473,7 @@ final class XmlBlock {
 	XmlBlock(AssetManager assets, long xmlBlock) {
 		mAssets = assets;
 		mNative = xmlBlock;
-		// mStrings = new StringBlock(nativeGetStringBlock(xmlBlock), false);
-		mStrings = null;
+		mStrings = new StringBlock(nativeGetStringBlock(xmlBlock), false);
 	}
 
 	private final AssetManager mAssets;
@@ -486,7 +485,7 @@ final class XmlBlock {
 	private static final native int nativeCreate(byte[] data,
 						     int offset,
 						     int size);
-	private static final native int nativeGetStringBlock(long obj);
+	private static final native long nativeGetStringBlock(long obj);
 
 	private static final native long nativeCreateParseState(long obj);
 	/*package*/ static final native int nativeNext(long state);

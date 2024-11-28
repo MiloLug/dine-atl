@@ -4,6 +4,12 @@
 
 #include "../defines.h"
 
+JNIEXPORT jlong JNICALL Java_android_content_res_XmlBlock_nativeGetStringBlock(JNIEnv *env, jobject this, jlong block){
+	struct ResXMLTree *tree = (struct ResXMLTree *)_PTR(block);
+
+	return (jlong)ResXMLTree_getStrings(tree);
+}
+
 JNIEXPORT jlong JNICALL Java_android_content_res_XmlBlock_nativeCreateParseState(JNIEnv *env, jobject this, jlong block)
 {
 	struct ResXMLTree *tree = (struct ResXMLTree *)_PTR(block);
@@ -141,3 +147,9 @@ JNIEXPORT jint JNICALL Java_android_content_res_XmlBlock_nativeGetStyleAttribute
 	ResXMLParser_getAttributeValue(parser, idx, &value);
 	return value.data;
 }
+
+JNIEXPORT jint JNICALL Java_android_content_res_XmlBlock_nativeGetAttributeName(JNIEnv *env, jobject this, jlong parser_ptr, jint index){
+	struct ResXMLParser *parser = (struct ResXMLParser *)_PTR(parser_ptr);
+
+	return ResXMLParser_getAttributeNameID(parser, index);
+};
