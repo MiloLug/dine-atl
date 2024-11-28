@@ -153,3 +153,9 @@ JNIEXPORT jint JNICALL Java_android_content_res_XmlBlock_nativeGetAttributeName(
 
 	return ResXMLParser_getAttributeNameID(parser, index);
 };
+
+JNIEXPORT jint JNICALL Java_android_content_res_XmlBlock_nativeGetSourceResId(JNIEnv *env, jobject this, jlong parser_ptr){
+	struct ResXMLParser *parser = (struct ResXMLParser *)_PTR(parser_ptr);
+
+	return ResXMLParser_getSourceResId(parser);
+}

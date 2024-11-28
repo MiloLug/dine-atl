@@ -179,6 +179,14 @@ JNIEXPORT jstring JNICALL Java_android_content_res_XmlBlock_nativeGetPooledStrin
 
 /*
  * Class:     android_content_res_XmlBlock
+ * Method:    nativeGetSourceResId
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_android_content_res_XmlBlock_nativeGetSourceResId
+  (JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     android_content_res_XmlBlock
  * Method:    nativeDestroy
  * Signature: (J)V
  */

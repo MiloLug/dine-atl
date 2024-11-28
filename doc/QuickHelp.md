@@ -1,3 +1,11 @@
+#### Debugging 
+You can debug your application on different fronts:
+- Java side: by adding `JDWP_LISTEN=<PORT_NUMBER>` as anenvironment variable and then attaching jdb
+- C side: by running/attaching with/to gdb
+- Gtk side: by adding `ATL_DEBUG_ATTRIBUTES=` as an environment variable and then once the application is running without crashing, by pressing Ctrl+Shift+D
+
+![gtk-inspector-preview](gtk_inspector.png)
+
 #### quick guide to implementing as-of-yet uinmplemented android APIs to make a new app work
 
 If you try to run any random android app using the translation layer, you will most likely encounter errors 

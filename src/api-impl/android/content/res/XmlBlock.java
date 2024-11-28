@@ -432,6 +432,10 @@ final class XmlBlock {
 			return nativeGetStyleAttribute(mParseState);
 		}
 
+		public int getSourceResId() {
+			return nativeGetSourceResId(mParseState);
+		}
+
 		public void close() {
 			synchronized (mBlock) {
 				if (mParseState != 0) {
@@ -506,6 +510,7 @@ final class XmlBlock {
 	private static final native int nativeGetAttributeIndex(long state, String namespace, String name);
 	private static final native void nativeDestroyParseState(long state);
 	private static final native String nativeGetPooledString(long state, int id);
+	private static final native int nativeGetSourceResId(long state);
 
 	private static final native void nativeDestroy(long obj);
 }
