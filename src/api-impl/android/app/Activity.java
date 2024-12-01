@@ -25,6 +25,8 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.WindowManagerImpl;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -575,6 +577,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback {
 	}
 
 	public void setTaskDescription(ActivityManager.TaskDescription description) {}
+
+	public void registerActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks callback) {}
+	public OnBackInvokedDispatcher getOnBackInvokedDispatcher() {
+		return new OnBackInvokedDispatcher();
+	}
 
 	private native void nativeFinish(long native_window);
 	public static native void nativeStartActivity(Activity activity);

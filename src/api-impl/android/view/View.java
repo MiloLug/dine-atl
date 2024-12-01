@@ -2028,4 +2028,5 @@ public class View implements Drawable.Callback {
 	public void setDefaultFocusHighlightEnabled(boolean enabled) {}
 
 	public void setHorizontalFadingEdgeEnabled(boolean horizontalFadingEdgeEnabled) {}
+	public final void saveAttributeDataForStyleable(Context context,int[] styleable, AttributeSet attrs, TypedArray t, int defStyleAttr, int defStyleRes) {}
 }

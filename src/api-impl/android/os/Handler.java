@@ -715,6 +715,24 @@ public class Handler {
 		message.callback.run();
 	}
 
+	/**
+	 * Create a new Handler whose posted messages and runnables are not subject to
+	 * synchronization barriers such as display vsync.
+	 *
+	 * <p>Messages sent to an async handler are guaranteed to be ordered with respect to one another,
+	 * but not necessarily with respect to messages from other Handlers.</p>
+	 *
+	 * @see #createAsync(Looper, Callback) to create an async Handler with custom message handling.
+	 *
+	 * @param looper the Looper that the new Handler should be bound to
+	 * @return a new async Handler instance
+	 */
+	public static Handler createAsync(Looper looper) {
+		if (looper == null)
+			throw new NullPointerException("looper must not be null");
+		return new Handler(looper, null, true);
+	}
+
 	final MessageQueue mQueue;
 	final Looper mLooper;
 	final Callback mCallback;
