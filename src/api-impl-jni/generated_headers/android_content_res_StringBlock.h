@@ -12,42 +12,42 @@ extern "C" {
 /*
  * Class:     android_content_res_StringBlock
  * Method:    nativeCreate
- * Signature: ([BII)I
+ * Signature: ([BII)J
  */
-JNIEXPORT jint JNICALL Java_android_content_res_StringBlock_nativeCreate
+JNIEXPORT jlong JNICALL Java_android_content_res_StringBlock_nativeCreate
   (JNIEnv *, jclass, jbyteArray, jint, jint);
 
 /*
  * Class:     android_content_res_StringBlock
  * Method:    nativeGetSize
- * Signature: (I)I
+ * Signature: (J)I
  */
 JNIEXPORT jint JNICALL Java_android_content_res_StringBlock_nativeGetSize
-  (JNIEnv *, jclass, jint);
+  (JNIEnv *, jclass, jlong);
 
 /*
  * Class:     android_content_res_StringBlock
  * Method:    nativeGetString
- * Signature: (II)Ljava/lang/String;
+ * Signature: (JI)Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL Java_android_content_res_StringBlock_nativeGetString
-  (JNIEnv *, jclass, jint, jint);
+  (JNIEnv *, jclass, jlong, jint);
 
 /*
  * Class:     android_content_res_StringBlock
  * Method:    nativeGetStyle
- * Signature: (II)[I
+ * Signature: (JI)[I
  */
 JNIEXPORT jintArray JNICALL Java_android_content_res_StringBlock_nativeGetStyle
-  (JNIEnv *, jclass, jint, jint);
+  (JNIEnv *, jclass, jlong, jint);
 
 /*
  * Class:     android_content_res_StringBlock
  * Method:    nativeDestroy
- * Signature: (I)V
+ * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_android_content_res_StringBlock_nativeDestroy
-  (JNIEnv *, jclass, jint);
+  (JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

@@ -10,7 +10,7 @@
 
 G_DEFINE_TYPE(WrapperWidget, wrapper_widget, GTK_TYPE_WIDGET)
 
-typedef enum { ATL_ID = 1, ATL_ID_NAME, ATL_CLASS_NAME, ATL_SUPER_CLASS_NAMES, N_PROPERTIES } WrapperWidgetProperty;
+typedef enum { ATL_ID = 1, ATL_ID_NAME, ATL_CLASS_NAME, ATL_SUPER_CLASS_NAMES, ATL_LAYOUT_ID, ATL_LAYOUT_ID_NAME, ATL_ATTRIBUTES_LIST, N_PROPERTIES } WrapperWidgetProperty;
 static GParamSpec *wrapper_widget_properties[N_PROPERTIES] = { NULL, };
 
 static void wrapper_widget_set_property (GObject *object, guint property_id, const GValue *value, GParamSpec *pspec)
@@ -83,7 +83,53 @@ static void wrapper_widget_get_property (GObject *object, guint property_id, GVa
 			(*env)->ReleaseStringUTFChars(env, super_classes_names_obj, super_classes_names);
 			break;
 		}
+
+		case ATL_LAYOUT_ID: 
+		{
+			jint id_jint = (*env)->CallIntMethod(env, jobj, handle_cache.view.getSourceLayoutResId);
+			if((*env)->ExceptionCheck(env))
+				(*env)->ExceptionDescribe(env);
+
+			const char *id = g_markup_printf_escaped("0x%08x", id_jint);
+			g_value_set_string(value, id);
+			break;
+		}
+
+		case ATL_LAYOUT_ID_NAME:
+		{
+			jstring id_name_jstring = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getSourceLayoutResIdName);
+			if((*env)->ExceptionCheck(env))
+				(*env)->ExceptionDescribe(env);
+
+			const char *id_name = (*env)->GetStringUTFChars(env, id_name_jstring, NULL);
+			g_value_set_string(value, id_name);
+
+			(*env)->ReleaseStringUTFChars(env, id_name_jstring, id_name);
+			break;
+		}
 		
+		case ATL_ATTRIBUTES_LIST:
+		{
+			jobjectArray attributes_list_obj = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getAllAttributesValues);
+			if((*env)->ExceptionCheck(env))
+				(*env)->ExceptionDescribe(env);
+			int length = (*env)->GetArrayLength(env, attributes_list_obj);
+
+			g_autoptr(GStrvBuilder) builder = g_strv_builder_new();
+			for (int i=0; i < length; i++) {
+				jstring attribute_obj = (jstring) ((*env)->GetObjectArrayElement(env, attributes_list_obj, i));
+				const char *attribute = (*env)->GetStringUTFChars(env, attribute_obj, NULL);
+
+				g_strv_builder_add(builder, attribute);
+				(*env)->ReleaseStringUTFChars(env, attribute_obj, attribute);
+			}
+
+			g_auto(GStrv) array = g_strv_builder_end (builder);
+			g_value_set_boxed(value, g_strdupv(array));
+
+
+			break;
+		}
 
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -225,9 +271,17 @@ static void wrapper_widget_class_init(WrapperWidgetClass *class)
 	wrapper_widget_properties[ATL_ID] = g_param_spec_string("ATL-id", "ATL: ID", "ID of the component", "", G_PARAM_READABLE);
 	wrapper_widget_properties[ATL_ID_NAME] = g_param_spec_string("ATL-id-name", "ATL: ID name", "Name of the ID of the component", "", G_PARAM_READABLE);
 	wrapper_widget_properties[ATL_CLASS_NAME] = g_param_spec_string("ATL-class-name", "ATL: Class name", "Name of the class of the component", "", G_PARAM_READABLE);
+	wrapper_widget_properties[ATL_LAYOUT_ID] = g_param_spec_string("ATL-layout-id", "ATL: Layout ID", "ID of the layout of the component", "", G_PARAM_READABLE);
+	wrapper_widget_properties[ATL_LAYOUT_ID_NAME] = g_param_spec_string("ATL-layout-id-name", "ATL: Layout ID name", "Name of the ID of the layout of the component", "", G_PARAM_READABLE);
 	wrapper_widget_properties[ATL_SUPER_CLASS_NAMES] = g_param_spec_string("ATL-superclasses-names", "ATL: Super classes names", "Names of all the superclasses of the component class", "", G_PARAM_READABLE);
+
+	if(getenv("ATL_DEBUG_ATTRIBUTES")){
+		wrapper_widget_properties[ATL_ATTRIBUTES_LIST] = g_param_spec_boxed("ATL-attributes-list", "ATL: Attributes list", "List of all attributes and values of the component", G_TYPE_STRV, G_PARAM_READWRITE);
+		g_object_class_install_properties (object_class, N_PROPERTIES, wrapper_widget_properties);
+	} else {
+		g_object_class_install_properties (object_class, N_PROPERTIES - 1, wrapper_widget_properties);
+	}
 	
-	g_object_class_install_properties (object_class, N_PROPERTIES, wrapper_widget_properties);
 }
 
 GtkWidget * wrapper_widget_new(void)

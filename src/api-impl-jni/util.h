@@ -86,6 +86,9 @@ struct handle_cache {
 		jmethodID getId;
 		jmethodID getIdName;
 		jmethodID getAllSuperClasses;
+		jmethodID getAllAttributesValues;
+		jmethodID getSourceLayoutResId;
+		jmethodID getSourceLayoutResIdName;
 	} view;
 	struct {
 		jclass class;

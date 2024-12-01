@@ -2183,6 +2183,13 @@ public class Resources {
 		return null;
 	}
 
+	public static int getAttributeSetSourceResId(AttributeSet set) {
+		if (set == null || !(set instanceof XmlBlock.Parser)) {
+			return -1;
+		}
+		return ((XmlBlock.Parser) set).getSourceResId();
+	}
+
 	/*package*/ ColorStateList loadColorStateList(TypedValue value, int id)
 	    throws NotFoundException {
 		if (TRACE_FOR_PRELOAD) {

@@ -861,6 +861,17 @@ public class View implements Drawable.Callback {
 	protected int paddingRight = 0;
 	protected int paddingBottom = 0;
 
+	private int sourceLayoutResId = -1;
+
+	// Debug information
+
+	/**
+	* Maps a Resource id to its name.
+	*/
+	private static SparseArray<String> debugAttributeMap;
+	public String[] debugAttributes;
+
+
 	public static final Property<View, Float> TRANSLATION_X = new Property<View, Float>(Float.class, "translationX") {
 		@Override
 		public Float get(View object) {
@@ -899,6 +910,8 @@ public class View implements Drawable.Callback {
 		widget = native_constructor(context, attrs);
 
 		if (attrs != null) {
+			sourceLayoutResId = Resources.getAttributeSetSourceResId(attrs);
+			
 			TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.View, defStyle, 0);
 			this.id = a.getResourceId(com.android.internal.R.styleable.View_id, View.NO_ID);
 			if (a.hasValue(com.android.internal.R.styleable.View_background)) {
@@ -973,6 +986,10 @@ public class View implements Drawable.Callback {
 				setTextAlignment(textAlignment);
 			}
 			
+			if(System.getenv("ATL_DEBUG_ATTRIBUTES") != null) {
+				saveAttributeData(attrs, a);
+			};
+
 			a.recycle();
 		}
 		onCreateDrawableState(0);
@@ -1488,32 +1505,6 @@ public class View implements Drawable.Callback {
 
 	public void setOverScrollMode(int mode) {}
 
-	public int getId() {return id;}
-	public String getIdName() {
-		if(this.id == View.NO_ID) {
-			return "NO_ID";
-		}
-
-		try {
-			return getResources().getResourceName(this.id);
-		} catch (Resources.NotFoundException e) {
-			return "NOT_FOUND";
-		}
-
-	}
-	public String getAllSuperClasses() {
-		StringBuilder sb = new StringBuilder();
-		Class<?> currentClass = getClass();
-
-		sb.append(currentClass.getCanonicalName());
-		currentClass = currentClass.getSuperclass();
-		while (currentClass != null) {
-			sb.append(" << ").append(currentClass.getCanonicalName());
-			currentClass = currentClass.getSuperclass();
-		}
-		return sb.toString();
-	}
-
 	public boolean postDelayed(Runnable action, long delayMillis) {
 		new Handler(Looper.getMainLooper()).postDelayed(action, delayMillis);
 		return true;
@@ -2028,4 +2019,123 @@ public class View implements Drawable.Callback {
 	public void setDefaultFocusHighlightEnabled(boolean enabled) {}
 
 	public void setHorizontalFadingEdgeEnabled(boolean horizontalFadingEdgeEnabled) {}
+
+	// Debug functions
+	private static SparseArray<String> getAttributeMap() {
+		if (debugAttributeMap == null) {
+			debugAttributeMap = new SparseArray<>();
+		}
+		return debugAttributeMap;
+	}
+
+	private void saveAttributeData(AttributeSet attrs,TypedArray a) {
+		final int attrsCount = attrs == null ? 0 : attrs.getAttributeCount();
+		final int indexCount = a.getIndexCount();
+		final String[] attributes = new String[(attrsCount + indexCount) * 2];
+
+		final Resources res = getResources();
+	
+		int i = 0;
+	
+		// Store raw XML attributes.
+		for (int j = 0; j < attrsCount; ++j) {
+			attributes[i] = attrs.getAttributeName(j);
+
+			int resourceId = attrs.getAttributeResourceValue(j, -1);
+			if(resourceId != -1){
+				try {
+					attributes[i + 1] = res.getResourceName(resourceId);
+				} catch (Resources.NotFoundException e) {
+					attributes[i + 1] = attrs.getAttributeValue(j);
+				}
+			} else {
+				attributes[i + 1] = attrs.getAttributeValue(j);
+			}
+			i += 2;
+		}
+	
+		// Store resolved styleable attributes.
+		final SparseArray<String> attributeMap = getAttributeMap();
+		for (int j = 0; j < indexCount; ++j) {
+			final int index = a.getIndex(j);
+			if(!a.hasValue(index)) {
+				continue;
+			}
+
+			final int resourceId = a.getResourceId(index, 0);
+			if (resourceId == 0) {
+				// Value is not a reference. Skip it.
+				continue;
+			}
+	
+			String resourceName = attributeMap.get(resourceId);
+			if (resourceName == null) {
+				try {
+					resourceName = res.getResourceName(resourceId);
+				} catch (Resources.NotFoundException e) {
+					resourceName = "0x" + Integer.toHexString(resourceId);
+				}
+				attributeMap.put(resourceId, resourceName);
+			}
+	
+			attributes[i] = resourceName;
+			attributes[i + 1] = a.getString(index);
+			i += 2;
+		}
+	
+		// Trim to fit contents.
+		final String[] trimmed = new String[i];
+		System.arraycopy(attributes, 0, trimmed, 0, i);
+		debugAttributes = trimmed;
+	}
+
+	public int getId() {return id;}
+	public String getIdName() {
+		if(this.id == View.NO_ID) {
+			return "NO_ID";
+		}
+
+		try {
+			return getResources().getResourceName(this.id);
+		} catch (Resources.NotFoundException e) {
+			return "NOT_FOUND";
+		}
+
+	}
+	public int getSourceLayoutResId() {
+		return sourceLayoutResId;
+	}
+
+	public String getSourceLayoutResIdName() {
+		if(this.sourceLayoutResId == View.NO_ID) {
+			return "NO_ID";
+		}
+
+		try {
+			return getResources().getResourceName(this.sourceLayoutResId);
+		} catch (Resources.NotFoundException e) {
+			return "NOT_FOUND";
+		}
+	}
+	public String getAllSuperClasses() {
+		StringBuilder sb = new StringBuilder();
+		Class<?> currentClass = getClass();
+
+		sb.append(currentClass.getCanonicalName());
+		currentClass = currentClass.getSuperclass();
+		while (currentClass != null) {
+			sb.append(" << ").append(currentClass.getCanonicalName());
+			currentClass = currentClass.getSuperclass();
+		}
+		return sb.toString();
+	}
+	public String[] getAllAttributesValues() {
+		int n = debugAttributes != null ? debugAttributes.length / 2 : 0;
+
+		String[] attributesValues = new String[n];
+		for (int i = 0; i < n; i += 1) {
+			attributesValues[i] = debugAttributes[2*i] + " : " + debugAttributes[2*i + 1];
+		}
+		return attributesValues;
+	}
 }

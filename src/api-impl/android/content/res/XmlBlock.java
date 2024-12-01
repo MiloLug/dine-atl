@@ -432,6 +432,10 @@ final class XmlBlock {
 			return nativeGetStyleAttribute(mParseState);
 		}
 
+		public int getSourceResId() {
+			return nativeGetSourceResId(mParseState);
+		}
+
 		public void close() {
 			synchronized (mBlock) {
 				if (mParseState != 0) {
@@ -473,8 +477,7 @@ final class XmlBlock {
 	XmlBlock(AssetManager assets, long xmlBlock) {
 		mAssets = assets;
 		mNative = xmlBlock;
-		// mStrings = new StringBlock(nativeGetStringBlock(xmlBlock), false);
-		mStrings = null;
+		mStrings = new StringBlock(nativeGetStringBlock(xmlBlock), false);
 	}
 
 	private final AssetManager mAssets;
@@ -486,7 +489,7 @@ final class XmlBlock {
 	private static final native int nativeCreate(byte[] data,
 						     int offset,
 						     int size);
-	private static final native int nativeGetStringBlock(long obj);
+	private static final native long nativeGetStringBlock(long obj);
 
 	private static final native long nativeCreateParseState(long obj);
 	/*package*/ static final native int nativeNext(long state);
@@ -507,6 +510,7 @@ final class XmlBlock {
 	private static final native int nativeGetAttributeIndex(long state, String namespace, String name);
 	private static final native void nativeDestroyParseState(long state);
 	private static final native String nativeGetPooledString(long state, int id);
+	private static final native int nativeGetSourceResId(long state);
 
 	private static final native void nativeDestroy(long obj);
 }
