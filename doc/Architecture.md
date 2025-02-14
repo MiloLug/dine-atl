@@ -7,7 +7,7 @@
 - `src/main-executable` - Code for the main executable, which sets stuff up (including the JVM) and launches the activity specified on the commandline
 - `test-apks/` - All APKs known to somewhat work, except paid proprietary ones which we sadly can't really include
 - `res/` - Default resources taken from AOSP Android 6 release
-- `./com.google.android.gms.apk` - microG is a temporary solution to run apps with GSF dependencies (fwiw, the actual solution will likely also use MicroG)
+- `./com.google.android.gms.apk` - [microG](https://microg.org/) is a temporary solution to run apps with Google Play Services framework dependencies (FWIW, the actual solution will likely also use microG)
 
 #### Philosophy
 
