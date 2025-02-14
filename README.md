@@ -7,29 +7,32 @@ ATL is an compatiblity layer to run Android apps on Linux which translates the A
 
 ### Features
 
-- CPU emulation for apps with ARM-specific code
-- Hardware acceleration for OpenGL
-- Mouse support for touch actions
+- OpenGL/EGL APIs mapped to native drivers
+- Android View system mapped to GTK widgets
+- TouchEvent APIs emulated by mouse pointer and full multi-touch support for devices with touch screen
+- MediaCodec APIs mapped to libavcodec with working VA-API hardware acceleration
+- AudioTrack APIs mapped to libalsa
+- Android Widgets implementation (not yet feature complete)
+- Graphic APIs implemented on top of GTK scene graph (not feature complete, but enough for some Jetpak Compose apps)
+- Desktop integration using XDG-desktop-portal
+  - Native file picker
+  - Native desktop notifications
+  - Automatic dark/light theme switching
+  - URL/file opening
+- experimental ARM native bridge using QEMU, see https://gitlab.com/android_translation_layer/qemu-based-native-bridge/nb-qemu (Not yet available in distribution packages)
+
+Lists of known working applications are available here https://gitlab.com/android_translation_layer/android_translation_layer/-/wikis/known-working-proprietary-apps and here https://wiki.postmarketos.org/wiki/Android_Translation_Layer/known_working_open_source_applications. Any application not listed is unlikely to work out of the box.
 
 ### Chat
 
 We have a Matrix room for development discussions and questions, you can join with this link: https://matrix.to/#/#android-translation-layer:matrix.org
 
-### Flatpak
-
-The Flatpak manifest can be found on this link: https://github.com/flathub/io.gitlab.android_translation_layer.BaseApp
-
-- To install the Flatpak run the following command:
-
-```
-flatpak install io.gitlab.android_translation_layer.BaseApp
-```
-
-- To launch an app run the following command:
-
-```
-flatpak run io.gitlab.android_translation_layer.BaseApp path-to/your-apk
-```
+### Distribution packages
+- Alpine Linux: https://pkgs.alpinelinux.org/package/edge/testing/x86_64/android-translation-layer
+- AUR: https://aur.archlinux.org/packages/android_translation_layer
+- Nix (WIP): https://github.com/NixOS/nixpkgs/pull/357220
+- Flathub: https://github.com/flathub/io.gitlab.android_translation_layer.BaseApp
+- Alpine nightlies: https://gitlab.com/android_translation_layer/aports/-/artifacts
 
 ### How to build from source
 
