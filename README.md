@@ -1,38 +1,48 @@
 # Android Translation Layer
 
-ATL is an compatiblity layer to run Android apps on Linux which translates the Android APIs to Linux APIs and is able to convert the ARM code of apps to x86 to make them work on Intel/AMD CPUs if necessary, as it just does CPU emulation for apps it's faster than [Waydroid](https://waydro.id/) and other Android emulators.
+ATL is an compatiblity layer created in 2021 to run Android apps on Linux which translates the Android APIs to Linux APIs, it uses less CPU, RAM memory, storage space, input latency, has faster startup time, and better desktop integration (native file picker, native notifications, using OpenGL and VA-API drivers from the host system) than [Waydroid](https://waydro.id/) and other Android emulators.
+
+### Screenshots
 
 ![Angry Birds 3.2.0, Worms 2 Armageddon, and Gravity Defied running side by side by side](https://gitlab.com/android_translation_layer/android_translation_layer/-/raw/master/screenshot.png)
 ![Oculus Quest version of BeatSaber running on an aarch64 laptop](https://gitlab.com/android_translation_layer/android_translation_layer/-/raw/master/screenshot_2.png)
 
 ### Features
 
-- OpenGL/EGL APIs mapped to native drivers
+- OpenGL/EGL APIs mapped to native Mesa3D drivers
 - Android View system mapped to GTK widgets
 - TouchEvent APIs emulated by mouse pointer and full multi-touch support for devices with touch screen
-- MediaCodec APIs mapped to libavcodec with working VA-API hardware acceleration
-- AudioTrack APIs mapped to libalsa
-- Android Widgets implementation (not yet feature complete)
-- Graphic APIs implemented on top of GTK scene graph (not feature complete, but enough for some Jetpak Compose apps)
-- Desktop integration using XDG-desktop-portal
+- MediaCodec APIs mapped to `libavcodec` with working VA-API hardware acceleration
+- AudioTrack APIs mapped to `libalsa` which can use PulseAudio or PipeWire audio servers
+- Android Widgets implementation (not feature complete yet)
+- Graphic APIs implemented on top of GTK scene graph (not feature complete yet, but enough for some Jetpak Compose apps)
+- Desktop integration using xdg-desktop-portal
   - Native file picker
   - Native desktop notifications
-  - Automatic dark/light theme switching
+  - Automatic dark/light theme detection
   - URL/file opening
-- experimental ARM native bridge using QEMU, see https://gitlab.com/android_translation_layer/qemu-based-native-bridge/nb-qemu (Not yet available in distribution packages)
+- Experimental ARM-to-x86 CPU translation (native bridge) using QEMU, it can be found on this link: https://gitlab.com/android_translation_layer/qemu-based-native-bridge/nb-qemu (Not available in distribution packages yet)
 
-Lists of known working applications are available here https://gitlab.com/android_translation_layer/android_translation_layer/-/wikis/known-working-proprietary-apps and here https://wiki.postmarketos.org/wiki/Android_Translation_Layer/known_working_open_source_applications. Any application not listed is unlikely to work out of the box.
+### Compatibility Status
+
+A list of known working applications can be found on the following links:
+
+- https://gitlab.com/android_translation_layer/android_translation_layer/-/wikis/known-working-proprietary-apps
+- https://wiki.postmarketos.org/wiki/Android_Translation_Layer/known_working_open_source_applications.
+
+Any application not listed there is unlikely to work out of the box.
 
 ### Chat
 
 We have a Matrix room for development discussions and questions, you can join with this link: https://matrix.to/#/#android-translation-layer:matrix.org
 
-### Distribution packages
-- Alpine Linux: https://pkgs.alpinelinux.org/package/edge/testing/x86_64/android-translation-layer
-- AUR: https://aur.archlinux.org/packages/android_translation_layer
-- Nix (WIP): https://github.com/NixOS/nixpkgs/pull/357220
-- Flathub: https://github.com/flathub/io.gitlab.android_translation_layer.BaseApp
-- Alpine nightlies: https://gitlab.com/android_translation_layer/aports/-/artifacts
+### Distribution Packages
+
+- [Flathub](https://github.com/flathub/io.gitlab.android_translation_layer.BaseApp)
+- [Alpine Linux](https://pkgs.alpinelinux.org/package/edge/testing/x86_64/android-translation-layer)
+- [AUR] https://aur.archlinux.org/packages/android_translation_layer
+- [Nix (WIP)](https://github.com/NixOS/nixpkgs/pull/357220)
+- [Alpine nightlies](https://gitlab.com/android_translation_layer/aports/-/artifacts)
 
 ### How to build from source
 
@@ -113,7 +123,11 @@ and use the XDG portal to install a `.desktop` file.
 
 ### Tweaks
 
-##### Resolution Changes
+#### Environment Variables
+
+You can use environment variables to make some apps work, read the [doc/Envs.md](./doc/Envs.md) document to learn how to use them.
+
+#### Resolution Changes
 
 Some apps don't like runtime changes to resolution. To workaround this, we allow for specifying the initial resolution.
 example with custom width/height:
@@ -141,8 +155,8 @@ The workflow is basically to see where it fails (usually a `Class` or `Method` w
 
 Once the app launches, you may find that some functionality (UI elements, etc) is missing. To enable such functionality, you need to convert the relevant stubs to an actual implementation. You can look at simple widgets (e.g. TextView, or ImageView) to see how to implement a widget such that it shows up as a GTK Widget.
 
-For more specific instructions, see [doc/QuickHelp.md](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/QuickHelp.md).  
-For general description of the architecure, see [doc/Architecture.md](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/Architecture.md).
+- For more specific instructions, read the [doc/QuickHelp.md](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/QuickHelp.md) document.  
+- For general description of the architecure, read the [doc/Architecture.md](https://gitlab.com/android_translation_layer/android_translation_layer/-/blob/master/doc/Architecture.md) document.
 
 If you want to contribute, and find the codebase overwhelming, don't hesitate to open an issue so we can help you out and possibly write more documentation.
 
