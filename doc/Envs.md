@@ -1,12 +1,12 @@
 The following environment variables are recognized by the main executable:
 
-`JDWP_LISTEN=<port>` - if set, art will listen for a jdb connection at `<port>`  
-`RUN_FROM_BUILDDIR=` - if set, will search for `api-impl.jar` and `libtranslation_layer.so` in current working directory (may need `LD_LIBRARY_PATH=.` as well for `libandroid.so.0`)  
-`ANDROID_APP_DATA_DIR=<path>` - if set, overrides the default path of `~/.local/android_translation_layer` for storing app data  
-`ATL_DISABLE_WINDOW_DECORATIONS=` - if set, window decorations will be disabled; 
-this is useful for saving screen space on phone screens, as well as working around the fact that we currently don't account for the titlebar when passing screen size to apps  
-`ATL_UGLY_ENABLE_LOCATION=` - if set, apps will be able to get location data using the relevant android APIs. (TODO: use bubblewrap)  
-`ATL_UGLY_ENABLE_WEBVIEW=` - if not set, WebView will be stubbed as a generic View; this will avoid wasting resources on WebViews which are only used for fingerprinting and ads  
-`ATL_FORCE_FULLSCREEN` - if set, will fullscreen the app window on start; this is useful for saving screen space on phone screens, as well as making apps that can't handle arbitrary screen dimensions for some reason happier  
-`ATL_SKIP_NATIVES_EXTRACTION` - if set, natives will not be extracted automatically; it's already possible to replace a native lib, but removing it entirely will normally result in it getting re-extracted, which may not be what you want
-`ATL_DIRECT_EGL` - if set, SurfaceViews will be mapped directly to a Wayland subsurface or X11 window instead of using GtkGraphicsOffload. This might be beneficial for CPU usage and rendering latency, but does not allow the application to render other Views ontop of the SurfaceView.
+- `JDWP_LISTEN=<port>` - If set, ART will listen for a `jdb` connection at `<port>`  
+- `RUN_FROM_BUILDDIR=` - If set, ATL? will search for `api-impl.jar` and `libtranslation_layer.so` in current working directory (may need `LD_LIBRARY_PATH=.` as well for `libandroid.so.0`)  
+- `ANDROID_APP_DATA_DIR=<path>` - If set, overrides the default path of `~/.local/android_translation_layer` for storing app data  
+- `ATL_DISABLE_WINDOW_DECORATIONS=` - If set, window decorations will be disabled; 
+this is useful for saving screen space on smartphone screens, as well as working around the fact that we currently don't account for the titlebar when passing screen size to apps  
+- `ATL_UGLY_ENABLE_LOCATION=` - If set, apps will be able to get location data using the relevant Android APIs. (TODO: use Bubblewrap)  
+- `ATL_UGLY_ENABLE_WEBVIEW=` - If not set, WebView will be stubbed as a generic `View`; this will avoid wasting resources on `WebViews` which are only used for fingerprinting and ads  
+- `ATL_FORCE_FULLSCREEN` - If set, will fullscreen the app window on start; this is useful for saving screen space on smartphone screens, as well as making apps that can't handle arbitrary screen dimensions for some reason happier  
+- `ATL_SKIP_NATIVES_EXTRACTION` - If set, native libraries will not be extracted automatically; it's already possible to replace a native library, but removing it entirely will normally result in it getting re-extracted, which may not be what you want
+- `ATL_DIRECT_EGL` - If set, `SurfaceViews` will be mapped directly to a Wayland subsurface or X11 window instead of using `GtkGraphicsOffload`. This might be beneficial for CPU usage and rendering latency, but does not allow the application to render other `Views` ontop of the `SurfaceView`.
