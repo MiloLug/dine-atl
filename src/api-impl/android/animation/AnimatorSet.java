@@ -64,12 +64,12 @@ import android.view.animation.Animation;
 public final class AnimatorSet extends Animator implements AnimationHandler.AnimationFrameCallback {
 
 	private static final String TAG = "AnimatorSet";
-	/**
-	 * Internal variables
-	 * NOTE: This object implements the clone() method, making a deep copy of any referenced
-	 * objects. As other non-trivial fields are added to this class, make sure to add logic
-	 * to clone() to make deep copies of them.
-	 */
+	// /**
+	//  * Internal variables
+	//  * NOTE: This object implements the clone() method, making a deep copy of any referenced
+	//  * objects. As other non-trivial fields are added to this class, make sure to add logic
+	//  * to clone() to make deep copies of them.
+	//  */
 
 	/**
 	 * Tracks animations currently being played, so that we know what to

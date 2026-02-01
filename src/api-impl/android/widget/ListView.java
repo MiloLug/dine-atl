@@ -2889,15 +2889,15 @@ public class ListView extends AbsListView {
 		return (theParent instanceof ViewGroup) && isViewAncestorOf((View) theParent, parent);
 	}
 
-	/**
-	 * Determine how much we need to scroll in order to get newFocus in view.
-	 * @param direction either {@link android.view.View#FOCUS_UP} or
-	 *        {@link android.view.View#FOCUS_DOWN}.
-	 * @param newFocus The view that would take focus.
-	 * @param positionOfNewFocus The position of the list item containing newFocus
-	 * @return The amount to scroll.  Note: this is always positive!  Direction
-	 *   needs to be taken into account when actually scrolling.
-	 */
+	// /**
+	//  * Determine how much we need to scroll in order to get newFocus in view.
+	//  * @param direction either {@link android.view.View#FOCUS_UP} or
+	//  *        {@link android.view.View#FOCUS_DOWN}.
+	//  * @param newFocus The view that would take focus.
+	//  * @param positionOfNewFocus The position of the list item containing newFocus
+	//  * @return The amount to scroll.  Note: this is always positive!  Direction
+	//  *   needs to be taken into account when actually scrolling.
+	//  */
 	// private int amountToScrollToNewFocus(int direction, View newFocus, int positionOfNewFocus) {
 	// 	int amountToScroll = 0;
 	// 	newFocus.getDrawingRect(mTempRect);
