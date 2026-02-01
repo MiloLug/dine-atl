@@ -21,6 +21,7 @@ import android.graphics.BlendModeColorFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.PixelFormat;
 import android.atl.GskCanvas;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -162,6 +163,10 @@ public class Drawable {
 
 	public boolean setVisible (boolean visible, boolean restart) {
 		return false;
+	}
+
+	public int getOpacity() {
+		return PixelFormat.UNKNOWN;
 	}
 
 	protected static TypedArray obtainAttributes(Resources r, Theme theme, AttributeSet set, int[] attrs) {
