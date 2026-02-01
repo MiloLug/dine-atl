@@ -906,6 +906,8 @@ public class View implements Drawable.Callback {
 	private int minWidth = 0;
 	private int minHeight = 0;
 
+	private boolean activated = false; // TODO: Is this the correct default value?
+
 	protected int paddingLeft = 0;
 	protected int paddingTop = 0;
 	protected int paddingRight = 0;
@@ -1678,7 +1680,14 @@ public class View implements Drawable.Callback {
 		this.minWidth = minWidth;
 	}
 
-	public void setActivated (boolean activated) {}
+	public void setActivated (boolean activated) {
+		// TODO: Partial implementation.
+		this.activated = activated;
+	}
+
+	public boolean isActivated() {
+		return this.activated;
+	}
 
 	public int getVisibility() {return visibility;}
 
@@ -1814,6 +1823,8 @@ public class View implements Drawable.Callback {
 	public void saveHierarchyState(SparseArray<Parcelable> array) {}
 
 	public void setDuplicateParentStateEnabled(boolean enabled) {}
+
+	public void setSoundEffectsEnabled(boolean enabled) {}
 
 	public boolean performClick() {
 		if (on_click_listener != null) {
