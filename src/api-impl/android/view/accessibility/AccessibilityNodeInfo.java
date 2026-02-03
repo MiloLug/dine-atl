@@ -10,6 +10,7 @@ public class AccessibilityNodeInfo {
 		public static final AccessibilityAction ACTION_SCROLL_LEFT = new AccessibilityAction(0, null);
 		public static final AccessibilityAction ACTION_SCROLL_RIGHT = new AccessibilityAction(0, null);
 		public static final AccessibilityAction ACTION_SCROLL_DOWN = new AccessibilityAction(0, null);
+		public static final AccessibilityAction ACTION_MOVE_WINDOW = new AccessibilityAction(0, null);
 
 
 		public AccessibilityAction(int actionId, CharSequence label) {}
