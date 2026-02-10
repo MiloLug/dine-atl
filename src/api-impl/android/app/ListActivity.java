@@ -207,17 +207,17 @@ public class ListActivity extends Activity {
 	protected void onListItemClick(ListView l, View v, int position, long id) {
 	}
 
-	/**
-	 * Ensures the list view has been created before Activity restores all
-	 * of the view states.
-	 *
-	 *@see Activity#onRestoreInstanceState(Bundle)
-	 */
-	/*@Override
-	protected void onRestoreInstanceState(Bundle state) {
-		ensureList();
-		super.onRestoreInstanceState(state);
-	}*/
+	// /**
+	//  * Ensures the list view has been created before Activity restores all
+	//  * of the view states.
+	//  *
+	//  *@see Activity#onRestoreInstanceState(Bundle)
+	//  */
+	// @Override
+	// protected void onRestoreInstanceState(Bundle state) {
+	// 	ensureList();
+	// 	super.onRestoreInstanceState(state);
+	// }
 
 	/**
 	 * @see Activity#onDestroy()

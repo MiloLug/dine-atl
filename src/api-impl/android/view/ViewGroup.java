@@ -492,10 +492,10 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 		public void resolveLayoutDirection(int layoutDirection) {}
 
-		/**
-		 * Used to animate layouts.
-		 */
-		//public LayoutAnimationController.AnimationParameters layoutAnimationParameters;
+		// /**
+		//  * Used to animate layouts.
+		//  */
+		// public LayoutAnimationController.AnimationParameters layoutAnimationParameters;
 	}
 
 	public static class MarginLayoutParams extends ViewGroup.LayoutParams {

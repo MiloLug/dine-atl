@@ -74,9 +74,9 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
 	private static final boolean DEBUG = false;
 	private static final boolean TRACE_ANIMATION_FRACTION = false;
 
-	/**
-	 * Internal constants
-	 */
+	// 
+	// Internal constants
+	// 
 
 	/**
 	 * System-wide animation scale.
@@ -88,12 +88,12 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
 	private static final ArrayList<WeakReference<DurationScaleChangeListener>>
 			sDurationScaleChangeListeners = new ArrayList<>();
 
-	/**
-	 * Internal variables
-	 * NOTE: This object implements the clone() method, making a deep copy of any referenced
-	 * objects. As other non-trivial fields are added to this class, make sure to add logic
-	 * to clone() to make deep copies of them.
-	 */
+	// 
+	// Internal variables
+	// NOTE: This object implements the clone() method, making a deep copy of any referenced
+	// objects. As other non-trivial fields are added to this class, make sure to add logic
+	// to clone() to make deep copies of them.
+	// 
 
 	/**
 	 * The first time that the animation's animateFrame() method is called. This time is used to
@@ -267,9 +267,9 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
      */
     private AnimationHandler mAnimationHandler;
 
-	/**
-	 * Public constants
-	 */
+	// 
+	// Public constants
+	// 
 
 	/** @hide */
 	@Retention(RetentionPolicy.SOURCE)
