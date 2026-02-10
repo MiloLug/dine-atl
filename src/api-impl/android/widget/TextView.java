@@ -186,6 +186,8 @@ public class TextView extends View {
 		return 0;
 	}
 
+	public final void setShowSoftInputOnFocus(boolean show) {}
+
 	public void setEllipsize(TextUtils.TruncateAt truncateAt) {}
 
 	public void setTextAppearance(Context context, int appearance) {}
