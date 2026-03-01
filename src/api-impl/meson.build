@@ -742,6 +742,8 @@ srcs = [
 	'com/google/android/gles_jni/EGLImpl.java',
 	'com/google/android/gles_jni/EGLSurfaceImpl.java',
 	'com/google/android/gles_jni/GLImpl.java',
+	'com/google/android/gms/ads/identifier/AdvertisingIdClient.java',
+	'com/google/android/gms/ads/measurement/DynamiteMeasurementManager.java',
 	'com/google/android/vending/expansion/downloader/IDownloaderClient.java',
 	'com/google/android/vending/expansion/downloader/impl/DownloaderService.java',
 	'com/google/android/vending/licensing/LicenseChecker.java',

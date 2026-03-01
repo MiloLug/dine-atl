@@ -8,3 +8,8 @@ JNIEXPORT jboolean JNICALL Java_android_os_Process_is64Bit(JNIEnv *env, jclass t
 	return 0;
 #endif
 }
+
+JNIEXPORT jint JNICALL Java_android_os_Process_getThreadPriority(JNIEnv *env, jclass this, jint tid)
+{
+	return 0; // dummy return
+}
