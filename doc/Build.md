@@ -116,3 +116,16 @@ meson compile
 cd builddir
 sudo meson install
 ```
+
+## Common issues and fixes
+
+### Fedora
+
+By default, Fedora doesn't look for libs in `/usr/local/lib*`.
+To fix this, create the following files:
+
+```sh
+echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/usr-local-lib.conf
+echo "/usr/local/lib64" | sudo tee /etc/ld.so.conf.d/usr-local-lib64.conf
+sudo ldconfig
+```
