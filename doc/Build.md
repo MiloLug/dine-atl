@@ -6,7 +6,7 @@ sudo apt install libasound2-dev libavcodec-dev libcap-dev  libdrm-dev libglib2.0
 
 ### Fedora
 ```sh
-sudo dnf install ant cmake wayland-protocols-devel ffmpeg-free-devel libdrm-devel libgudev-devel java-25-openjdk-devel alsa-lib-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)' 'pkgconfig(webkitgtk-6.0)'
+sudo dnf install ant wayland-protocols-devel ffmpeg-free-devel libdrm-devel libgudev-devel java-25-openjdk-devel alsa-lib-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)' 'pkgconfig(webkitgtk-6.0)'
 ```
 
 ### Alpine Edge
