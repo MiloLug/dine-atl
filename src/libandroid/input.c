@@ -6,6 +6,7 @@
 
 #include <gtk/gtk.h>
 
+#include "input.h"
 #include "looper.h"
 
 enum {
@@ -227,12 +228,6 @@ static gboolean on_event(GtkEventControllerLegacy *self, GdkEvent *event, int in
 
 	return true;
 }
-
-// FIXME put this in a header file
-struct input_queue {
-	int fd;
-	GtkEventController *controller;
-};
 
 void AInputQueue_attachLooper(struct input_queue *queue, struct ALooper *looper, int ident, Looper_callbackFunc callback, void *data)
 {
