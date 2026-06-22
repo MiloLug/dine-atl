@@ -462,7 +462,7 @@ public abstract class Context {
 		return getResources().getDrawable(resId, getTheme());
 	}
 
-	public boolean isRestricted() { return false; }
+	public abstract boolean isRestricted();
 
 	public File getDatabasePath(String dbName) {
 		File databaseDir = new File(getDataDirFile(), "databases");
@@ -492,11 +492,18 @@ public abstract class Context {
 			;
 	}
 
+	public static final int CONTEXT_INCLUDE_CODE = 0x00000001;
+	public static final int CONTEXT_IGNORE_SECURITY = 0x00000002;
+	public static final int CONTEXT_RESTRICTED = 0x00000004;
+
 	public abstract Context createPackageContext(String packageName, int flags);
 
 	public void grantUriPermission(String dummy, Uri dummy2, int dummy3) {
 		System.out.println("grantUriPermission(" + dummy + ", " + dummy2 + ", " + dummy3 + ") called");
 	}
+
+	public static final int MODE_ENABLE_WRITE_AHEAD_LOGGING = 0x0008;
+	public static final int MODE_NO_LOCALIZED_COLLATORS = 0x0010;
 
 	public SQLiteDatabase openOrCreateDatabase(String name, int mode, SQLiteDatabase.CursorFactory factory) {
 		return openOrCreateDatabase(name, mode, factory, null);
@@ -504,8 +511,11 @@ public abstract class Context {
 
 	public SQLiteDatabase openOrCreateDatabase(String filename, int mode, SQLiteDatabase.CursorFactory factory, DatabaseErrorHandler errorHandler) {
 		int flags = SQLiteDatabase.CREATE_IF_NECESSARY;
-		if ((mode & (1 << 3) /*MODE_ENABLE_WRITE_AHEAD_LOGGING*/) != 0) {
+		if ((mode & MODE_ENABLE_WRITE_AHEAD_LOGGING) != 0) {
 			flags |= SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING;
+		}
+		if ((mode & MODE_NO_LOCALIZED_COLLATORS) != 0) {
+			flags |= SQLiteDatabase.NO_LOCALIZED_COLLATORS;
 		}
 		SQLiteDatabase db = SQLiteDatabase.openDatabase(filename, factory, flags, errorHandler);
 		return db;
@@ -539,9 +549,7 @@ public abstract class Context {
 	public String getAttributionTag() {
 		return null;
 	}
-	public boolean isDeviceProtectedStorage() {
-		return false;
-	}
+	public abstract boolean isDeviceProtectedStorage();
 
 	public Drawable getWallpaper() {
 		return null;
