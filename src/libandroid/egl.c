@@ -237,6 +237,14 @@ static void atl_surface_class_init(ATLSurfaceClass *class)
 static void atl_surface_init(ATLSurface *self) {}
 G_DEFINE_TYPE(ATLSurface, atl_surface, G_TYPE_OBJECT)
 
+EGLImage bionic_eglCreateImageKHR(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list) {
+	return eglCreateImage(dpy, ctx, target, buffer, attrib_list);
+}
+
+EGLBoolean bionic_eglDestroyImageKHR(EGLDisplay dpy, EGLImage image) {
+	return eglDestroyImage(dpy, image);
+}
+
 EGLSurface bionic_eglCreateWindowSurface(EGLDisplay display, EGLConfig config, struct ANativeWindow *native_window, EGLint const *attrib_list)
 {
 	// better than crashing (TODO: check if apps try to use the NULL value anyway)
