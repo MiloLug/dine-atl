@@ -1414,7 +1414,7 @@ public class View implements Drawable.Callback {
 	public native void native_setPadding(long widget, int left, int top, int right, int bottom);
 
 	public void setBackgroundResource(int resid) {
-		setBackgroundDrawable(resid == 0 ? null : getResources().getDrawable(resid));
+		setBackgroundDrawable(resid == 0 ? null : getContext().getDrawable(resid));
 	}
 
 	public void getHitRect(Rect outRect) {
@@ -2566,4 +2566,6 @@ public class View implements Drawable.Callback {
 	public int getAccessibilityLiveRegion() { return 0; }
 
 	public void setLabelFor(int id) {}
+
+	public ArrayList<View> getFocusables(int direction) { return new ArrayList<View>(); }
 }
