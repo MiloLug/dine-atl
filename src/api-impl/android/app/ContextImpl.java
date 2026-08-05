@@ -16,6 +16,7 @@ import android.hardware.SensorManager;
 import android.hardware.camera2.CameraManager;
 import android.hardware.display.ColorDisplayManager;
 import android.hardware.display.DisplayManager;
+import android.hardware.fingerprint.FingerprintManager;
 import android.hardware.input.InputManager;
 import android.hardware.usb.UsbManager;
 import android.location.LocationManager;
@@ -209,6 +210,8 @@ public final class ContextImpl extends Context {
 				return new BatteryManager();
 			case "download":
 				return new DownloadManager();
+			case "fingerprint":
+				return new FingerprintManager();
 			default:
 				Slog.e(TAG, "!!!!!!! getSystemService: case >" + name + "< is not implemented yet");
 				return null;
