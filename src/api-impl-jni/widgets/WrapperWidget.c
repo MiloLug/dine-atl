@@ -40,8 +40,10 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 	switch ((WrapperWidgetProperty)property_id) {
 		case ATL_ID: {
 			jint id_jint = (*env)->CallIntMethod(env, jobj, handle_cache.view.getId);
-			if ((*env)->ExceptionCheck(env))
+			if ((*env)->ExceptionCheck(env)) {
 				(*env)->ExceptionDescribe(env);
+				(*env)->ExceptionClear(env);
+			}
 
 			const char *id = g_markup_printf_escaped("0x%08x", id_jint);
 			g_value_set_string(value, id);
@@ -50,8 +52,10 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_ID_NAME: {
 			jstring id_name_jstring = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getIdName);
-			if ((*env)->ExceptionCheck(env))
+			if ((*env)->ExceptionCheck(env)) {
 				(*env)->ExceptionDescribe(env);
+				(*env)->ExceptionClear(env);
+			}
 
 			const char *id_name = (*env)->GetStringUTFChars(env, id_name_jstring, NULL);
 			g_value_set_string(value, id_name);
@@ -62,8 +66,10 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_CLASS_NAME: {
 			jstring class_name_jstring = (*env)->CallObjectMethod(env, class, _METHOD(_CLASS(class), "getName", "()Ljava/lang/String;"));
-			if ((*env)->ExceptionCheck(env))
+			if ((*env)->ExceptionCheck(env)) {
 				(*env)->ExceptionDescribe(env);
+				(*env)->ExceptionClear(env);
+			}
 
 			const char *class_name = (*env)->GetStringUTFChars(env, class_name_jstring, NULL);
 			g_value_set_string(value, class_name);
@@ -74,8 +80,10 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_SUPER_CLASS_NAMES: {
 			jstring super_classes_names_obj = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getAllSuperClasses);
-			if ((*env)->ExceptionCheck(env))
+			if ((*env)->ExceptionCheck(env)) {
 				(*env)->ExceptionDescribe(env);
+				(*env)->ExceptionClear(env);
+			}
 
 			const char *super_classes_names = (*env)->GetStringUTFChars(env, super_classes_names_obj, NULL);
 			g_value_set_string(value, super_classes_names);
@@ -154,8 +162,10 @@ void wrapper_widget_allocate(GtkWidget *widget, int width, int height, int basel
 		JNIEnv *env;
 		(*wrapper->jvm)->GetEnv(wrapper->jvm, (void **)&env, JNI_VERSION_1_6);
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->computeScroll_method);
-		if ((*env)->ExceptionCheck(env))
+		if ((*env)->ExceptionCheck(env)) {
 			(*env)->ExceptionDescribe(env);
+			(*env)->ExceptionClear(env);
+		}
 		allocation.x = -(*env)->CallIntMethod(env, wrapper->jobj, handle_cache.view.getScrollX);
 		allocation.y = -(*env)->CallIntMethod(env, wrapper->jobj, handle_cache.view.getScrollY);
 	}
@@ -193,8 +203,10 @@ static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 		JNIEnv *env = get_jni_env();
 		_SET_LONG_FIELD(wrapper->canvas, "snapshot", _INTPTR(snapshot));
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->draw_method, wrapper->canvas);
-		if ((*env)->ExceptionCheck(env))
+		if ((*env)->ExceptionCheck(env)) {
 			(*env)->ExceptionDescribe(env);
+			(*env)->ExceptionClear(env);
+		}
 	} else {
 		GtkWidget *widget = &wrapper->parent_instance;
 		GtkWidget *child = gtk_widget_get_first_child(widget);
@@ -272,8 +284,10 @@ static bool on_click(GtkGestureClick *gesture, int n_press, double x, double y, 
 	JNIEnv *env = get_jni_env();
 
 	bool ret = (*env)->CallBooleanMethod(env, this, handle_cache.view.performClick);
-	if ((*env)->ExceptionCheck(env))
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 
 	return ret;
 }
@@ -417,8 +431,10 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 	jobject key_event = (*env)->NewObject(env, handle_cache.key_event.class, handle_cache.key_event.constructor, (jlong)0, (jlong)0, ACTION_DOWN, map_key_code(keyval), 0, map_meta_state(state));
 	_SET_INT_FIELD(key_event, "unicodeValue", gdk_keyval_to_unicode(keyval));
 	gboolean ret = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.view.dispatchKeyEvent, key_event);
-	if ((*env)->ExceptionCheck(env))
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 	return ret;
 }
 
@@ -429,8 +445,10 @@ static gboolean on_key_released(GtkEventControllerKey *controller, guint keyval,
 	jobject key_event = (*env)->NewObject(env, handle_cache.key_event.class, handle_cache.key_event.constructor, (jlong)0, (jlong)0, ACTION_UP, map_key_code(keyval), 0, map_meta_state(state));
 	_SET_INT_FIELD(key_event, "unicodeValue", gdk_keyval_to_unicode(keyval));
 	gboolean ret = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.view.dispatchKeyEvent, key_event);
-	if ((*env)->ExceptionCheck(env))
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 	return ret;
 }
 
@@ -438,8 +456,10 @@ static void map_cb(WrapperWidget *wrapper, jmethodID method)
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->CallVoidMethod(env, wrapper->jobj, method);
-	if ((*env)->ExceptionCheck(env))
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 }
 
 GtkWidget *currently_unmapping = NULL;
@@ -449,8 +469,10 @@ static void unmap_cb(WrapperWidget *wrapper, jmethodID method)
 	JNIEnv *env = get_jni_env();
 	currently_unmapping = wrapper->child;
 	(*env)->CallVoidMethod(env, wrapper->jobj, method);
-	if ((*env)->ExceptionCheck(env))
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
 	currently_unmapping = NULL;
 }
 
