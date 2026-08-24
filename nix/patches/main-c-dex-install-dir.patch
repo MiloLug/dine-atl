@@ -1,0 +1,10 @@
+--- a/src/main-executable/main.c
++++ b/src/main-executable/main.c
+@@ -361,6 +361,7 @@
+ 		fprintf(stderr, "error: couldn't find art install path\n");
+ 		exit(1);
+ 	}
++	dex_install_dir = "@out@/lib/java/dex";
+ 
+ 	char *app_data_dir_base = getenv("ANDROID_APP_DATA_DIR");
+ 	if (!app_data_dir_base) {

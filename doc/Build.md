@@ -47,6 +47,10 @@ sudo apk add build-base meson java-common openjdk8-jdk \
 
 You can now skip the Additional Dependencies section and continue with the build steps from below.
 
+### Nix
+
+A Nix flake is provided. With flakes enabled (`experimental-features = nix-command flakes`), `nix develop` drops you into a shell with every dependency from the sections above (wolfSSL with JNI enabled, bionic_translation and art_standalone are built from source by the flake itself), so you can continue with the build steps below. `nix build` builds the android-translation-layer package directly.
+
 ## Additional Dependencies
 ### wolfSSL
 If your distro ships wolfSSL with JNI enabled already, you can just install the package and skip this step.
