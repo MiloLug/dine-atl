@@ -6,6 +6,7 @@ import android.animation.StateListAnimator;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.atl.GskCanvas;
+import android.atl.annotation.Export;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.ColorStateList;
@@ -1139,15 +1140,19 @@ public class View implements Drawable.Callback {
 			return null;
 	}
 
+	@Export
 	public void onDraw(Canvas canvas) {
 		if (canvas instanceof GskCanvas)
 			native_drawContent(widget, ((GskCanvas)canvas).snapshot);
 	}
 
+	@Export
 	protected void dispatchDraw(Canvas canvas) {
 		if (canvas instanceof GskCanvas)
 			native_drawChildren(widget, ((GskCanvas)canvas).snapshot);
 	}
+
+	@Export
 	public void draw(Canvas canvas) {
 		if (canvas instanceof GskCanvas)
 			native_drawBackground(widget, ((GskCanvas)canvas).snapshot);
@@ -1168,6 +1173,7 @@ public class View implements Drawable.Callback {
 		return parent;
 	}
 
+	@Export
 	public void setLayoutParams(ViewGroup.LayoutParams params) {
 		if (params == null) {
 			throw new NullPointerException("Layout parameters cannot be null");
@@ -1198,6 +1204,7 @@ public class View implements Drawable.Callback {
 		return layout_params;
 	}
 
+	@Export
 	protected final void setMeasuredDimension(int measuredWidth, int measuredHeight) {
 		this.measuredWidth = measuredWidth;
 		this.measuredHeight = measuredHeight;
@@ -1213,6 +1220,7 @@ public class View implements Drawable.Callback {
 
 	private OnTouchListener on_touch_listener = null;
 
+	@Export
 	public boolean onTouchEventInternal(MotionEvent event, boolean handle_gestures) {
 		boolean handled = false;
 		if (on_touch_listener != null)
@@ -1227,6 +1235,7 @@ public class View implements Drawable.Callback {
 		return handled;
 	}
 
+	@Export
 	public boolean onTouchEvent(MotionEvent event) {
 		return false;
 	}
@@ -1323,6 +1332,7 @@ public class View implements Drawable.Callback {
 		return system_ui_visibility;
 	};
 
+	@Export
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		if (haveCustomMeasure) // calling native_measure here would create infinite loop
 			setMeasuredDimension(getDefaultSize(getSuggestedMinimumWidth(), widthMeasureSpec), getDefaultSize(getSuggestedMinimumHeight(), heightMeasureSpec));
@@ -1432,9 +1442,12 @@ public class View implements Drawable.Callback {
 	}
 	public final boolean getLocalVisibleRect(Rect r) { return false; }
 
+	@Export
 	public final int getScrollX() {
 		return scrollX;
 	}
+
+	@Export
 	public final int getScrollY() {
 		return scrollY;
 	}
@@ -1556,6 +1569,8 @@ public class View implements Drawable.Callback {
 	}
 
 	private OnLongClickListener on_long_click_listener = null;
+
+	@Export
 	public boolean performLongClick(float x, float y) {
 		if (on_long_click_listener != null) {
 			return on_long_click_listener.onLongClick(this);
@@ -1575,6 +1590,7 @@ public class View implements Drawable.Callback {
 
 	public void setOnHoverListener(OnHoverListener listener) {}
 
+	@Export
 	public final void measure(int widthMeasureSpec, int heightMeasureSpec) {
 		if (layoutRequested || widthMeasureSpec != oldWidthMeasureSpec || heightMeasureSpec != oldHeightMeasureSpec) {
 			layoutRequested = false;
@@ -1592,9 +1608,12 @@ public class View implements Drawable.Callback {
 		return curState | newState;
 	}
 
+	@Export
 	protected int getSuggestedMinimumHeight() {
 		return getMinimumHeight();
 	}
+
+	@Export
 	protected int getSuggestedMinimumWidth() {
 		return getMinimumWidth();
 	}
@@ -1638,14 +1657,17 @@ public class View implements Drawable.Callback {
 		return resolveSizeAndState(size, measureSpec, 0) & MEASURED_SIZE_MASK;
 	}
 
+	@Export
 	public final int getMeasuredWidth() {
 		return this.measuredWidth & MEASURED_SIZE_MASK;
 	}
 
+	@Export
 	public final int getMeasuredHeight() {
 		return this.measuredHeight & MEASURED_SIZE_MASK;
 	}
 
+	@Export
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {}
 
 	boolean layouted = false;
@@ -1660,6 +1682,7 @@ public class View implements Drawable.Callback {
 	}
 
 	/** Helper function to be called from GTKs LayoutManager via JNI */
+	@Export
 	private void layoutInternal(int width, int height) {
 		// if the layout is triggered from a native widget, we might not have measured yet
 		if (!(parent instanceof ViewGroup) && (width != getMeasuredWidth() || height != getMeasuredHeight())) {
@@ -1760,7 +1783,10 @@ public class View implements Drawable.Callback {
 
 	public void setOverScrollMode(int mode) {}
 
+	@Export
 	public int getId() { return id; }
+
+	@Export
 	public String getIdName() {
 		if (this.id == View.NO_ID) {
 			return "NO_ID";
@@ -1772,6 +1798,8 @@ public class View implements Drawable.Callback {
 			return "NOT_FOUND";
 		}
 	}
+
+	@Export
 	public String getAllSuperClasses() {
 		StringBuilder sb = new StringBuilder();
 		Class<?> currentClass = getClass();
@@ -1915,8 +1943,10 @@ public class View implements Drawable.Callback {
 		this.alpha = alpha;
 	}
 
+	@Export
 	public boolean onGenericMotionEvent(MotionEvent event) { return false; }
 
+	@Export
 	public boolean dispatchGenericMotionEvent(MotionEvent event) {
 		return onGenericMotionEvent(event);
 	}
@@ -1975,12 +2005,14 @@ public class View implements Drawable.Callback {
 
 	public void setDuplicateParentStateEnabled(boolean enabled) {}
 
+	@Export
 	public boolean performClick() {
 		return callOnClick();
 	}
 
 	public void playSoundEffect(int soundConstant) {}
 
+	@Export
 	public void computeScroll() {}
 
 	public void jumpDrawablesToCurrentState() {}
@@ -2168,6 +2200,7 @@ public class View implements Drawable.Callback {
 		return keepScreenOn;
 	}
 
+	@Export
 	protected void onAttachedToWindow() {
 		if (onAttachStateChangeListener != null) {
 			onAttachStateChangeListener.onViewAttachedToWindow(this);
@@ -2179,6 +2212,8 @@ public class View implements Drawable.Callback {
 			floating_observer = null;
 		}
 	}
+
+	@Export
 	protected void onDetachedFromWindow() {
 		if (onAttachStateChangeListener != null) {
 			onAttachStateChangeListener.onViewDetachedFromWindow(this);
@@ -2241,8 +2276,10 @@ public class View implements Drawable.Callback {
 		}
 	}
 
+	@Export
 	public boolean onInterceptTouchEvent(MotionEvent event) { return false; }
 
+	@Export
 	public boolean dispatchTouchEvent(MotionEvent event) { return false; }
 
 	public boolean canScrollHorizontally(int direction) { return false; }
@@ -2410,10 +2447,12 @@ public class View implements Drawable.Callback {
 
 	public boolean requestRectangleOnScreen(Rect rectangle) { return false; }
 
+	@Export
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		return false;
 	}
 
+	@Export
 	public boolean dispatchKeyEvent(KeyEvent event) {
 		if (event.getAction() == KeyEvent.ACTION_DOWN)
 			return onKeyDown(event.getKeyCode(), event);
@@ -2524,6 +2563,7 @@ public class View implements Drawable.Callback {
 		this.scrollY = value;
 	}
 
+	@Export
 	protected boolean dispatchHoverEvent(MotionEvent event) { return false; }
 
 	public ActionMode startActionMode(ActionMode.Callback callback, int type) { return null; }
