@@ -52,7 +52,7 @@ public class MediaCodec {
 			inputBuffers[i] = ByteBuffer.allocate(maxInputSize).order(ByteOrder.LITTLE_ENDIAN);
 			freeInputBuffers.add(i);
 		}
-		outputBuffers = new ByteBuffer[2];
+		outputBuffers = new ByteBuffer[4];
 		freeOutputBuffers = new ArrayDeque<>(outputBuffers.length);
 		for (int i = 0; i < outputBuffers.length; i++) {
 			outputBuffers[i] = ByteBuffer.allocate(8192).order(ByteOrder.LITTLE_ENDIAN);
@@ -112,12 +112,13 @@ public class MediaCodec {
 	}
 
 	public void releaseOutputBuffer(int index, boolean render) {
-		native_releaseOutputBuffer(native_codec, outputBuffers[index], render);
+		native_releaseOutputBuffer(native_codec, outputBuffers[index], render, 0);
 		freeOutputBuffers.add(index);
 	}
 
-	public void releaseOutputBuffer(int index, long presentationTimeUs) {
-		native_releaseOutputBuffer(native_codec, outputBuffers[index], true);
+	// AOSP calls the parameter `presentationTimeUs`, but actually it is nanoseconds
+	public void releaseOutputBuffer(int index, long releaseTimeNs) {
+		native_releaseOutputBuffer(native_codec, outputBuffers[index], true, releaseTimeNs);
 		freeOutputBuffers.add(index);
 	}
 
@@ -125,7 +126,17 @@ public class MediaCodec {
 		return mediaFormat;
 	}
 
-	public void flush() {}
+	public void flush() {
+		native_flush(native_codec);
+		freeInputBuffers.clear();
+		for (int i = 0; i < inputBuffers.length; i++)
+			freeInputBuffers.add(i);
+		queuedInputBuffers.clear();
+		freeOutputBuffers.clear();
+		for (int i = 0; i < outputBuffers.length; i++)
+			freeOutputBuffers.add(i);
+		outputFormatSet = false;
+	}
 
 	private void tryProcessInputBuffer() {
 		Integer index = queuedInputBuffers.peek();
@@ -185,6 +196,9 @@ public class MediaCodec {
 		native_codec = 0;
 	}
 
+	public void setOutputSurface(Surface surface) {
+	}
+
 	@Override
 	@SuppressWarnings("deprecation")
 	protected void finalize() throws Throwable {
@@ -201,7 +215,8 @@ public class MediaCodec {
 	private native void native_start(long codec);
 	private native int native_queueInputBuffer(long codec, ByteBuffer buffer, long presentationTimeUs);
 	private native int native_dequeueOutputBuffer(long codec, ByteBuffer buffer, BufferInfo info);
-	private native void native_releaseOutputBuffer(long codec, ByteBuffer buffer, boolean render);
+	private native void native_releaseOutputBuffer(long codec, ByteBuffer buffer, boolean render, long releaseTimeNs);
+	private native void native_flush(long codec);
 	private native void native_release(long codec);
 
 	public static final class CryptoInfo {

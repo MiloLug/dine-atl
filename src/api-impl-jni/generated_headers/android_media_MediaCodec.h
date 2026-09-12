@@ -60,10 +60,18 @@ JNIEXPORT jint JNICALL Java_android_media_MediaCodec_native_1dequeueOutputBuffer
 /*
  * Class:     android_media_MediaCodec
  * Method:    native_releaseOutputBuffer
- * Signature: (JLjava/nio/ByteBuffer;Z)V
+ * Signature: (JLjava/nio/ByteBuffer;ZJ)V
  */
 JNIEXPORT void JNICALL Java_android_media_MediaCodec_native_1releaseOutputBuffer
-  (JNIEnv *, jobject, jlong, jobject, jboolean);
+  (JNIEnv *, jobject, jlong, jobject, jboolean, jlong);
+
+/*
+ * Class:     android_media_MediaCodec
+ * Method:    native_flush
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_media_MediaCodec_native_1flush
+  (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     android_media_MediaCodec
