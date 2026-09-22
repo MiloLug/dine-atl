@@ -228,6 +228,7 @@ srcs = [
 	'android/database/sqlite/SQLiteStatement.java',
 	'android/database/sqlite/SQLiteStatementInfo.java',
 	'android/database/sqlite/SQLiteTableLockedException.java',
+	'android/database/CursorIndexOutOfBoundsException.java',
 	'android/database/CursorJoiner.java',
 	'android/database/sqlite/SQLiteTransactionListener.java',
 	'android/gesture/GestureOverlayView.java',

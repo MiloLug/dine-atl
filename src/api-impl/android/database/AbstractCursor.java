@@ -451,8 +451,7 @@ public abstract class AbstractCursor implements CrossProcessCursor {
 	 */
 	protected void checkPosition() {
 		if (-1 == mPos || getCount() == mPos) {
-			// throw new CursorIndexOutOfBoundsException(mPos, getCount());
-			throw new IndexOutOfBoundsException("index = " + mPos + " count = " + getCount());
+			throw new CursorIndexOutOfBoundsException(mPos, getCount());
 		}
 	}
 	@Override
