@@ -20,10 +20,12 @@
 
 package android.database.sqlite;
 
+import android.atl.ATLLoadedApp;
 import android.database.Cursor;
 import android.database.CursorWindow;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDebug.DbStats;
+import android.os.Build;
 import android.os.CancellationSignal;
 import android.os.OperationCanceledException;
 import android.os.ParcelFileDescriptor;
@@ -118,7 +120,8 @@ public final class SQLiteConnection implements CancellationSignal.OnCancelListen
 	private int mCancellationSignalAttachCount;
 
 	private static native long nativeOpen(String path, int openFlags, String label,
-	                                      boolean enableTrace, boolean enableProfile);
+	                                      boolean enableTrace, boolean enableProfile,
+	                                      boolean allowMovedDbWrites);
 	private static native void nativeClose(long connectionPtr);
 	private static native void nativeRegisterCustomFunction(long connectionPtr,
 	                                                        SQLiteCustomFunction function);
@@ -209,9 +212,14 @@ public final class SQLiteConnection implements CancellationSignal.OnCancelListen
 	}
 
 	private void open() {
+		// Restore the old stale-write behaviour only for apps that target API < 21.
+		final boolean allowMovedDbWrites =
+		    ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.targetSdkVersion
+		    < Build.VERSION_CODES.LOLLIPOP;
 		mConnectionPtr = nativeOpen(mConfiguration.path, mConfiguration.openFlags,
 		                            mConfiguration.label,
-		                            SQLiteDebug.DEBUG_SQL_STATEMENTS, SQLiteDebug.DEBUG_SQL_TIME);
+		                            SQLiteDebug.DEBUG_SQL_STATEMENTS, SQLiteDebug.DEBUG_SQL_TIME,
+		                            allowMovedDbWrites);
 
 		setPageSize();
 		setForeignKeyModeFromConfiguration();

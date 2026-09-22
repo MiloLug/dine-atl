@@ -12,10 +12,10 @@ extern "C" {
 /*
  * Class:     android_database_sqlite_SQLiteConnection
  * Method:    nativeOpen
- * Signature: (Ljava/lang/String;ILjava/lang/String;ZZ)J
+ * Signature: (Ljava/lang/String;ILjava/lang/String;ZZZ)J
  */
 JNIEXPORT jlong JNICALL Java_android_database_sqlite_SQLiteConnection_nativeOpen
-  (JNIEnv *, jclass, jstring, jint, jstring, jboolean, jboolean);
+  (JNIEnv *, jclass, jstring, jint, jstring, jboolean, jboolean, jboolean);
 
 /*
  * Class:     android_database_sqlite_SQLiteConnection

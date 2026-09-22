@@ -108,8 +108,37 @@ static void sqliteProfileCallback(void *data, const char *sql, sqlite3_uint64 tm
 	// 		connection->label, sql, tm * 0.000001f);
 }
 
+// Pre-Lollipop SQLite tolerated writes to a database file that was deleted and
+// re-created behind an open connection (writing to the stale file, discarding
+// the results on close); modern SQLite refuses with SQLITE_READONLY_DBMOVED.
+// Neutralise the SQLITE_FCNTL_HAS_MOVED file control to restore the old
+// behaviour for apps that target an API level below 21.
+static const sqlite3_io_methods *real_io_methods = NULL;
+static sqlite3_io_methods legacy_io_methods;
+
+static int legacy_xFileControl(sqlite3_file *pFile, int op, void *pArg)
+{
+	if (op == SQLITE_FCNTL_HAS_MOVED)
+		return SQLITE_OK;
+	return real_io_methods->xFileControl(pFile, op, pArg);
+}
+
+// Rebind the main database file's io_methods to the wrapper above.
+static void disable_moved_check(sqlite3 *db)
+{
+	sqlite3_file *pFile = NULL;
+	if (sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &pFile) != SQLITE_OK)
+		return;
+	if (real_io_methods == NULL) {
+		real_io_methods = pFile->pMethods;
+		memcpy(&legacy_io_methods, real_io_methods, sizeof(legacy_io_methods));
+		legacy_io_methods.xFileControl = legacy_xFileControl;
+	}
+	pFile->pMethods = &legacy_io_methods;
+}
+
 JNIEXPORT jlong JNICALL Java_android_database_sqlite_SQLiteConnection_nativeOpen(JNIEnv *env, jclass clazz, jstring pathStr, jint openFlags,
-                                                                                 jstring labelStr, jboolean enableTrace, jboolean enableProfile)
+                                                                                 jstring labelStr, jboolean enableTrace, jboolean enableProfile, jboolean allowMovedDbWrites)
 {
 	int sqliteFlags;
 	if (openFlags & CREATE_IF_NECESSARY) {
@@ -181,6 +210,9 @@ JNIEXPORT jlong JNICALL Java_android_database_sqlite_SQLiteConnection_nativeOpen
 	connection->openFlags = openFlags;
 	connection->path = path;
 	connection->label = label;
+
+	if (allowMovedDbWrites)
+		disable_moved_check(db);
 
 	// Enable tracing and profiling if requested.
 	if (enableTrace) {
