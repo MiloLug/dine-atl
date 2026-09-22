@@ -164,6 +164,17 @@ JNIEXPORT jlong JNICALL Java_android_database_sqlite_SQLiteConnection_nativeOpen
 		return 0;
 	}
 
+	// SQLite 3.45.0 changed the default SQLITE_MAX_PAGE_COUNT from 2^30 to 2^32-2
+	// which is also the absolute ceiling of possible values.
+	// AOSP bundles older SQLite versions. Therefore set it back to 2^30, so the CTS
+	// tests can increase the maximum size.
+	err = sqlite3_exec(db, "PRAGMA max_page_count = 1073741824", NULL, NULL, NULL);
+	if (err != SQLITE_OK) {
+		throw_sqlite3_exception_handle_message(env, db, "Could not set max page count");
+		sqlite3_close(db);
+		return 0;
+	}
+
 	// Create wrapper object.
 	struct SQLiteConnection *connection = malloc(sizeof(struct SQLiteConnection));
 	connection->db = db;
