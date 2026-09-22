@@ -20,10 +20,14 @@
 
 package android.database.sqlite;
 
+import android.atl.ATLLoadedApp;
 import android.content.ContentValues;
 import android.database.AbstractWindowedCursor;
 import android.database.CursorWindow;
 import android.database.DatabaseUtils;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -172,6 +176,19 @@ public class SQLiteCursor extends AbstractWindowedCursor {
 			// and fails to close the cursor.
 			awc_closeWindow();
 			throw ex;
+		}
+		// fillWindow was async pre Android 4.0, so we need to notify observers to not hang the old CTS tests
+		if (ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.targetSdkVersion < Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+			final Looper looper = Looper.myLooper();
+			if (looper != null) {
+				new Handler(looper).post(new Runnable() {
+					@Override
+					public void run() {
+						if (!isClosed())
+							notifyDataSetObservers();
+					}
+				});
+			}
 		}
 	}
 

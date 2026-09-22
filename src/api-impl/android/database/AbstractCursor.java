@@ -441,6 +441,10 @@ public abstract class AbstractCursor implements CrossProcessCursor {
 	protected Object getUpdatedField(int columnIndex) {
 		return mUpdatedRows.get(mCurrentRowID).get(Integer.toString(columnIndex));
 	}
+	protected void notifyDataSetObservers() {
+		mDataSetObservable.notifyChanged();
+	}
+
 	/**
 	 * This function throws CursorIndexOutOfBoundsException if
 	 * the cursor position is out of bounds. Subclass implementations of
