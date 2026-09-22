@@ -22,10 +22,13 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteProgram;
 import android.database.sqlite.SQLiteStatement;
+import android.os.Parcel;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.lang.ReflectiveOperationException;
 import java.text.Collator;
 import java.util.HashMap;
 import java.util.Locale;
@@ -1311,5 +1314,41 @@ public class DatabaseUtils {
 			}
 		}
 		return -1;
+	}
+
+	public static void writeExceptionToParcel(Parcel parcel, Exception exception) {
+		parcel.writeSerializable(exception);
+	}
+
+	public static void readExceptionFromParcel(Parcel parcel) {
+		try {
+			Exception e = (Exception)parcel.readSerializable();
+			if (e instanceof RuntimeException) {
+				throw (RuntimeException)e;
+			}
+			if (e != null) {
+				throw new RuntimeException(e);
+			}
+		} catch (ReflectiveOperationException ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+
+	public static void readExceptionWithFileNotFoundExceptionFromParcel(Parcel parcel)
+	    throws FileNotFoundException {
+		try {
+			Exception e = (Exception)parcel.readSerializable();
+			if (e instanceof FileNotFoundException) {
+				throw (FileNotFoundException)e;
+			}
+			if (e instanceof RuntimeException) {
+				throw (RuntimeException)e;
+			}
+			if (e != null) {
+				throw new RuntimeException(e);
+			}
+		} catch (ReflectiveOperationException ex) {
+			throw new RuntimeException(ex);
+		}
 	}
 }

@@ -1348,6 +1348,22 @@ public final class SQLiteDatabase extends SQLiteClosable {
 	/**
 	 * Runs the provided SQL and returns a cursor over the result set.
 	 *
+	 * @param sql the SQL query. The SQL string must not be ; terminated
+	 * @param selectionArgs You may include ?s in where clause in the query,
+	 *     which will be replaced by the values from selectionArgs. The
+	 *     values will be bound as Strings.
+	 * @param offset the offset on the result set
+	 * @param limit the limit on the result set
+	 * @return A {@link Cursor} object, which is positioned before the first entry. Note that
+	 * {@link Cursor}s are not synchronized, see the documentation for more details.
+	 */
+	public Cursor rawQuery(String sql, String[] selectionArgs, int offset, int limit) {
+		return rawQueryWithFactory(null, sql, selectionArgs, null, null);
+	}
+
+	/**
+	 * Runs the provided SQL and returns a cursor over the result set.
+	 *
 	 * @param cursorFactory the cursor factory to use, or null for the default factory
 	 * @param sql the SQL query. The SQL string must not be ; terminated
 	 * @param selectionArgs You may include ?s in where clause in the query,
