@@ -16,6 +16,7 @@
 
 package android.database;
 
+import android.annotation.UnsupportedAppUsage;
 import android.content.ContentResolver;
 import android.net.Uri;
 import android.os.Build;
@@ -125,6 +126,12 @@ public abstract class AbstractCursor implements CrossProcessCursor {
 	public void deactivate() {
 		onDeactivateOrClose();
 	}
+
+	@UnsupportedAppUsage // Not public API, but used directly in CTS tests over reflection
+	public void deactivateInternal() {
+		deactivate();
+	}
+
 	/** @hide */
 	protected void onDeactivateOrClose() {
 		if (mSelfObserver != null) {

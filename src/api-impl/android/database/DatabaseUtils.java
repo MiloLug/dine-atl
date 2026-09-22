@@ -532,6 +532,10 @@ public class DatabaseUtils {
 	public static void cursorIntToContentValues(Cursor cursor, String field, ContentValues values,
 	                                            String key) {
 		int colIndex = cursor.getColumnIndex(field);
+		if (colIndex < 0) {
+			values.put(key, (Integer)null);
+			return;
+		}
 		if (!cursor.isNull(colIndex)) {
 			values.put(key, cursor.getInt(colIndex));
 		} else {
@@ -561,6 +565,10 @@ public class DatabaseUtils {
 	public static void cursorLongToContentValues(Cursor cursor, String field, ContentValues values,
 	                                             String key) {
 		int colIndex = cursor.getColumnIndex(field);
+		if (colIndex < 0) {
+			values.put(key, (Long)null);
+			return;
+		}
 		if (!cursor.isNull(colIndex)) {
 			Long value = Long.valueOf(cursor.getLong(colIndex));
 			values.put(key, value);
@@ -591,6 +599,10 @@ public class DatabaseUtils {
 	public static void cursorDoubleToContentValues(Cursor cursor, String field,
 	                                               ContentValues values, String key) {
 		int colIndex = cursor.getColumnIndex(field);
+		if (colIndex < 0) {
+			values.put(key, (Double)null);
+			return;
+		}
 		if (!cursor.isNull(colIndex)) {
 			values.put(key, cursor.getDouble(colIndex));
 		} else {

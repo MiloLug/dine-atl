@@ -97,7 +97,10 @@ public class SQLiteCursor extends AbstractWindowedCursor {
 	 */
 	public SQLiteCursor(SQLiteCursorDriver driver, String editTable, SQLiteQuery query) {
 		if (query == null) {
-			throw new IllegalArgumentException("query object cannot be null");
+			if (ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.ICE_CREAM_SANDWICH)
+				throw new IllegalArgumentException("query object cannot be null");
+			else
+				throw new NullPointerException("query object cannot be null");
 		}
 		mDriver = driver;
 		mEditTable = editTable;
