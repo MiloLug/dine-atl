@@ -140,10 +140,10 @@ JNIEXPORT void JNICALL Java_android_database_sqlite_SQLiteConnection_nativeReset
 /*
  * Class:     android_database_sqlite_SQLiteConnection
  * Method:    nativeExecute
- * Signature: (JJ)V
+ * Signature: (JJZ)V
  */
 JNIEXPORT void JNICALL Java_android_database_sqlite_SQLiteConnection_nativeExecute
-  (JNIEnv *, jclass, jlong, jlong);
+  (JNIEnv *, jclass, jlong, jlong, jboolean);
 
 /*
  * Class:     android_database_sqlite_SQLiteConnection

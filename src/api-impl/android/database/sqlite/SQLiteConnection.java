@@ -25,6 +25,7 @@ import android.database.CursorWindow;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDebug.DbStats;
 import android.os.CancellationSignal;
+import android.os.OperationCanceledException;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
@@ -141,7 +142,7 @@ public final class SQLiteConnection implements CancellationSignal.OnCancelListen
 	                                          int index, byte[] value);
 	private static native void nativeResetStatementAndClearBindings(
 	    long connectionPtr, long statementPtr);
-	private static native void nativeExecute(long connectionPtr, long statementPtr);
+	private static native void nativeExecute(long connectionPtr, long statementPtr, boolean isPragmaStatement);
 	private static native long nativeExecuteForLong(long connectionPtr, long statementPtr);
 	private static native String nativeExecuteForString(long connectionPtr, long statementPtr);
 	private static native int nativeExecuteForBlobFileDescriptor(
@@ -565,7 +566,7 @@ public final class SQLiteConnection implements CancellationSignal.OnCancelListen
 				applyBlockGuardPolicy(statement);
 				attachCancellationSignal(cancellationSignal);
 				try {
-					nativeExecute(mConnectionPtr, statement.mStatementPtr);
+					nativeExecute(mConnectionPtr, statement.mStatementPtr, statement.mType == DatabaseUtils.STATEMENT_PRAGMA);
 				} finally {
 					detachCancellationSignal(cancellationSignal);
 				}

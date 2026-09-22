@@ -441,23 +441,29 @@ JNIEXPORT void JNICALL Java_android_database_sqlite_SQLiteConnection_nativeReset
 	}
 }
 
-static int executeNonQuery(JNIEnv *env, struct SQLiteConnection *connection, sqlite3_stmt *statement)
+static int executeNonQuery(JNIEnv *env, struct SQLiteConnection *connection, sqlite3_stmt *statement, jboolean is_pragma_statement)
 {
-	int err;
-	while (SQLITE_ROW == (err = sqlite3_step(statement)))
-		;
+	int err = sqlite3_step(statement);
+	if (is_pragma_statement) {
+		while (err == SQLITE_ROW)
+			err = sqlite3_step(statement);
+	}
+	if (err == SQLITE_ROW) {
+		throw_sqlite3_exception_handle_message(env, connection->db, "Queries cannot be performed using execute()");
+		return err;
+	}
 	if (err != SQLITE_DONE) {
 		throw_sqlite3_exception_handle(env, connection->db);
 	}
 	return err;
 }
 
-JNIEXPORT void JNICALL Java_android_database_sqlite_SQLiteConnection_nativeExecute(JNIEnv *env, jclass clazz, jlong connectionPtr, jlong statementPtr)
+JNIEXPORT void JNICALL Java_android_database_sqlite_SQLiteConnection_nativeExecute(JNIEnv *env, jclass clazz, jlong connectionPtr, jlong statementPtr, jboolean is_pragma_statement)
 {
 	struct SQLiteConnection *connection = _PTR(connectionPtr);
 	sqlite3_stmt *statement = _PTR(statementPtr);
 
-	executeNonQuery(env, connection, statement);
+	executeNonQuery(env, connection, statement, is_pragma_statement);
 }
 
 static int executeOneRowQuery(JNIEnv *env, struct SQLiteConnection *connection, sqlite3_stmt *statement)
@@ -502,7 +508,7 @@ JNIEXPORT jint JNICALL Java_android_database_sqlite_SQLiteConnection_nativeExecu
 	struct SQLiteConnection *connection = _PTR(connectionPtr);
 	sqlite3_stmt *statement = _PTR(statementPtr);
 
-	int err = executeNonQuery(env, connection, statement);
+	int err = executeNonQuery(env, connection, statement, false);
 	return err == SQLITE_DONE ? sqlite3_changes(connection->db) : -1;
 }
 
@@ -511,7 +517,7 @@ JNIEXPORT jlong JNICALL Java_android_database_sqlite_SQLiteConnection_nativeExec
 	struct SQLiteConnection *connection = _PTR(connectionPtr);
 	sqlite3_stmt *statement = _PTR(statementPtr);
 
-	int err = executeNonQuery(env, connection, statement);
+	int err = executeNonQuery(env, connection, statement, false);
 	return err == SQLITE_DONE && sqlite3_changes(connection->db) > 0
 	         ? sqlite3_last_insert_rowid(connection->db)
 	         : -1;
