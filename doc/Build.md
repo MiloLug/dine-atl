@@ -6,7 +6,7 @@ sudo apt install libasound2-dev libavcodec-dev libcap-dev  libdrm-dev libglib2.0
 
 ### Fedora
 ```sh
-sudo dnf install java-17-openjdk-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)' 'pkgconfig(webkitgtk-6.0)'
+sudo dnf install ant wayland-protocols-devel ffmpeg-free-devel libdrm-devel libgudev-devel java-25-openjdk-devel alsa-lib-devel 'pkgconfig(gtk4)' 'pkgconfig(libbsd)' 'pkgconfig(libportal)' 'pkgconfig(sqlite3)' 'pkgconfig(libwebp)' 'pkgconfig(liblz4)' 'pkgconfig(openxr)' 'pkgconfig(webkitgtk-6.0)'
 ```
 
 ### Alpine Edge
@@ -48,6 +48,15 @@ sudo apk add build-base meson java-common openjdk8-jdk \
 You can now skip the Additional Dependencies section and continue with the build steps from below.
 
 ## Additional Dependencies
+
+### Required dependencies to build following additional dependencies
+
+#### Fedora
+
+```sh
+sudo dnf install gcc-c++ autoconf automake libtool libtool-ltdl-devel mesa-libEGL-devel elfutils-libelf-devel SDL2-devel libsndfile-devel openssl-devel libcap-devel expat-devel
+```
+
 ### wolfSSL
 If your distro ships wolfSSL with JNI enabled already, you can just install the package and skip this step.
 ```sh
@@ -76,10 +85,9 @@ If your distro ships this already (e.g. `art_standalone` on Alpine), you can jus
 ```sh
 git clone https://gitlab.com/android_translation_layer/art_standalone.git
 cd art_standalone
-make ____LIBDIR=lib
-sudo make ____LIBDIR=lib install
+make
+sudo make install
 ```
-Note: adjust `____LIBDIR` depending on your distro (e.g some distros use `lib32`,`lib` or `lib`,`lib64` for multilib).
 
 ### libOpenSLES
 Optional (not required for Android Translation Layer itself but some apps depend on it).
@@ -106,5 +114,18 @@ meson compile
 ## Install
 ```sh
 cd builddir
-meson install
+sudo meson install
+```
+
+## Common issues and fixes
+
+### Fedora
+
+By default, Fedora doesn't look for libs in `/usr/local/lib*`.
+To fix this, create the following files:
+
+```sh
+echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/usr-local-lib.conf
+echo "/usr/local/lib64" | sudo tee /etc/ld.so.conf.d/usr-local-lib64.conf
+sudo ldconfig
 ```
