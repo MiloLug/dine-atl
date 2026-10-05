@@ -974,6 +974,8 @@ public class View implements Drawable.Callback {
 	private boolean atl_enabled = true;
 	private boolean atl_focusable = true;
 
+	private Handler handler;
+
 	public static final Property<View, Float> TRANSLATION_X = new Property<View, Float>(Float.class, "translationX") {
 		@Override
 		public Float get(View view) {
@@ -1486,7 +1488,7 @@ public class View implements Drawable.Callback {
 	}
 
 	public void postInvalidate() {
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		getHandler().post(new Runnable() {
 			@Override
 			public void run() {
 				invalidate();
@@ -1495,7 +1497,7 @@ public class View implements Drawable.Callback {
 	}
 
 	public void postInvalidate(final int left, final int top, final int right, final int bottom) {
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		getHandler().post(new Runnable() {
 			@Override
 			public void run() {
 				invalidate(left, top, right, bottom);
@@ -1637,7 +1639,10 @@ public class View implements Drawable.Callback {
 
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {}
 
+	boolean layouted = false;
+
 	public void layout(int l, int t, int r, int b) {
+		this.layouted = true;
 		this.left = l;
 		this.top = t;
 		this.right = r;
@@ -1657,7 +1662,18 @@ public class View implements Drawable.Callback {
 			onSizeChanged(width, height, oldWidth, oldHeight);
 		bottom = top + height;
 		right = left + width;
+		if (this instanceof ViewGroup) {
+			for (View child : ((ViewGroup)this).children)
+				child.layouted = false;
+		}
 		onLayout(changed, 0, 0, width, height);
+		// ReactViewGroup has onLayout implemented as no-op, so we need to walk children ourself in such cases
+		if (this instanceof ViewGroup) {
+			for (View child : ((ViewGroup)this).children) {
+				if (!child.layouted && child.visibility != GONE)
+					child.layout(child.left, child.top, child.right, child.bottom);
+			}
+		}
 		oldWidth = width;
 		oldHeight = height;
 	}
@@ -1708,7 +1724,10 @@ public class View implements Drawable.Callback {
 
 	public void setScrollContainer(boolean isScrollContainer) {}
 
-	public boolean removeCallbacks(Runnable action) { return false; }
+	public boolean removeCallbacks(Runnable action) {
+		getHandler().removeCallbacks(action);
+		return true;
+	}
 
 	public void requestLayout() {
 		native_requestLayout(widget);
@@ -1750,12 +1769,12 @@ public class View implements Drawable.Callback {
 	}
 
 	public boolean postDelayed(Runnable action, long delayMillis) {
-		new Handler(Looper.getMainLooper()).postDelayed(action, delayMillis);
+		getHandler().postDelayed(action, delayMillis);
 		return true;
 	}
 
 	public boolean post(Runnable action) {
-		new Handler(Looper.getMainLooper()).post(action);
+		getHandler().post(action);
 		return true;
 	}
 
@@ -2182,7 +2201,7 @@ public class View implements Drawable.Callback {
 		if (Looper.myLooper() == Looper.getMainLooper()) {
 			requestLayout();
 		} else {
-			new Handler(Looper.getMainLooper()).post(new Runnable() {
+			getHandler().post(new Runnable() {
 				@Override
 				public void run() {
 					requestLayout();
@@ -2332,7 +2351,9 @@ public class View implements Drawable.Callback {
 	public void setHorizontalFadingEdgeEnabled(boolean horizontalFadingEdgeEnabled) {}
 
 	public Handler getHandler() {
-		return new Handler(Looper.getMainLooper());
+		if (handler == null)
+			handler = new Handler(Looper.getMainLooper());
+		return handler;
 	}
 
 	public boolean isHardwareAccelerated() {
@@ -2592,4 +2613,8 @@ public class View implements Drawable.Callback {
 	public boolean isAccessibilityFocused() { return false; }
 
 	public float getCameraDistance() { return 0; }
+
+	public OnFocusChangeListener getOnFocusChangeListener() { return null; }
+
+	public int getTextDirection() { return 0; /* TEXT_DIRECTION_INHERIT */ }
 }
