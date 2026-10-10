@@ -15,6 +15,8 @@ of clang-format with our patches here: https://gitlab.com/android_translation_la
   `clang-format --style="{BasedOnStyle: InheritParentConfig, ReflowComments: IndentOnly}"`
   since there shouldn't be commented out code (yet). This will correctly indent the plentitude
   of javadoc comments.
+- clang-format can be applied on an entire folder with
+  `find src/ -type f -exec /path/to/bin/clang-format -i {} +`
 
 #### manual formatting rules
 - aim for ~100 columns
