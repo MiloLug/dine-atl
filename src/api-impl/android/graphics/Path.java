@@ -10,10 +10,18 @@ import android.util.Log;
 public class Path {
 
 	public enum FillType {
-		WINDING,
-		EVEN_ODD,
-		INVERSE_WINDING,
-		INVERSE_EVEN_ODD,
+		WINDING(0, false),         // GSK_FILL_RULE_WINDING
+		EVEN_ODD(1, false),        // GSK_FILL_RULE_EVEN_ODD
+		INVERSE_WINDING(0, true),  // GSK_FILL_RULE_WINDING
+		INVERSE_EVEN_ODD(1, true); // GSK_FILL_RULE_EVEN_ODD
+
+		int fill_rule;
+		boolean inverse;
+
+		private FillType(int fill_rule, boolean inverse) {
+			this.fill_rule = fill_rule;
+			this.inverse = inverse;
+		}
 	}
 
 	public enum Direction {
