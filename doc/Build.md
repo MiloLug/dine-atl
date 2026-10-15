@@ -94,11 +94,14 @@ meson compile
 sudo meson install
 ```
 
+## More Additional Dependencies
+We use some custom tools for header generation (see Upcalls.md).
+
 ## Build
 ```sh
 git clone https://gitlab.com/android_translation_layer/android_translation_layer.git
 cd android_translation_layer
-meson setup builddir
+meson setup builddir [-Ddownload_tool_deps=true]
 cd builddir
 meson compile
 ```

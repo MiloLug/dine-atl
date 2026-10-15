@@ -1,6 +1,7 @@
 package android.graphics;
 
 import android.os.Parcelable;
+import android.atl.annotation.Export;
 import android.util.DisplayMetrics;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -117,6 +118,7 @@ public final class Bitmap implements Parcelable {
 		return config;
 	}
 
+	@Export
 	public synchronized long getTexture() {
 		if (texture == 0) {
 			texture = native_create_texture(snapshot, width, height, stride, config.gdk_memory_format);
@@ -145,6 +147,7 @@ public final class Bitmap implements Parcelable {
 		}
 	}
 
+	@Export
 	public void recycle() {
 		native_recycle(texture, snapshot);
 		texture = 0;
