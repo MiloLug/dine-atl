@@ -51,7 +51,7 @@ JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1drawRect(JNIEnv *env, 
 		gtk_snapshot_pop(snapshot);
 }
 
-JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1drawPath(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong path_ptr, jlong paint_ptr)
+JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1drawPath(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong path_ptr, jint fill_rule, jlong paint_ptr)
 {
 	GtkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
 	GskPath *path = _PTR(path_ptr);
@@ -62,7 +62,7 @@ JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1drawPath(JNIEnv *env, 
 		gtk_snapshot_append_stroke(snapshot, path, paint->gsk_stroke, &paint->color);
 	}
 	if (paint->is_fill) {
-		gtk_snapshot_append_fill(snapshot, path, GSK_FILL_RULE_WINDING, &paint->color);
+		gtk_snapshot_append_fill(snapshot, path, fill_rule, &paint->color);
 	}
 	if (paint->use_color_filter)
 		gtk_snapshot_pop(snapshot);
@@ -213,11 +213,11 @@ JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1drawRenderNode(JNIEnv 
 	gtk_snapshot_append_node(snapshot, node);
 }
 
-JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1clipPath(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong path_ptr)
+JNIEXPORT void JNICALL Java_android_atl_GskCanvas_native_1clipPath(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong path_ptr, jint fill_rule)
 {
 	GdkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
 	GskPath *path = _PTR(path_ptr);
 	gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
-	gtk_snapshot_append_fill(snapshot, path, GSK_FILL_RULE_WINDING, &(GdkRGBA){1, 1, 1, 1});
+	gtk_snapshot_append_fill(snapshot, path, fill_rule, &(GdkRGBA){1, 1, 1, 1});
 	gtk_snapshot_pop(snapshot);
 }

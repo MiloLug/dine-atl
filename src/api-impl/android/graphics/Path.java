@@ -15,7 +15,7 @@ public class Path {
 		INVERSE_WINDING(0, true),  // GSK_FILL_RULE_WINDING
 		INVERSE_EVEN_ODD(1, true); // GSK_FILL_RULE_EVEN_ODD
 
-		int fill_rule;
+		public int fill_rule;
 		boolean inverse;
 
 		private FillType(int fill_rule, boolean inverse) {
