@@ -167,6 +167,14 @@ JNIEXPORT void JNICALL Java_android_graphics_Path_native_1get_1bounds
 JNIEXPORT jlong JNICALL Java_android_graphics_Path_native_1transform
   (JNIEnv *, jclass, jlong, jlong);
 
+/*
+ * Class:     android_graphics_Path
+ * Method:    native_contains
+ * Signature: (JIZFF)Z
+ */
+JNIEXPORT jboolean JNICALL Java_android_graphics_Path_native_1contains
+  (JNIEnv *, jclass, jlong, jint, jboolean, jfloat, jfloat);
+
 #ifdef __cplusplus
 }
 #endif

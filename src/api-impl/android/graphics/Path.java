@@ -30,11 +30,17 @@ public class Path {
 	}
 
 	public enum Op {
-		DIFFERENCE,
-		INTERSECT,
-		UNION,
-		XOR,
-		REVERSE_DIFFERENCE,
+		DIFFERENCE(Region.Op.DIFFERENCE),
+		INTERSECT(Region.Op.INTERSECT),
+		UNION(Region.Op.UNION),
+		XOR(Region.Op.XOR),
+		REVERSE_DIFFERENCE(Region.Op.REVERSE_DIFFERENCE);
+
+		private Region.Op region_op;
+
+		private Op(Region.Op region_op) {
+			this.region_op = region_op;
+		}
 	}
 
 	private long builder;
@@ -208,13 +214,35 @@ public class Path {
 	}
 
 	public boolean op(Path path, Op op) {
-		Log.w("Path", "STUB: op");
-		return false;
+		return op(this, path, op);
 	}
 
-	public boolean op(Path path, Path dst, Op op) {
-		Log.w("Path", "STUB: op");
-		return false;
+	public boolean op(Path path1, Path path2, Op op) {
+		RectF bounds1 = new RectF();
+		RectF bounds2 = new RectF();
+		path1.computeBounds(bounds1, false);
+		path2.computeBounds(bounds2, false);
+		// special case for composeUI ShapeContainingUtil.isInPath which puts a tiny rectangle in path2 to represent a point
+		if (op == Op.INTERSECT && bounds2.width() < 1 && bounds2.height() < 1) {
+			if (native_contains(path1.path, path1.fillType.fill_rule, path1.fillType.inverse, bounds2.centerX(), bounds2.centerY()))
+				set(path2);
+			else
+				reset();
+			return true;
+		} else if (op == Op.INTERSECT && bounds1.width() < 1 && bounds1.height() < 1) {
+			if (native_contains(path2.path, path2.fillType.fill_rule, path2.fillType.inverse, bounds1.centerX(), bounds1.centerY()))
+				set(path1);
+			else
+				reset();
+			return true;
+		}
+		Region region1 = new Region();
+		Region region2 = new Region();
+		region1.setPath(path1, null);
+		region2.setPath(path2, null);
+		region1.op(region2, op.region_op);
+		region1.getBoundaryPath(this);
+		return true;
 	}
 
 	public boolean isEmpty() {
@@ -275,4 +303,5 @@ public class Path {
 	private static native void native_add_round_rect(long builder, float left, float top, float right, float bottom, float[] radii);
 	private static native void native_get_bounds(long path, RectF rect);
 	private static native long native_transform(long path, long matrix);
+	private static native boolean native_contains(long path, int fill_rule, boolean inverse, float x, float y);
 }
