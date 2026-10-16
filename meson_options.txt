@@ -1,0 +1,2 @@
+option('regenerate_framework_res', type: 'boolean', value: false,
+       description: 'Rebuild framework-res.apk with aapt. Rewrites src/api-impl/com/android/internal/{R,Manifest}.java')
