@@ -47,7 +47,6 @@ static void remove_touch_outside(GtkWindow *dialog)
 
 	JNIEnv *env = get_jni_env();
 	gtk_widget_remove_controller(GTK_WIDGET(window), outside->controller);
-	g_object_unref(outside->controller);
 	_UNREF(outside->jobj);
 	g_free(outside);
 	g_object_set_data(G_OBJECT(dialog), "touch-outside", NULL);
