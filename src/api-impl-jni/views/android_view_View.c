@@ -614,11 +614,13 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setPadding(JNIEnv *env, jo
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1setVisibility(JNIEnv *env, jobject this, jlong widget_ptr, jint visibility, jfloat alpha, jboolean sensitive)
 {
-	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr)));
+	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
+	GtkWidget *wrapper = gtk_widget_get_parent(widget);
 
-	atl_safe_gtk_widget_set_visible(widget, visibility != android_view_View_GONE);
-	gtk_widget_set_opacity(widget, (visibility != android_view_View_INVISIBLE) * alpha);
-	gtk_widget_set_sensitive(widget, sensitive && visibility != android_view_View_INVISIBLE && alpha != 0.0f);
+	atl_safe_gtk_widget_set_visible(wrapper, visibility != android_view_View_GONE);
+	gtk_widget_set_opacity(wrapper, (visibility != android_view_View_INVISIBLE) * alpha);
+	if (!JAVA_IS_WIDGET(widget))
+		gtk_widget_set_sensitive(wrapper, sensitive && visibility != android_view_View_INVISIBLE && alpha != 0.0f);
 }
 
 JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
