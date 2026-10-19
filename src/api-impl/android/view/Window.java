@@ -103,7 +103,7 @@ public class Window {
 		// HACK: disable transparent background for WhatsApp dialogs
 		// For some unknown reason, the language picker in WhatsApp doesn't render the BottomSheet background currently.
 		if (!"com.whatsapp".equals(context.getPackageName()))
-			remove_gtk_background(native_window);
+			clear_background(native_window);
 		decorView.setBackgroundDrawable(drawable);
 	}
 
@@ -204,6 +204,6 @@ public class Window {
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
 	public native void set_layout(long native_window, int width, int height);
 	private static native void set_jobject(long ptr, Window obj);
-	private native void remove_gtk_background(long native_window);
+	private native void clear_background(long native_window);
 	private native void set_screen_brightness(float brightness);
 }

@@ -45,10 +45,10 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1jobject
 
 /*
  * Class:     android_view_Window
- * Method:    remove_gtk_background
+ * Method:    clear_background
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_android_view_Window_remove_1gtk_1background
+JNIEXPORT void JNICALL Java_android_view_Window_clear_1background
   (JNIEnv *, jobject, jlong);
 
 /*

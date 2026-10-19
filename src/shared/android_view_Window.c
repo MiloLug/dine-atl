@@ -14,7 +14,7 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1jobject(JNIEnv *env, jclass
 	ui_window_set_java(_PTR(window), (struct atl_ref *)_WEAK_REF(window_jobj));
 }
 
-JNIEXPORT void JNICALL Java_android_view_Window_remove_1gtk_1background(JNIEnv *env, jobject this, jlong window)
+JNIEXPORT void JNICALL Java_android_view_Window_clear_1background(JNIEnv *env, jobject this, jlong window)
 {
 	ui_window_clear_background(_PTR(window));
 }
