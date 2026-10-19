@@ -1,7 +1,8 @@
 #include <gtk/gtk.h>
 
 #include "../defines.h"
-#include "../util.h"
+#include "../gtk_util.h"
+#include "src/shared/view.h"
 
 #include "../generated_headers/android_view_View.h"
 
@@ -449,25 +450,23 @@ static void root_changed_cb(WrapperWidget *wrapper, GParamSpec *pspec, gpointer 
 		currently_unmapping = NULL;
 }
 
-void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject jobj)
+void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, const struct ui_view_traits *traits)
 {
+	JNIEnv *env = get_jni_env();
+	jobject jobj = (jobject)view_ref;
 	JavaVM *jvm;
 	(*env)->GetJavaVM(env, &jvm);
 	wrapper->jvm = jvm;
-	wrapper->jobj = _WEAK_REF(jobj);
-	jmethodID on_draw_method = _METHOD(_CLASS(jobj), "onDraw", "(Landroid/graphics/Canvas;)V");
-	jmethodID dispatch_draw_method = _METHOD(_CLASS(jobj), "dispatchDraw", "(Landroid/graphics/Canvas;)V");
-	jmethodID draw_method = _METHOD(_CLASS(jobj), "draw", "(Landroid/graphics/Canvas;)V");
-	if (on_draw_method != handle_cache.view.onDraw || draw_method != handle_cache.view.draw || dispatch_draw_method != handle_cache.view.dispatchDraw) {
-		wrapper->draw_method = draw_method;
+	wrapper->jobj = jobj;
+	if (traits->draws) {
+		wrapper->draw_method = _METHOD(_CLASS(jobj), "draw", "(Landroid/graphics/Canvas;)V");
 		jclass canvas_class = (*env)->FindClass(env, "android/atl/GskCanvas");
 		jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(J)V");
 		wrapper->canvas = _REF((*env)->NewObject(env, canvas_class, canvas_constructor, 0));
 		(*env)->DeleteLocalRef(env, canvas_class);
 	}
 
-	jmethodID performClick_method = _METHOD(_CLASS(jobj), "performClick", "()Z");
-	if (performClick_method != handle_cache.view.performClick) {
+	if (traits->clicks) {
 		GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_gesture_click_new());
 
 		g_signal_connect(controller, "released", G_CALLBACK(on_click), wrapper->jobj);
@@ -475,21 +474,16 @@ void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject job
 		widget_set_needs_allocation(wrapper->child);
 	}
 
-	jmethodID ontouchevent_method = _METHOD(_CLASS(jobj), "onTouchEvent", "(Landroid/view/MotionEvent;)Z");
-	jmethodID dispatchtouchevent_method = _METHOD(_CLASS(jobj), "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z");
-	wrapper->custom_dispatch_touch = (dispatchtouchevent_method != handle_cache.view.dispatchTouchEvent && dispatchtouchevent_method != handle_cache.view_group.dispatchTouchEvent);
-	if (ontouchevent_method != handle_cache.view.onTouchEvent || wrapper->custom_dispatch_touch) {
+	wrapper->custom_dispatch_touch = traits->dispatches_touch;
+	if (traits->touches) {
 		_setOnTouchListener(env, jobj, GTK_WIDGET(wrapper));
 	}
 
-	jmethodID computeScroll_method = _METHOD(_CLASS(jobj), "computeScroll", "()V");
-	if (computeScroll_method != handle_cache.view.computeScroll) {
-		wrapper->computeScroll_method = computeScroll_method;
+	if (traits->scrolls) {
+		wrapper->computeScroll_method = _METHOD(_CLASS(jobj), "computeScroll", "()V");
 	}
 
-	jmethodID dispatch_key_event_method = _METHOD(_CLASS(jobj), "dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z");
-	jmethodID on_key_down_method = _METHOD(_CLASS(jobj), "onKeyDown", "(ILandroid/view/KeyEvent;)Z");
-	if (dispatch_key_event_method != handle_cache.view.dispatchKeyEvent || on_key_down_method != handle_cache.view.onKeyDown) {
+	if (traits->keys) {
 		GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_event_controller_key_new());
 		g_signal_connect(controller, "key-pressed", G_CALLBACK(on_key_pressed), wrapper);
 		g_signal_connect(controller, "key-released", G_CALLBACK(on_key_released), wrapper);
@@ -497,6 +491,13 @@ void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject job
 		gtk_widget_set_focusable(GTK_WIDGET(wrapper), TRUE);
 	}
 	g_signal_connect(wrapper, "notify::root", G_CALLBACK(root_changed_cb), NULL);
+}
+
+void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject jobj)
+{
+	struct ui_view_traits traits;
+	atl_view_traits_get(env, jobj, &traits);
+	wrapper_widget_setup(wrapper, (struct atl_ref *)_WEAK_REF(jobj), &traits);
 }
 
 void wrapper_widget_set_layout_params(WrapperWidget *wrapper, int width, int height)

@@ -2,7 +2,7 @@
 #include <gtk/gtk.h>
 
 #include "../defines.h"
-#include "../util.h"
+#include "../gtk_util.h"
 
 #include "mpris-dbus.h"
 

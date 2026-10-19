@@ -2,7 +2,6 @@
 #define ANDROID_LAYOUT_H
 
 #include <gtk/gtk.h>
-#include <jni.h>
 
 #define MEASURE_SPEC_UNSPECIFIED (0 << 30)
 #define MEASURE_SPEC_EXACTLY     (1 << 30)
@@ -14,9 +13,11 @@
 
 G_DECLARE_FINAL_TYPE(AndroidLayout, android_layout, ATL, ANDROID_LAYOUT, GtkLayoutManager);
 
+struct atl_ref;
+
 struct _AndroidLayout {
 	GtkLayoutManager parent_instance;
-	jobject view;
+	struct atl_ref *view;
 	int width;
 	int height;
 	int real_width;
@@ -24,7 +25,7 @@ struct _AndroidLayout {
 	gboolean needs_allocation;
 };
 
-GtkLayoutManager *android_layout_new(jobject view);
+GtkLayoutManager *android_layout_new(struct atl_ref *view_ref);
 void android_layout_set_params(AndroidLayout *layout, int width, int height);
 
 void widget_set_needs_allocation(GtkWidget *widget);

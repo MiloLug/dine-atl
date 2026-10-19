@@ -2,7 +2,7 @@
 #include <jni.h>
 
 #include "../api-impl-jni/defines.h"
-#include "../api-impl-jni/util.h"
+#include "../api-impl-jni/gtk_util.h"
 
 static void action_start_activity(GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {

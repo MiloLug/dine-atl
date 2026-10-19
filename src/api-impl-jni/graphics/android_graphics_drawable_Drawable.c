@@ -3,6 +3,7 @@
 #include "../defines.h"
 #include "../util.h"
 #include "../generated_headers/android_graphics_drawable_Drawable.h"
+#include "java_paintable.h"
 
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1paintable_1from_1path(JNIEnv *env, jclass class, jstring pathStr)
 {
@@ -77,14 +78,11 @@ static void java_paintable_class_init(JavaPaintableClass *class)
 G_DEFINE_TYPE_WITH_CODE(JavaPaintable, java_paintable, G_TYPE_OBJECT,
                         G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, java_paintable_paintable_init))
 
-JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1constructor(JNIEnv *env, jobject this)
+GdkPaintable *java_paintable_new(jweak drawable)
 {
-	JavaPaintable *paintable = NULL;
-	if (handle_cache.drawable.draw != _METHOD(_CLASS(this), "draw", "(Landroid/graphics/Canvas;)V")) {
-		paintable = g_object_new(java_paintable_get_type(), NULL);
-		paintable->drawable = _WEAK_REF(this);
-	}
-	return _INTPTR(paintable);
+	JavaPaintable *paintable = g_object_new(java_paintable_get_type(), NULL);
+	paintable->drawable = drawable;
+	return GDK_PAINTABLE(paintable);
 }
 
 static guint queue_invalidate_contents(GdkPaintable *paintable)

@@ -1,0 +1,81 @@
+#include "src/api-impl-jni/defines.h"
+#include "src/api-impl-jni/generated_headers/android_view_View.h"
+#include "src/api-impl-jni/util.h"
+#include "src/slots/ui.h"
+
+#include "view.h"
+
+void atl_view_traits_get(JNIEnv *env, jobject view, struct ui_view_traits *traits)
+{
+	jclass class = _CLASS(view);
+	jmethodID dispatch_touch_event = _METHOD(class, "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z");
+
+	traits->draws = _METHOD(class, "onDraw", "(Landroid/graphics/Canvas;)V") != handle_cache.view.onDraw
+	             || _METHOD(class, "draw", "(Landroid/graphics/Canvas;)V") != handle_cache.view.draw
+	             || _METHOD(class, "dispatchDraw", "(Landroid/graphics/Canvas;)V") != handle_cache.view.dispatchDraw;
+	traits->clicks = _METHOD(class, "performClick", "()Z") != handle_cache.view.performClick;
+	traits->dispatches_touch = dispatch_touch_event != handle_cache.view.dispatchTouchEvent && dispatch_touch_event != handle_cache.view_group.dispatchTouchEvent;
+	traits->touches = _METHOD(class, "onTouchEvent", "(Landroid/view/MotionEvent;)Z") != handle_cache.view.onTouchEvent || traits->dispatches_touch;
+	traits->scrolls = _METHOD(class, "computeScroll", "()V") != handle_cache.view.computeScroll;
+	traits->keys = _METHOD(class, "dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z") != handle_cache.view.dispatchKeyEvent
+	            || _METHOD(class, "onKeyDown", "(ILandroid/view/KeyEvent;)Z") != handle_cache.view.onKeyDown;
+	traits->generic_motion = _METHOD(class, "onGenericMotionEvent", "(Landroid/view/MotionEvent;)Z") != handle_cache.view.onGenericMotionEvent
+	                      || _METHOD(class, "dispatchGenericMotionEvent", "(Landroid/view/MotionEvent;)Z") != handle_cache.view.dispatchGenericMotionEvent;
+	traits->hovers = _METHOD(class, "dispatchHoverEvent", "(Landroid/view/MotionEvent;)Z") != handle_cache.view.dispatchHoverEvent;
+}
+
+JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
+{
+	struct ui_view_traits traits;
+	atl_view_traits_get(env, this, &traits);
+
+	jclass class = _CLASS(this);
+	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD(_CLASS(class), "getName", "()Ljava/lang/String;"));
+	const char *name = (*env)->GetStringUTFChars(env, name_jstr, NULL);
+	struct ui_view *view = ui_view_new((struct atl_ref *)_WEAK_REF(this), name, &traits);
+	(*env)->ReleaseStringUTFChars(env, name_jstr, name);
+
+	return _INTPTR(view);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1setLayoutParams(JNIEnv *env, jobject this, jlong widget_ptr, jint width, jint height, jint gravity, jfloat weight,
+                                                                      jint leftMargin, jint topMargin, jint rightMargin, jint bottomMargin)
+{
+	ui_view_set_layout_params(_PTR(widget_ptr), &(struct ui_layout_params){
+		.width = width,
+		.height = height,
+		.gravity = gravity,
+		.weight = weight,
+		.margin_left = leftMargin,
+		.margin_top = topMargin,
+		.margin_right = rightMargin,
+		.margin_bottom = bottomMargin,
+	});
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1setPadding(JNIEnv *env, jobject this, jlong widget_ptr, jint left, jint top, jint right, jint bottom)
+{
+	ui_view_set_padding(_PTR(widget_ptr), left, top, right, bottom);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1requestLayout(JNIEnv *env, jobject this, jlong widget_ptr)
+{
+	ui_view_request_layout(_PTR(widget_ptr));
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundColor(JNIEnv *env, jobject this, jlong widget_ptr, jint color)
+{
+	ui_view_set_background_color(_PTR(widget_ptr), color);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1measure(JNIEnv *env, jobject this, jlong widget_ptr, jint width_spec, jint height_spec)
+{
+	int width, height;
+	ui_view_measure(_PTR(widget_ptr), width_spec, height_spec, &width, &height);
+	(*env)->CallVoidMethod(env, this, handle_cache.view.setMeasuredDimension, width, height);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobject this, jlong widget_ptr, jint l, jint t, jint r, jint b)
+{
+	ui_view_layout(_PTR(widget_ptr), l, t, r, b, _GET_FLOAT_FIELD(this, "translationX"), _GET_FLOAT_FIELD(this, "translationY"));
+}

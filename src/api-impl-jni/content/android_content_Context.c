@@ -3,9 +3,6 @@
 #include <gtk/gtk.h>
 #include <libportal/portal.h>
 #include <string.h>
-#ifdef XDP_TYPE_INPUT_CAPTURE_SESSION // libportal >= 0.8
-	#include <libportal/settings.h>
-#endif
 
 #include "portal-email.h"
 #include "portal-openuri.h"
@@ -13,84 +10,11 @@
 #include "unifiedpush-distributor.h"
 
 #include "../defines.h"
-#include "../util.h"
+#include "../gtk_util.h"
 
 #include "../generated_headers/android_content_Context.h"
 
 #include "android_content_Context.h"
-
-static void monitor_changed_cb(GdkSurface *surface, GdkMonitor *monitor, jobject configuration)
-{
-	JNIEnv *env = get_jni_env();
-	GdkRectangle geometry;
-	gdk_monitor_get_geometry(monitor, &geometry);
-	if (!configuration)
-		configuration = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "sys_config", "Landroid/content/res/Configuration;");
-
-	_SET_INT_FIELD(configuration, "screenWidthDp", geometry.width);
-	_SET_INT_FIELD(configuration, "screenHeightDp", geometry.height);
-	if (geometry.width >= 800 && geometry.height >= 800)
-		_SET_INT_FIELD(configuration, "screenLayout", /*SCREENLAYOUT_SIZE_LARGE*/ 0x03);
-	else
-		_SET_INT_FIELD(configuration, "screenLayout", /*SCREENLAYOUT_SIZE_NORMAL*/ 0x02);
-}
-
-#ifdef XDP_TYPE_INPUT_CAPTURE_SESSION // libportal >= 0.8
-static void settings_changed_cb(XdpSettings *xdp_settings, gchar *namestpace, gchar *key, GVariant *value, jobject configuration)
-{
-	JNIEnv *env;
-	if (!strcmp(namestpace, "org.freedesktop.appearance") && !strcmp(key, "color-scheme")) {
-		int color_sheme = g_variant_get_uint32(value);
-		g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", color_sheme == 1, NULL);
-		env = get_jni_env();
-		if (!configuration) {
-			configuration = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "sys_config", "Landroid/content/res/Configuration;");
-		}
-		if (color_sheme == 1) // Prefer dark appearance
-			_SET_INT_FIELD(configuration, "uiMode", /*UI_MODE_NIGHT_YES*/ 0x20);
-		else if (color_sheme == 2) // Prefer light appearance
-			_SET_INT_FIELD(configuration, "uiMode", /*UI_MODE_NIGHT_NO*/ 0x10);
-		else // No preference
-			_SET_INT_FIELD(configuration, "uiMode", /*UI_MODE_NIGHT_UNDEFINED*/ 0x00);
-	}
-}
-
-static XdpSettings *xdp_settings = NULL;
-#endif
-
-JNIEXPORT void JNICALL Java_android_content_Context_native_1updateConfig(JNIEnv *env, jclass this, jobject config)
-{
-	GdkDisplay *display = gdk_display_get_default();
-	GdkMonitor *monitor = g_list_model_get_item(gdk_display_get_monitors(display), 0);
-	monitor_changed_cb(NULL, monitor, config);
-
-#ifdef XDP_TYPE_INPUT_CAPTURE_SESSION // libportal >= 0.8
-	if (!xdp_settings) {
-		GError *error = NULL;
-		XdpPortal *portal = xdp_portal_initable_new(&error);
-		if (!portal) {
-			printf("xdp_portal_initable_new failed: %s\n", error->message);
-			g_error_free(error);
-			return;
-		}
-		xdp_settings = xdp_portal_get_settings(portal);
-		g_object_unref(portal);
-		g_signal_connect(xdp_settings, "changed", G_CALLBACK(settings_changed_cb), NULL);
-	}
-	GVariant *color_sheme = xdp_settings_read_value(xdp_settings, "org.freedesktop.appearance", "color-scheme", NULL, NULL);
-	if (color_sheme) {
-		settings_changed_cb(xdp_settings, "org.freedesktop.appearance", "color-scheme", color_sheme, config);
-		g_variant_unref(color_sheme);
-	}
-#endif
-}
-
-void update_config_for_window(GtkWindow *window)
-{
-	GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
-	monitor_changed_cb(surface, gdk_display_get_monitor_at_surface(gdk_display_get_default(), surface), NULL);
-	g_signal_connect(surface, "enter-monitor", G_CALLBACK(monitor_changed_cb), NULL);
-}
 
 JNIEXPORT void JNICALL Java_android_content_Context_nativeOpenFile(JNIEnv *env, jclass class, jint fd)
 {

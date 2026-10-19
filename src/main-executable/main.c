@@ -10,6 +10,8 @@
 #include "../api-impl-jni/util.h"
 #include "../api-impl-jni/app/android_app_Activity.h"
 #include "../api-impl-jni/content/android_content_Context.h"
+#include "../shared/host_linux.h"
+#include "../shared/startup.h"
 
 #include "actions.h"
 #include "back_button.h"
@@ -40,7 +42,6 @@
 #endif
 
 GtkWidget *window;
-char *apk_path;
 
 // standard Gtk Application stuff, more or less
 
@@ -48,103 +49,6 @@ gboolean app_exit(GtkWindow *self, JNIEnv *env) // TODO: do more cleanup?
 {
 	activity_close_all();
 	return false;
-}
-
-// this is the equivalent of /data/data/com.example.app/
-char *app_data_dir = NULL;
-char *get_app_data_dir()
-{
-	return app_data_dir;
-}
-
-char *construct_classpath(char *prefix, char **cp_array, size_t len)
-{
-	size_t result_len = strlen(prefix);
-	for (int i = 0; i < len; i++) {
-		if (cp_array[i])
-			result_len += strlen(cp_array[i]) + 1; // the 1 is for either : or the final \0
-	}
-
-	char *result = malloc(result_len);
-	strcpy(result, prefix);
-	for (int i = 0; i < len; i++) {
-		if (cp_array[i]) {
-			if (i > 0)
-				strcat(result, ":");
-			strcat(result, cp_array[i]);
-		}
-	}
-
-	return result;
-}
-
-#define JDWP_ARG    "-XjdwpOptions:transport=dt_socket,server=y,suspend=y,address="
-#define SDK_INT_ARG "-DBuild.VERSION.SDK_INT="
-
-JNIEnv *create_vm(char *api_impl_jar, char *apk_classpath, char *framework_res_apk, char *test_runner_jar, char *api_impl_natives_dir, char *app_lib_dir, char *sdk_int, char **extra_jvm_options)
-{
-	JavaVM *jvm;
-	JNIEnv *env;
-	JavaVMInitArgs args = {
-		.version = JNI_VERSION_1_6,
-		.nOptions = 5,
-	};
-	JavaVMOption *options;
-
-	int option_counter = args.nOptions;
-
-	char jdwp_option_string[sizeof(JDWP_ARG) + 5] = JDWP_ARG;          // 5 chars for port number, NULL byte is counted by sizeof
-	char sdk_int_option_string[sizeof(SDK_INT_ARG) + 2] = SDK_INT_ARG; // 2 chars for SDK_INT, NULL byte is counted by sizeof
-
-	const char *jdwp_port = getenv("JDWP_LISTEN");
-
-	if (jdwp_port)
-		args.nOptions += 2;
-	if (sdk_int)
-		args.nOptions += 1;
-	if (extra_jvm_options)
-		args.nOptions += g_strv_length(extra_jvm_options);
-	options = malloc(sizeof(JavaVMOption) * args.nOptions);
-
-	if (getenv("RUN_FROM_BUILDDIR")) {
-		options[0].optionString = construct_classpath("-Djava.library.path=", (char *[]){"./", app_lib_dir}, 2);
-	} else {
-		options[0].optionString = construct_classpath("-Djava.library.path=", (char *[]){api_impl_natives_dir, app_lib_dir}, 2);
-	}
-
-	// ATLPaths relies on the first element in java.class.path being api-impl.jar
-	options[1].optionString = construct_classpath("-Djava.class.path=", (char *[]){api_impl_jar, framework_res_apk, test_runner_jar}, 3);
-	// ATLLoadedApp relies on the first element in atl.app.class.path being the main apk
-	options[2].optionString = construct_classpath("-Datl.app.class.path=", (char *[]){apk_classpath}, 1);
-	options[3].optionString = construct_classpath("-Datl.app.library.path=", (char *[]){api_impl_natives_dir, app_lib_dir}, 2);
-	options[4].optionString = "-Xcheck:jni";
-	if (jdwp_port) {
-		strncat(jdwp_option_string, jdwp_port, 5); // 5 chars is enough for a port number, and won't overflow our array
-		options[option_counter++].optionString = "-XjdwpProvider:internal";
-		options[option_counter++].optionString = jdwp_option_string;
-	}
-
-	if (sdk_int) {
-		strncat(sdk_int_option_string, sdk_int, 2); // 2 chars should be enough for the foreseeable future, and won't overflow our array
-		options[option_counter++].optionString = sdk_int_option_string;
-	}
-
-	while (extra_jvm_options && *extra_jvm_options) {
-		options[option_counter++].optionString = *(extra_jvm_options++);
-	}
-
-	args.options = options;
-	args.ignoreUnrecognized = JNI_FALSE;
-
-	int ret = JNI_CreateJavaVM(&jvm, (void **)&env, &args);
-	if (ret < 0) {
-		fprintf(stderr, "Unable to Launch JVM\n");
-	} else {
-		fprintf(stderr, "JVM launched successfully\n");
-	}
-
-	free(options);
-	return env;
 }
 
 void icon_override(GtkWidget *window, GList *icon_list)
@@ -210,17 +114,6 @@ static cairo_status_t cairo_write_func_gstring(void *closure, const unsigned cha
 // this is exported by the shim bionic linker
 void dl_parse_library_path(const char *path, char *delim);
 
-#define REL_DEX_INSTALL_PATH              "../java/dex"
-
-#define REL_API_IMPL_JAR_INSTALL_PATH     "android_translation_layer/api-impl.jar"
-#define REL_API_IMPL_NATIVES_INSTALL_PATH "android_translation_layer/natives"
-#define REL_FRAMEWORK_RES_INSTALL_PATH    "android_translation_layer/framework-res.apk"
-#define REL_TEST_RUNNER_JAR_INSTALL_PATH  "android_translation_layer/test_runner.jar"
-
-#define API_IMPL_JAR_PATH_LOCAL           "./api-impl.jar"
-#define FRAMEWORK_RES_PATH_LOCAL          "./res/framework-res/framework-res.apk"
-#define TEST_RUNNER_JAR_PATH_LOCAL        "./test_runner.jar"
-
 struct jni_callback_data {
 	char *apk_main_activity_class;
 	char *apk_instrumentation_class;
@@ -282,25 +175,6 @@ static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, do
 	return TRUE;
 }
 
-char *find_jar_or_die(char *builddir_path, char *installed_path, char *install_prefix)
-{
-	char *path;
-
-	if (getenv("RUN_FROM_BUILDDIR")) {
-		path = strdup(builddir_path); // for running out of builddir; using strdup so we can always safely call free on this
-	} else {
-		path = g_strdup_printf("%s/%s", install_prefix, installed_path);
-	}
-
-	if (access(path, F_OK) < 0) {
-		fprintf(stderr, "error: can't stat %s (%s)\n",
-		        path, strerror(errno));
-		exit(1);
-	}
-
-	return path;
-}
-
 static gboolean install_dbus_service_file(const char *package_name, const char *exec_cmd)
 {
 	if (g_getenv("FLATPAK_ID"))
@@ -342,137 +216,37 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		char *uri = g_file_get_uri(files[0]);
 		JNIEnv *env = get_jni_env();
 		fprintf(stderr, "opening uri over DBus: %s\n", uri);
-		jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.activity.class,
-		                                                  _STATIC_METHOD(handle_cache.activity.class, "createMainActivity", "(Ljava/lang/String;JLjava/lang/String;)Landroid/app/Activity;"),
-		                                                  _JSTRING(d->apk_main_activity_class), _INTPTR(window), _JSTRING(uri));
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
-		activity_start(env, activity);
+		activity_start(env, atl_activity_create_main(env, d->apk_main_activity_class, uri));
 		return;
 	}
-	char *dex_install_dir;
-	char *api_impl_jar;
-	char *test_runner_jar = NULL;
-	char *framework_res_apk = NULL;
 	const char *package_name;
-	int ret;
 	jobject activity_object;
 	jobject application_object;
+	struct atl_paths paths;
 
-	char **apk_classpaths = g_new0(gchar *, nfiles + 1); // +1 for NULL terminator for g_strjoinv
 	char *apk_name = g_file_get_basename(files[0]);
+	char **apks = g_new0(char *, nfiles);
 	for (int i = 0; i < nfiles; i++) {
-		apk_classpaths[i] = g_file_get_path(files[i]);
-		if (apk_classpaths[i] == NULL) {
+		apks[i] = g_file_get_path(files[i]);
+		if (apks[i] == NULL) {
 			fprintf(stderr, "error: the specified file path (%s) doesn't seem to be valid\n", g_file_get_uri(files[i]));
 			exit(1);
 		}
-		if (access(apk_classpaths[i], F_OK) < 0) {
-			fprintf(stderr, "error: the specified file path (%s) doesn't seem to exist (%m)\n", apk_classpaths[i]);
-			exit(1);
-		}
 	}
-	char *apk_classpath = g_strjoinv(":", apk_classpaths);
-	g_free(apk_classpaths);
-
-	Dl_info libart_so_dl_info;
-	// JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-	// TODO: we shouldn't necessarily count on art being installed in the same prefix as we are
-	void *_JNI_CreateJavaVM = dlsym(RTLD_NEXT, "JNI_CreateJavaVM");
-	dladdr(_JNI_CreateJavaVM, &libart_so_dl_info);
-	// make sure we didn't get NULL
-	if (libart_so_dl_info.dli_fname) {
-		// it's simpler if we can modify the string, so strdup it
-		char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
-		*strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
-		dex_install_dir = g_strdup_printf("%s/%s", libart_so_full_path, REL_DEX_INSTALL_PATH);
-		free(libart_so_full_path);
-	} else {
-		fprintf(stderr, "error: couldn't find art install path\n");
-		exit(1);
-	}
-
-	char *app_data_dir_base = getenv("ANDROID_APP_DATA_DIR");
-	if (!app_data_dir_base) {
-		const char *user_data_dir = g_get_user_data_dir();
-		if (user_data_dir) {
-			app_data_dir_base = g_strdup_printf("%s/android_translation_layer", user_data_dir);
-			ret = mkdir(app_data_dir_base, DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-			if (ret) {
-				if (errno != EEXIST) {
-					fprintf(stderr, "error: ANDROID_APP_DATA_DIR not set, and the default directory (%s) couldn't be created (error: %s)\n", app_data_dir_base, strerror(errno));
-					exit(1);
-				}
-			}
-		} else {
-			fprintf(stderr, "error: ANDROID_APP_DATA_DIR not set, and HOME is not set either so we can't construct the default path\n");
-			exit(1);
-		}
-	}
-
-	// TODO: we should possibly use the app id instead, but we don't currently have a way to get that soon enough
-	// arguably both the app id and the apk name might have an issue with duplicates, but if two apks use the same app id, chances are it's less of an issue than when two apks have the same name
-	// !IMPORTANT! Unity can't comprehend that a directory name could end in .apk, so we have to avoid that here by adding `_`
-	app_data_dir = g_strdup_printf("%s/%s_/", app_data_dir_base, apk_name);
-
-	ret = mkdir(app_data_dir, DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-	if (ret && errno != EEXIST) {
-		fprintf(stderr, "can't create app data dir %s (%s)\n", app_data_dir, strerror(errno));
-		exit(1);
-	}
-
-	// check for jars and apks  in './' (if running from builddir), or in system install path
-	api_impl_jar = find_jar_or_die(API_IMPL_JAR_PATH_LOCAL, REL_API_IMPL_JAR_INSTALL_PATH, dex_install_dir);
-	framework_res_apk = find_jar_or_die(FRAMEWORK_RES_PATH_LOCAL, REL_FRAMEWORK_RES_INSTALL_PATH, dex_install_dir);
-	if (d->apk_instrumentation_class)
-		test_runner_jar = find_jar_or_die(TEST_RUNNER_JAR_PATH_LOCAL, REL_TEST_RUNNER_JAR_INSTALL_PATH, dex_install_dir);
-
-	char *api_impl_natives_dir = g_strdup_printf("%s/%s", dex_install_dir, REL_API_IMPL_NATIVES_INSTALL_PATH);
-
-	char *app_lib_dir = malloc(strlen(app_data_dir) + strlen("/lib") + 1); // +1 for NULL
-	strcpy(app_lib_dir, app_data_dir);
-	strcat(app_lib_dir, "/lib");
-	// create lib dir
-	mkdir(app_lib_dir, DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+	atl_prepare(&paths, apks, nfiles, d->apk_instrumentation_class);
+	g_free(apks);
 
 	// Apps which extract libraries on their own can place them anywhere in app_data_dir. Therefore, we add app_data_dir/** to the
 	// BIONIC_LD_LIBRARY_PATH. While app_data_dir/lib is already matched by the wildcard, it needs to be specified again to allow loading
 	// libraries by libname from app_data_dir/lib
 	char *ld_path = getenv("BIONIC_LD_LIBRARY_PATH");
 	ld_path = (ld_path ? ld_path : "");
-	ld_path = g_strdup_printf("%s:%s**:%s", app_lib_dir, app_data_dir, ld_path);
+	ld_path = g_strdup_printf("%s:%s**:%s", paths.app_lib_dir, app_data_dir, ld_path);
 	// calling directly into the shim bionic linker to whitelist the app's lib dir as containing bionic-linked libraries
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);
 
-	JNIEnv *env = create_vm(api_impl_jar, apk_classpath, framework_res_apk, test_runner_jar, api_impl_natives_dir, app_lib_dir, d->sdk_int, d->extra_jvm_options);
-
-	free(app_lib_dir);
-
-	jclass display_class = (*env)->FindClass(env, "android/view/Display");
-	_SET_STATIC_INT_FIELD(display_class, "window_width", d->window_width);
-	_SET_STATIC_INT_FIELD(display_class, "window_height", d->window_height);
-
-	/* -- register our JNI library under the appropriate classloader -- */
-
-	/* 'android/view/View' is part of the "hax.dex" package, any other function from that package would serve just as well */
-	jmethodID getClassLoader = _METHOD((*env)->FindClass(env, "java/lang/Class"), "getClassLoader", "()Ljava/lang/ClassLoader;");
-	jobject class_loader = (*env)->CallObjectMethod(env, (*env)->FindClass(env, "android/view/View"), getClassLoader);
-
-	jclass java_runtime_class = (*env)->FindClass(env, "java/lang/Runtime");
-
-	jmethodID getRuntime = _STATIC_METHOD(java_runtime_class, "getRuntime", "()Ljava/lang/Runtime;");
-	jobject java_runtime = (*env)->CallStaticObjectMethod(env, java_runtime_class, getRuntime);
-
-	/* this method is private, but it seems we get away with calling it from C */
-	jmethodID loadLibrary_with_classloader = _METHOD(java_runtime_class, "loadLibrary", "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
-	(*env)->CallVoidMethod(env, java_runtime, loadLibrary_with_classloader, _JSTRING("translation_layer_main"), class_loader);
-
-	// some apps need the apk path since they directly read their apk
-	apk_path = strdup(apk_classpath);
-
-	(*env)->GetJavaVM(env, &jvm);
-	set_up_handle_cache(env);
+	JNIEnv *env = atl_vm_start(&paths, d->sdk_int, d->extra_jvm_options, d->window_width, d->window_height);
 
 	/* -- misc -- */
 
@@ -505,29 +279,11 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	gtk_css_provider_load_from_resource(cssProvider, "/com/gitlab/android-translation-layer/android-translation-layer/default-stylesheet.css");
 	gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(cssProvider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
-	prepare_main_looper(env);
-
 	/* extract native libraries from apk*/
 	if (!getenv("ATL_SKIP_NATIVES_EXTRACTION"))
 		extract_from_apk("lib/" NATIVE_ARCH "/", "lib/");
 
-	// construct Application
-	application_object = (*env)->CallStaticObjectMethod(env, handle_cache.context.class,
-	                                                    _STATIC_METHOD(handle_cache.context.class, "createApplication", "(J)Landroid/app/Application;"), window);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-
-	jclass content_provider = (*env)->FindClass(env, "android/content/ContentProvider");
-	(*env)->CallStaticVoidMethod(env, content_provider, _STATIC_METHOD(content_provider, "createContentProviders", "()V"));
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-
-	jmethodID on_create_method = _METHOD(handle_cache.application.class, "onCreate", "()V");
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-	(*env)->CallVoidMethod(env, application_object, on_create_method);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	application_object = atl_app_create(env, (struct ui_window *)window);
 
 	if (d->apk_instrumentation_class) {
 		if (d->apk_main_activity_class) {
@@ -552,11 +308,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 
 	// construct main Activity
 	if (!d->apk_instrumentation_class && !d->install_internal) {
-		activity_object = (*env)->CallStaticObjectMethod(env, handle_cache.activity.class,
-		                                                 _STATIC_METHOD(handle_cache.activity.class, "createMainActivity", "(Ljava/lang/String;JLjava/lang/String;)Landroid/app/Activity;"),
-		                                                 _JSTRING(d->apk_main_activity_class), _INTPTR(window), (uri_option && *uri_option) ? _JSTRING(uri_option) : NULL);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		activity_object = atl_activity_create_main(env, d->apk_main_activity_class, (uri_option && *uri_option) ? uri_option : NULL);
 		if (uri_option)
 			g_free(uri_option);
 
@@ -630,7 +382,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		}
 
 		gchar *dest_name = g_strdup_printf("%s.apk", package_name);
-		GFile *dest = g_file_new_build_filename(app_data_dir_base, "_installed_apks_", d->install_internal ? dest_name : apk_name, NULL);
+		GFile *dest = g_file_new_build_filename(paths.data_dir_base, "_installed_apks_", d->install_internal ? dest_name : apk_name, NULL);
 		free(dest_name);
 		printf("installing %s to %s\n", apk_name, g_file_get_path(dest));
 		g_file_make_directory(g_file_get_parent(dest), NULL, NULL);
@@ -799,60 +551,25 @@ void init_cmd_parameters(GApplication *app, struct jni_callback_data *d)
 	g_application_add_main_option_entries(G_APPLICATION(app), cmd_params);
 }
 
-void init__r_debug();
 void remove_ongoing_notifications();
 
 typedef bool(apply_path_overrides_func_type)(char **);
 void libc_bio_set_apply_path_overrides_func(apply_path_overrides_func_type *func);
-
-/*
- * The main thread's stack is initialized to 128KiB by Linux.
- * When the stack grows below the allocated mapping, the kernel
- * automagically maps in more memory (as long as there is no existing
- * mapping in the way).
- * However, ART puts in a guard page of it's own in order to catch stack
- * overflows (and if they happen in Java code, it handles them gracefully).
- * When ART uses pthread_getattr_np to get the main thread's stack size,
- * glibc reports RLIMIT_STACK (minus TLS and stuff), while musl reports
- * the current stack size. Therefore on musl we have to pre-grow the stack
- * to make the kernel actually grow the mapping before ART puts in it's guard
- * page and makes further growth impossible.
- */
-static void pregrow_stack()
-{
-	/* set RLIMIT_STACK to 8 MiB, which should fit both our 6 MiB stack and whatever
-	 * the libc stores above the top of stack */
-	setrlimit(RLIMIT_STACK, &(struct rlimit){8 * MiB, 8 * MiB});
-	/* accessing the first element of this array will grow the stack down 6MiB */
-	volatile uint8_t dummy[6 * MiB];
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuninitialized"
-	/* noop, but should generate an access because volatile */
-	dummy[0] = dummy[0];
-#pragma GCC diagnostic pop
-}
 
 int main(int argc, char **argv)
 {
 	GtkApplication *app;
 	int status;
 
-	pregrow_stack();
-
-	/* this has to be done in the main executable, so might as well do it here */
-	init__r_debug();
-
-	// locale on android is always either C or C.UTF-8, and some apps might unbeknownst to them depend on that
-	// for correct functionality
-	setenv("LC_ALL", "C.UTF-8", 1);
+	atl_linux_host_init();
 
 	libc_bio_set_apply_path_overrides_func(apply_path_overrides);
 
 	struct jni_callback_data *callback_data = malloc(sizeof(struct jni_callback_data));
 	callback_data->apk_main_activity_class = NULL;
 	callback_data->apk_instrumentation_class = NULL;
-	callback_data->window_width = 960;
-	callback_data->window_height = 540;
+	callback_data->window_width = ATL_WINDOW_WIDTH_DEFAULT;
+	callback_data->window_height = ATL_WINDOW_HEIGHT_DEFAULT;
 	callback_data->install = FALSE;
 	callback_data->install_internal = FALSE;
 	callback_data->prgname = argv[0];
@@ -873,12 +590,8 @@ int main(int argc, char **argv)
 	remove_ongoing_notifications();
 	g_object_unref(app);
 
-	if (jvm) {
-		JNIEnv *env = get_jni_env();
-		jobject system = (*env)->FindClass(env, "java/lang/System");
-		jmethodID exit = (*env)->GetStaticMethodID(env, system, "exit", "(I)V");
-		(*env)->CallStaticVoidMethod(env, system, exit, status);
-	}
+	if (jvm)
+		atl_exit(get_jni_env(), status);
 
 	return status;
 }

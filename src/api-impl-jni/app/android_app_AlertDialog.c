@@ -2,7 +2,7 @@
 #include <jni.h>
 
 #include "../defines.h"
-#include "../util.h"
+#include "../gtk_util.h"
 #include "../generated_headers/android_app_AlertDialog.h"
 
 struct _ListEntry {

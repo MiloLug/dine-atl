@@ -4,14 +4,6 @@
 
 #include "generated_headers/android_view_Window.h"
 
-JNIEXPORT void JNICALL Java_android_view_Window_set_1title(JNIEnv *env, jobject this, jlong window, jstring title_jstr)
-{
-	GtkWindow *gtk_window = GTK_WINDOW(_PTR(window));
-	const char *title = (*env)->GetStringUTFChars(env, title_jstr, NULL);
-	gtk_window_set_title(gtk_window, title);
-	(*env)->ReleaseStringUTFChars(env, title_jstr, title);
-}
-
 // FIXME put this in a header file
 struct input_queue {
 	int fd;
@@ -42,16 +34,6 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1layout(JNIEnv *env, jobject
 	GtkWindow *gtk_window = GTK_WINDOW(_PTR(window));
 	if (width > 0 && height > 0)
 		gtk_window_set_default_size(gtk_window, width, height);
-}
-
-JNIEXPORT void JNICALL Java_android_view_Window_set_1jobject(JNIEnv *env, jclass this, jlong window, jobject window_jobj)
-{
-	g_object_set_data(G_OBJECT(window), "jobject", _WEAK_REF(window_jobj));
-}
-
-JNIEXPORT void JNICALL Java_android_view_Window_remove_1gtk_1background(JNIEnv *env, jobject this, jlong window)
-{
-	gtk_widget_add_css_class(GTK_WIDGET(_PTR(window)), "ATL-no-background");
 }
 
 #define FLOAT_TO_POINTER(f) GINT_TO_POINTER(*(uint32_t *)(&f))

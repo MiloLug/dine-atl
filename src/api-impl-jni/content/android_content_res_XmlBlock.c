@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #include <androidfw/androidfw_c_api.h>
 
 #include "../generated_headers/android_content_res_XmlBlock.h"

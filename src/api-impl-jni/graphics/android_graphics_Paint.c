@@ -8,16 +8,6 @@
 
 #include "../generated_headers/android_graphics_Paint.h"
 
-JNIEXPORT jlong JNICALL Java_android_graphics_Paint_native_1create(JNIEnv *env, jclass clazz)
-{
-	struct AndroidPaint *paint = g_new0(struct AndroidPaint, 1);
-	paint->color.alpha = 1.f;
-	paint->gsk_stroke = gsk_stroke_new(1);
-	paint->font = pango_font_description_new();
-	paint->is_fill = true;
-	return _INTPTR(paint);
-}
-
 JNIEXPORT jlong JNICALL Java_android_graphics_Paint_native_1clone(JNIEnv *env, jclass clazz, jlong paint_ptr)
 {
 	struct AndroidPaint *paint = _PTR(paint_ptr);
@@ -33,15 +23,6 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1recycle(JNIEnv *env, 
 	gsk_stroke_free(paint->gsk_stroke);
 	pango_font_description_free(paint->font);
 	g_free(paint);
-}
-
-JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color(JNIEnv *env, jclass clazz, jlong paint_ptr, jint color)
-{
-	struct AndroidPaint *paint = _PTR(paint_ptr);
-	paint->color.red = ((color >> 16) & 0xFF) / 255.f;
-	paint->color.green = ((color >> 8) & 0xFF) / 255.f;
-	paint->color.blue = ((color >> 0) & 0xFF) / 255.f;
-	paint->color.alpha = ((color >> 24) & 0xFF) / 255.f;
 }
 
 JNIEXPORT jint JNICALL Java_android_graphics_Paint_native_1get_1color(JNIEnv *env, jclass clazz, jlong paint_ptr)

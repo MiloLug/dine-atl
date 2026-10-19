@@ -1,3 +1,5 @@
+#define _GNU_SOURCE // asprintf
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
@@ -13,7 +15,7 @@
 #include "generated_headers/android_content_res_AssetManager.h"
 
 #include <dirent.h>
-#include <glib.h>
+#include <stdio.h>
 
 #define JAVA_ENUM_CLASS android_content_res_AssetManager
 enum {
@@ -466,6 +468,21 @@ JNIEXPORT jint JNICALL Java_android_content_res_AssetManager_retrieveArray(JNIEn
 	return bag->entry_count;
 }
 
+/* names from the UTF-16 string pool go through JNI for the conversion */
+static char *name_part_utf8(JNIEnv *env, const char *utf8, const char16_t *utf16, size_t len)
+{
+	if (utf8)
+		return strndup(utf8, len);
+	if (!utf16)
+		return strdup("");
+	jstring str = (*env)->NewString(env, (const jchar *)utf16, len);
+	const char *chars = (*env)->GetStringUTFChars(env, str, NULL);
+	char *ret = strdup(chars);
+	(*env)->ReleaseStringUTFChars(env, str, chars);
+	(*env)->DeleteLocalRef(env, str);
+	return ret;
+}
+
 JNIEXPORT jstring JNICALL Java_android_content_res_AssetManager_getResourceName(JNIEnv *env, jobject this, jint ident)
 {
 	struct AssetManager *asset_manager = _PTR(_GET_LONG_FIELD(this, "mObject"));
@@ -475,16 +492,13 @@ JNIEXPORT jstring JNICALL Java_android_content_res_AssetManager_getResourceName(
 	if (!ret)
 		return NULL;
 
-	const gchar *type = res_name.type ?: g_utf16_to_utf8(res_name.type16, res_name.type_len, NULL, NULL, NULL);
-	const gchar *entry = res_name.entry ?: g_utf16_to_utf8(res_name.entry16, res_name.entry_len, NULL, NULL, NULL);
-
-	gchar *result = g_strdup_printf("%.*s:%.*s/%.*s",
-	                                res_name.package ? (int)res_name.package_len : 0,
-	                                res_name.package ?: "",
-	                                type ? (int)res_name.type_len : 0,
-	                                type ?: "",
-	                                entry ? (int)res_name.entry_len : 0,
-	                                entry ?: "");
+	char *type = name_part_utf8(env, res_name.type, res_name.type16, res_name.type_len);
+	char *entry = name_part_utf8(env, res_name.entry, res_name.entry16, res_name.entry_len);
+	char *result;
+	if (asprintf(&result, "%.*s:%s/%s", res_name.package ? (int)res_name.package_len : 0, res_name.package ?: "", type, entry) < 0)
+		result = NULL;
+	free(type);
+	free(entry);
 	jstring result_jstr = _JSTRING(result);
 	free(result);
 	return result_jstr;

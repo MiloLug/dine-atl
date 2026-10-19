@@ -4,6 +4,8 @@
 #include <gtk/gtk.h>
 #include <jni.h>
 
+#include "src/slots/ui.h"
+
 G_DECLARE_FINAL_TYPE(WrapperWidget, wrapper_widget, WRAPPER, WIDGET, GtkWidget)
 
 struct _WrapperWidget {
@@ -37,6 +39,8 @@ extern GtkWidget *currently_unmapping;
 GtkWidget *wrapper_widget_new(void);
 void wrapper_widget_set_child(WrapperWidget *parent, GtkWidget *child);
 void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject jobj);
+/* Takes over the weak reference. */
+void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, const struct ui_view_traits *traits);
 void wrapper_widget_queue_draw(WrapperWidget *wrapper);
 void wrapper_widget_set_layout_params(WrapperWidget *wrapper, int width, int height);
 void wrapper_widget_set_background(WrapperWidget *wrapper, GdkPaintable *paintable);
@@ -44,5 +48,6 @@ void wrapper_widget_consume_touch_events(WrapperWidget *wrapper);
 void wrapper_widget_register_invalidation_listener(WrapperWidget *wrapper);
 
 void _setOnTouchListener(JNIEnv *env, jobject this, GtkWidget *widget);
+void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view_traits *traits);
 
 #endif
