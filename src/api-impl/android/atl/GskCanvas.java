@@ -92,7 +92,7 @@ public class GskCanvas extends DisplayListCanvas {
 
 	@Override
 	public boolean clipPath(Path path) {
-		native_clipPath(snapshot, path.getGskPath());
+		native_clipPath(snapshot, path.getGskPath(), path.getFillType().fill_rule);
 		int save_count = getSaveCount();
 		if (push_history == null)
 			push_history = new int[save_count + 1];
@@ -115,7 +115,7 @@ public class GskCanvas extends DisplayListCanvas {
 	@Override
 	public void drawPath(Path path, Paint paint) {
 		if (path != null)
-			native_drawPath(snapshot, path.getGskPath(), paint != null ? paint.paint : default_paint.paint);
+			native_drawPath(snapshot, path.getGskPath(), path.getFillType().fill_rule, paint != null ? paint.paint : default_paint.paint);
 	}
 
 	@Override
@@ -170,7 +170,7 @@ public class GskCanvas extends DisplayListCanvas {
 	protected native void native_drawBitmap(long snapshot, long texture, int x, int y, int width, int height, long paint);
 	protected native void native_drawBitmap(long snapshot, long texture, int x, int y, int width, int height, int src_x, int src_y, int src_width, int src_height, long paint);
 	protected native void native_drawRect(long snapshot, float left, float top, float right, float bottom, long paint);
-	protected native void native_drawPath(long snapshot, long path, long paint);
+	protected native void native_drawPath(long snapshot, long path, int fill_rule, long paint);
 	protected native void native_translate(long snapshot, float dx, float dy);
 	protected native void native_rotate(long snapshot, float degrees);
 	protected native void native_save(long snapshot);
@@ -182,7 +182,7 @@ public class GskCanvas extends DisplayListCanvas {
 	protected native void native_scale(long snapshot, float sx, float sy);
 	protected native void native_concat(long snapshot, long matrix);
 	protected native void native_clipRect(long snapshot, float left, float top, float right, float bottom);
-	protected native void native_clipPath(long snapshot, long path);
+	protected native void native_clipPath(long snapshot, long path, int fill_rule);
 	protected native void native_pop(long snapshot, int pop_count);
 	protected native void native_drawRenderNode(long snapshot, long render_node);
 }
