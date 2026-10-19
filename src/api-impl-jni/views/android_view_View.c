@@ -53,6 +53,32 @@ static struct pointer pointers[MAX_POINTERS] = {};
 
 extern GdkEvent *synthetic_propagation_failed;
 
+/** JavaWidget:
+ * Minimal gtk widget class which does nothing.
+ * Drawing will be overwritten by WrapperWidget.
+ * If it holds children, they will be laid out by AndroidLayout
+ */
+struct _JavaWidget {
+	GtkWidget parent_instance;
+};
+G_DECLARE_FINAL_TYPE(JavaWidget, java_widget, JAVA, WIDGET, GtkWidget)
+static void java_widget_dispose(GObject *java_widget)
+{
+	GtkWidget *widget = GTK_WIDGET(java_widget);
+	GtkWidget *child = gtk_widget_get_first_child(widget);
+	while (child) {
+		GtkWidget *_child = gtk_widget_get_next_sibling(child);
+		gtk_widget_unparent(child);
+		child = _child;
+	}
+}
+static void java_widget_init(JavaWidget *java_widget) {}
+static void java_widget_class_init(JavaWidgetClass *class)
+{
+	G_OBJECT_CLASS(class)->dispose = java_widget_dispose;
+}
+G_DEFINE_TYPE(JavaWidget, java_widget, GTK_TYPE_WIDGET)
+
 bool view_dispatch_motionevent(JNIEnv *env, WrapperWidget *wrapper, GtkPropagationPhase phase, jobject motion_event, gpointer event, int action)
 {
 	int ret;
@@ -594,32 +620,6 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setVisibility(JNIEnv *env,
 	gtk_widget_set_opacity(widget, (visibility != android_view_View_INVISIBLE) * alpha);
 	gtk_widget_set_sensitive(widget, sensitive && visibility != android_view_View_INVISIBLE && alpha != 0.0f);
 }
-
-/** JavaWidget:
- * Minimal gtk widget class which does nothing.
- * Drawing will be overwritten by WrapperWidget.
- * If it holds children, they will be laid out by AndroidLayout
- */
-struct _JavaWidget {
-	GtkWidget parent_instance;
-};
-G_DECLARE_FINAL_TYPE(JavaWidget, java_widget, JAVA, WIDGET, GtkWidget)
-static void java_widget_dispose(GObject *java_widget)
-{
-	GtkWidget *widget = GTK_WIDGET(java_widget);
-	GtkWidget *child = gtk_widget_get_first_child(widget);
-	while (child) {
-		GtkWidget *_child = gtk_widget_get_next_sibling(child);
-		gtk_widget_unparent(child);
-		child = _child;
-	}
-}
-static void java_widget_init(JavaWidget *java_widget) {}
-static void java_widget_class_init(JavaWidgetClass *class)
-{
-	G_OBJECT_CLASS(class)->dispose = java_widget_dispose;
-}
-G_DEFINE_TYPE(JavaWidget, java_widget, GTK_TYPE_WIDGET)
 
 JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
 {
