@@ -55,7 +55,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 
 	@Override
 	void atlDialogResult(int which) {
-		if (!isShowing() || which == RESULT_CANCEL) {
+		if (!drawn() || which == RESULT_CANCEL) {
 			super.atlDialogResult(which);
 			return;
 		}

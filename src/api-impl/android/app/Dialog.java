@@ -17,14 +17,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager.LayoutParams;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class Dialog implements Window.Callback, DialogInterface {
 	// atlDialogResult's cancel, UI_DIALOG_CANCEL in the ui slot
 	static final int RESULT_CANCEL = Integer.MIN_VALUE;
-	// the ui backend holds dialogs weakly, and apps often drop the shown one
-	private static final Set<Dialog> shown = new HashSet<>();
+	// the ui backend holds dialogs weakly, and apps often drop the shown one; in show order
+	private static final Set<Dialog> shown = new LinkedHashSet<>();
 
 	protected long nativePtr;
 
@@ -33,6 +33,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 	private native void nativeShow(long ptr);
 	private native void nativeClose(long ptr);
 	private native void nativeSetCanceledOnTouchOutside(long ptr, boolean cancel);
+	private static native boolean nativeTaskFront();
 
 	private Context context;
 	private Window window;
@@ -113,7 +114,8 @@ public class Dialog implements Window.Callback, DialogInterface {
 				if (showing) {
 					if (hidden) {
 						hidden = false;
-						showNative();
+						if (nativeTaskFront())
+							showNative();
 					}
 					return;
 				}
@@ -148,7 +150,8 @@ public class Dialog implements Window.Callback, DialogInterface {
 				showing = true;
 				canceled = false;
 				shown.add(Dialog.this);
-				showNative();
+				if (nativeTaskFront()) // else atlTaskMoved shows it
+					showNative();
 				if (onShowListener != null)
 					onShowListener.onShow(Dialog.this);
 			}
@@ -164,9 +167,26 @@ public class Dialog implements Window.Callback, DialogInterface {
 		nativeShow(nativePtr);
 	}
 
+	// from activity.c: dialogs leave and come back with the task
+	static void atlTaskMoved(boolean front) {
+		for (Dialog dialog : shown) {
+			if (!dialog.showing || dialog.hidden)
+				continue;
+			if (front)
+				dialog.showNative();
+			else
+				dialog.nativeClose(dialog.nativePtr);
+		}
+	}
+
+	// on screen; results from the ui backend count only then
+	boolean drawn() {
+		return showing && !hidden && nativeTaskFront();
+	}
+
 	// from the ui backend: a button, an item or RESULT_CANCEL
 	void atlDialogResult(int which) {
-		if (showing && which == RESULT_CANCEL && cancelable)
+		if (drawn() && which == RESULT_CANCEL && cancelable)
 			cancel();
 	}
 
@@ -188,7 +208,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 			@Override
 			public void run() {
 				if (!showing) { // not shown again meanwhile
-					nativeClose(nativePtr);
+					nativeClose(nativePtr); // even in the back: atlTaskMoved skips dismissed dialogs
 					shown.remove(Dialog.this);
 				}
 				if (onDismissListener != null)
@@ -249,7 +269,8 @@ public class Dialog implements Window.Callback, DialogInterface {
 	public void hide() {
 		System.out.println("hiding the Dialog " + this);
 		hidden = showing;
-		nativeClose(nativePtr);
+		if (nativeTaskFront())
+			nativeClose(nativePtr);
 	}
 
 	@Override

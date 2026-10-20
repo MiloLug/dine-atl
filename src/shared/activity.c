@@ -158,12 +158,22 @@ void activity_window_ready(void)
 		ui_window_dump(atl_window, stdout);
 }
 
+bool activity_task_front(void)
+{
+	return task_front;
+}
+
 static void task_move(bool front, bool by_host)
 {
 	if (task_front == front)
 		return;
 	task_front = front;
-	activity_update_current(get_jni_env());
+	JNIEnv *env = get_jni_env();
+	// before the lifecycle: shows from onStop wait for the front, shows from onResume go on top
+	(*env)->CallStaticVoidMethod(env, handle_cache.dialog.class, handle_cache.dialog.atlTaskMoved, front);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	activity_update_current(env);
 	host_task_moved(front, by_host);
 }
 

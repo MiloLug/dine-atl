@@ -99,6 +99,7 @@ struct handle_cache {
 	struct {
 		jclass class;
 		jmethodID atlDialogResult;
+		jmethodID atlTaskMoved;
 	} dialog;
 	struct {
 		jclass class;

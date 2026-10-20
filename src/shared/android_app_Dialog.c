@@ -1,8 +1,10 @@
 #include <stdlib.h>
 
+#include "src/api-impl-jni/app/android_app_Activity.h"
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_app_AlertDialog.h"
 #include "src/api-impl-jni/generated_headers/android_app_Dialog.h"
+#include "src/api-impl-jni/util.h"
 #include "src/slots/ui.h"
 
 _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RESULT_CANCEL is the slot's cancel");
@@ -14,9 +16,9 @@ JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit(JNIEnv *env, jobject 
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle(JNIEnv *env, jobject this, jlong ptr, jstring title_jstr)
 {
-	const char *title = (*env)->GetStringUTFChars(env, title_jstr, NULL);
+	char *title = jstring_to_utf8(env, title_jstr);
 	ui_window_set_title(_PTR(ptr), title);
-	(*env)->ReleaseStringUTFChars(env, title_jstr, title);
+	free(title);
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeShow(JNIEnv *env, jobject this, jlong ptr)
@@ -34,39 +36,30 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside(J
 	ui_dialog_set_cancel_on_touch_outside(_PTR(ptr), cancel);
 }
 
-static const char *get_chars(JNIEnv *env, jstring string)
+JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront(JNIEnv *env, jclass class)
 {
-	return string ? (*env)->GetStringUTFChars(env, string, NULL) : NULL;
+	return activity_task_front();
 }
 
-static void release_chars(JNIEnv *env, jstring string, const char *chars)
-{
-	if (string)
-		(*env)->ReleaseStringUTFChars(env, string, chars);
-}
-
-// array elements as strings, NULL for a NULL array; free with release_array
-static const char **get_array(JNIEnv *env, jobjectArray array, int *length)
+// array elements as strings, NULL for a NULL array; free with free_array
+static char **get_array(JNIEnv *env, jobjectArray array, int *length)
 {
 	*length = array ? (*env)->GetArrayLength(env, array) : 0;
 	if (!array)
 		return NULL;
-	const char **chars = calloc(*length, sizeof(*chars));
+	char **chars = calloc(*length, sizeof(*chars));
 	for (int i = 0; i < *length; i++) {
 		jstring string = (*env)->GetObjectArrayElement(env, array, i);
-		chars[i] = get_chars(env, string);
+		chars[i] = jstring_to_utf8(env, string);
 		(*env)->DeleteLocalRef(env, string);
 	}
 	return chars;
 }
 
-static void release_array(JNIEnv *env, jobjectArray array, const char **chars, int length)
+static void free_array(char **chars, int length)
 {
-	for (int i = 0; i < length; i++) {
-		jstring string = (*env)->GetObjectArrayElement(env, array, i);
-		release_chars(env, string, chars[i]);
-		(*env)->DeleteLocalRef(env, string);
-	}
+	for (int i = 0; i < length; i++)
+		free(chars[i]);
 	free(chars);
 }
 
@@ -74,12 +67,14 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env,
                                                                     jobjectArray items, jobjectArray buttons, jboolean cancelable)
 {
 	int n_items, n_buttons;
-	const char **item_chars = get_array(env, items, &n_items);
-	const char **button_chars = get_array(env, buttons, &n_buttons);
+	char **item_chars = get_array(env, items, &n_items);
+	char **button_chars = get_array(env, buttons, &n_buttons);
+	char *title_chars = jstring_to_utf8(env, title);
+	char *message_chars = jstring_to_utf8(env, message);
 	struct ui_alert alert = {
-		.title = get_chars(env, title),
-		.message = get_chars(env, message),
-		.items = item_chars,
+		.title = title_chars,
+		.message = message_chars,
+		.items = (const char *const *)item_chars,
 		.n_items = n_items,
 		.cancelable = cancelable,
 	};
@@ -88,8 +83,8 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env,
 
 	ui_dialog_show(_PTR(ptr), &alert);
 
-	release_chars(env, title, alert.title);
-	release_chars(env, message, alert.message);
-	release_array(env, items, item_chars, n_items);
-	release_array(env, buttons, button_chars, n_buttons);
+	free(title_chars);
+	free(message_chars);
+	free_array(item_chars, n_items);
+	free_array(button_chars, n_buttons);
 }

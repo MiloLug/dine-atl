@@ -10,7 +10,11 @@ extern JavaVM *jvm;
 
 JNIEnv *get_jni_env(void);
 
-const char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema);
+/* Text for a ui slot, NULL for NULL; free() it. Valid UTF-8, unlike GetStringUTFChars' modified
+ * UTF-8: U+0000 and lone surrogates become U+FFFD. */
+char *jstring_to_utf8(JNIEnv *env, jstring string);
+/* The attribute's text through jstring_to_utf8; free() it. */
+char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema);
 int attribute_set_get_int(JNIEnv *env, jobject attrs, char *attribute, char *schema, int default_value);
 void extract_from_apk(const char *path, const char *target);
 

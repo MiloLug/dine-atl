@@ -17,13 +17,14 @@ static GtkLabel *box_get_label(JNIEnv *env, GtkWidget *box)
 
 JNIEXPORT jlong JNICALL Java_android_widget_Button_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
 {
-	const char *text = attribute_set_get_string(env, attrs, "text", NULL);
+	char *text = attribute_set_get_string(env, attrs, "text", NULL);
 
 	GtkWidget *wrapper = g_object_ref(wrapper_widget_new());
 	GtkWidget *button = gtk_button_new();
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_button_set_child(GTK_BUTTON(button), box);
 	gtk_box_append(GTK_BOX(box), gtk_label_new(text));
+	free(text);
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), button);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
 

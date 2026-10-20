@@ -4,11 +4,54 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "src/api-impl-jni/defines.h"
 #include "util.h"
 
-const char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema)
+char *jstring_to_utf8(JNIEnv *env, jstring string)
+{
+	if (!string)
+		return NULL;
+	jsize length = (*env)->GetStringLength(env, string);
+	const jchar *chars = (*env)->GetStringChars(env, string, NULL);
+	if (!chars)
+		return NULL;
+	char *utf8 = malloc((size_t)length * 3 + 1); // a pair takes 4 bytes for 2 chars, any other char at most 3
+	if (!utf8) {
+		(*env)->ReleaseStringChars(env, string, chars);
+		return NULL;
+	}
+	char *out = utf8;
+	for (jsize i = 0; i < length; i++) {
+		uint32_t c = chars[i];
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < length && chars[i + 1] >= 0xdc00 && chars[i + 1] <= 0xdfff)
+			c = 0x10000 + ((c - 0xd800) << 10) + (chars[++i] - 0xdc00);
+		else if (c == 0 || (c >= 0xd800 && c <= 0xdfff))
+			c = 0xfffd;
+
+		if (c < 0x80) {
+			*out++ = c;
+		} else if (c < 0x800) {
+			*out++ = 0xc0 | c >> 6;
+			*out++ = 0x80 | (c & 0x3f);
+		} else if (c < 0x10000) {
+			*out++ = 0xe0 | c >> 12;
+			*out++ = 0x80 | (c >> 6 & 0x3f);
+			*out++ = 0x80 | (c & 0x3f);
+		} else {
+			*out++ = 0xf0 | c >> 18;
+			*out++ = 0x80 | (c >> 12 & 0x3f);
+			*out++ = 0x80 | (c >> 6 & 0x3f);
+			*out++ = 0x80 | (c & 0x3f);
+		}
+	}
+	*out = '\0';
+	(*env)->ReleaseStringChars(env, string, chars);
+	return utf8;
+}
+
+char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema)
 {
 	if (!attrs)
 		return NULL;
@@ -17,7 +60,7 @@ const char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute
 		schema = "http://schemas.android.com/apk/res/android";
 
 	jstring string = (jstring)(*env)->CallObjectMethod(env, attrs, handle_cache.attribute_set.getAttributeValue_string, _JSTRING(schema), _JSTRING(attribute));
-	return string ? _CSTRING(string) : NULL;
+	return jstring_to_utf8(env, string);
 }
 
 int attribute_set_get_int(JNIEnv *env, jobject attrs, char *attribute, char *schema, int default_value)

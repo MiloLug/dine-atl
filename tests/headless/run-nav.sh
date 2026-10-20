@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Drives the nav APK (nav/, built by the superproject's tests/harness/apk.py) through the cli host's
 # -c commands in the headless build: Back finishes B, Back on the task root A moves the task to the
-# back, front and home move it again. Each command's lifecycle and host lines must come in order;
-# a command that must do nothing is checked by the next command's lines coming first.
+# back, front and home move it again. A's list, shown while the task is in the back, appears only on
+# front and closes and comes back with the task. Each command's lifecycle, dialog and host lines must
+# come in order; a command that must do nothing is checked by the next command's lines coming first.
 # Usage: run-nav.sh <headless build dir> <nav.apk>
 set -euo pipefail
 
@@ -22,9 +23,9 @@ pid=$ATL_PID
 
 fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
 
-# the next "nav: " or "host: " line into REPLY, without the log prefix
+# the next "nav: ", "host: " or "dialog: " line into REPLY, without the log prefix
 next() {
-  local line re='(nav: .*|^host: .*)'
+  local line re='(nav: .*|^host: .*|^dialog: .*)'
   while IFS= read -r -t 30 line <&"${ATL[0]}"; do
     printf '%s\n' "$line" >>"$work/log"
     if [[ $line =~ $re ]]; then
@@ -63,8 +64,15 @@ send back # nothing while in the back
 send front
 expect "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
 send front # nothing while in front
-send home
+send home # A shows its list in onStop
 expect "nav: A onPause" "nav: A onStop" "host: task back host"
+list='dialog: show title="Nav list" items="Close","Odd ��😀��" cancelable'
+send front
+expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
+send home
+expect "dialog: close" "nav: A onPause" "nav: A onStop" "host: task back host"
+send front
+expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
 
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
