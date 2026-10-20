@@ -39,6 +39,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 	CharSequence title;
 	boolean cancelable = true;
 	private boolean showing;
+	private boolean hidden; // by hide(): still showing to Java, the toolkit closed it
 	private boolean canceled;
 	private OnDismissListener onDismissListener;
 	private OnShowListener onShowListener;
@@ -109,8 +110,13 @@ public class Dialog implements Window.Callback, DialogInterface {
 		Runnable action = new Runnable() {
 			@Override
 			public void run() {
-				if (showing)
+				if (showing) {
+					if (hidden) {
+						hidden = false;
+						showNative();
+					}
 					return;
+				}
 				onCreate(null);
 				// Read the size of the main window. Floating dialogs should be smaller as specified in the windowMinWidth* attributes.
 				// Non-floating are typically constructed with MATCH_PARENT layout params and thus get the exact size of the main window.
@@ -120,7 +126,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 				TypedArray a = context.obtainStyledAttributes(R.styleable.Window);
 				if (a.hasValue(R.styleable.Window_windowCloseOnTouchOutside))
-					setCanceledOnTouchOutside(a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, true));
+					nativeSetCanceledOnTouchOutside(nativePtr, a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, true));
 				float windowWidthFraction = 1;
 				if (a.getBoolean(R.styleable.Window_windowIsFloating, false)) {
 					if (displayFrame.width() > displayFrame.height())
@@ -173,6 +179,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 		if (!showing)
 			return;
 		showing = false;
+		hidden = false;
 		// HACK: dismissing the Dialog takes some time in AOSP, as the request goes back and forth between the application
 		// and the system server. We replicate this behavior by adding 10 ms delay.
 		// This Hack is required for NewPipe RouterActivity which has a race condition. It subscribes an rxJava observable
@@ -180,8 +187,10 @@ public class Dialog implements Window.Callback, DialogInterface {
 		new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
-				nativeClose(nativePtr);
-				shown.remove(Dialog.this);
+				if (!showing) { // not shown again meanwhile
+					nativeClose(nativePtr);
+					shown.remove(Dialog.this);
+				}
 				if (onDismissListener != null)
 					onDismissListener.onDismiss(Dialog.this);
 			}
@@ -209,33 +218,27 @@ public class Dialog implements Window.Callback, DialogInterface {
 	}
 	@Override
 	public boolean onCreatePanelMenu(int featureId, Menu menu) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onCreatePanelMenu'");
 	}
 	@Override
 	public View onCreatePanelView(int featureId) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onCreatePanelView'");
 	}
 	@Override
 	public boolean onPreparePanel(int featureId, View view, Menu menu) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onPreparePanel'");
 	}
 	@Override
 	public boolean onMenuItemSelected(int featureId, MenuItem item) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onMenuItemSelected'");
 	}
 	@Override
 	public void onPanelClosed(int featureId, Menu menu) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onPanelClosed'");
 	}
 
 	@Override
 	public boolean onMenuOpened(int featureId, Menu menu) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'onMenuOpened'");
 	}
 
@@ -245,6 +248,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 	public void hide() {
 		System.out.println("hiding the Dialog " + this);
+		hidden = showing;
 		nativeClose(nativePtr);
 	}
 
