@@ -20,10 +20,12 @@ import android.content.Context;
 import android.content.res.TypedArray;
 import android.content.res.XmlResourceParser;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.Slog;
 import android.util.Xml;
 import java.io.FileReader;
 import java.lang.reflect.Constructor;
+import java.util.HashMap;
 import java.util.LinkedList;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -31,6 +33,8 @@ import org.xmlpull.v1.XmlPullParserFactory;
 
 public class LayoutInflater {
 	private static final String TAG = "LayoutInflater";
+
+	private static HashMap<String, Constructor<? extends View>> constructorCache = new HashMap<>();
 
 	/* pretty print for debugging */
 	private int indent = 1;
@@ -84,15 +88,20 @@ public class LayoutInflater {
 	}
 
 	public final View createView(String name, String prefix, AttributeSet attrs) throws Exception {
-		Slog.v(TAG, tabs(indent) + "createView(" + name + ", " + prefix + ", " + attrs + ");");
+		if (Log.isLoggable(TAG, Log.VERBOSE))
+			Slog.v(TAG, tabs(indent) + "createView(" + name + ", " + prefix + ", " + attrs + ");");
 
-		String view_class_name = prefix != null ? prefix + name : name;
-		ClassLoader classLoader = context.getClassLoader();
-		if (classLoader == null)
-			classLoader = ClassLoader.getSystemClassLoader();
-		Class view_class = Class.forName(view_class_name, false, classLoader);
+		Constructor<? extends View> constructor = constructorCache.get(name);
+		if (constructor == null) {
+			String view_class_name = prefix != null ? prefix + name : name;
+			ClassLoader classLoader = context.getClassLoader();
+			if (classLoader == null)
+				classLoader = ClassLoader.getSystemClassLoader();
+			Class<? extends View> view_class = Class.forName(view_class_name, false, classLoader).asSubclass(View.class);
 
-		Constructor constructor = view_class.getConstructor(Context.class, AttributeSet.class);
+			constructor = view_class.getConstructor(Context.class, AttributeSet.class);
+			constructorCache.put(name, constructor);
+		}
 
 		Context context = this.context;
 		final TypedArray ta = context.obtainStyledAttributes(attrs, new int[] {com.android.internal.R.attr.theme});
@@ -134,7 +143,8 @@ public class LayoutInflater {
 			name = attrs.getAttributeValue(null, "class");
 		}
 
-		Slog.v(TAG, tabs(indent) + "createViewFromTag called: parent: " + parent + ", name: " + name);
+		if (Log.isLoggable(TAG, Log.VERBOSE))
+			Slog.v(TAG, tabs(indent) + "createViewFromTag called: parent: " + parent + ", name: " + name);
 
 		View view = null;
 
@@ -152,7 +162,8 @@ public class LayoutInflater {
 			view = createView(name, null, attrs);
 		}
 
-		Slog.v(TAG, tabs(indent) + "createViewFromTag: Created view is: " + view + " | id: " + String.format("%x", view.getId()) + ", id_str: " + view.getIdName());
+		if (Log.isLoggable(TAG, Log.VERBOSE))
+			Slog.v(TAG, tabs(indent) + "createViewFromTag: Created view is: " + view + " | id: " + String.format("%x", view.getId()) + ", id_str: " + view.getIdName());
 		return view;
 	}
 
@@ -162,7 +173,8 @@ public class LayoutInflater {
 
 	public View inflate(int layoutResID, ViewGroup root, boolean attachToRoot) {
 
-		Slog.v(TAG, "inflating view from layout id: " + String.format("%x", layoutResID) + ", id_str: " + this.context.getResources().getResourceName(layoutResID));
+		if (Log.isLoggable(TAG, Log.VERBOSE))
+			Slog.v(TAG, "inflating view from layout id: " + String.format("%x", layoutResID) + ", id_str: " + this.context.getResources().getResourceName(layoutResID));
 		XmlResourceParser xpp = this.context.getResources().getLayout(layoutResID);
 
 		try {
@@ -191,9 +203,11 @@ public class LayoutInflater {
 
 		final String name = parser.getName();
 
-		Slog.v(TAG, tabs(indent) + "**************************");
-		Slog.v(TAG, tabs(indent) + "Creating root view: " + name);
-		Slog.v(TAG, tabs(indent) + "**************************");
+		if (Log.isLoggable(TAG, Log.VERBOSE)) {
+			Slog.v(TAG, tabs(indent) + "**************************");
+			Slog.v(TAG, tabs(indent) + "Creating root view: " + name);
+			Slog.v(TAG, tabs(indent) + "**************************");
+		}
 
 		if (name.equals("merge")) {
 			if (root == null || !attachToRoot) {
@@ -214,7 +228,8 @@ public class LayoutInflater {
 			ViewGroup.LayoutParams params = null;
 
 			if (root != null) {
-				Slog.v(TAG, tabs(indent) + "Creating params from root: " + root);
+				if (Log.isLoggable(TAG, Log.VERBOSE))
+					Slog.v(TAG, tabs(indent) + "Creating params from root: " + root);
 
 				// Create layout params that match root, if supplied
 				try {
@@ -229,12 +244,14 @@ public class LayoutInflater {
 				}
 			}
 
-			Slog.v(TAG, tabs(indent) + "-----> start inflating children");
+			if (Log.isLoggable(TAG, Log.VERBOSE))
+				Slog.v(TAG, tabs(indent) + "-----> start inflating children");
 
 			// Inflate all children under temp
 			rInflate(parser, temp, attrs, true);
 
-			Slog.v(TAG, tabs(indent) + "-----> done inflating children");
+			if (Log.isLoggable(TAG, Log.VERBOSE))
+				Slog.v(TAG, tabs(indent) + "-----> done inflating children");
 
 			// We are supposed to attach all the views we found (int temp)
 			// to root. Do that now.
