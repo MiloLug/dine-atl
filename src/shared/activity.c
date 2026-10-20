@@ -40,7 +40,7 @@ static struct ui_view *get_decor_view(JNIEnv *env, jobject activity)
 
 static void activity_close(JNIEnv *env, jobject activity)
 {
-	// in case some exception was left unhandled in native code, print it here so we don't confuse it with an exception thrown by onDestroy
+	// a pending exception from native code, printed apart from what onDestroy throws
 	if ((*env)->ExceptionCheck(env)) {
 		fprintf(stderr, "activity.onDestroy: seems there was a pending exception... :");
 		(*env)->ExceptionDescribe(env);
@@ -48,7 +48,6 @@ static void activity_close(JNIEnv *env, jobject activity)
 
 	ui_window_remove_activity(atl_window, get_decor_view(env, activity));
 
-	/* -- run the activity's onDestroy -- */
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onDestroy);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
@@ -215,14 +214,11 @@ static void close_activities(JNIEnv *env, jobject *activities, size_t n)
 void activity_close_all(void)
 {
 	JNIEnv *env = get_jni_env();
-	// local backup of the backlog
 	jobject *activities = backlog;
 	size_t n = backlog_len;
-	// deactivate all activities
 	backlog = NULL;
 	backlog_len = backlog_cap = 0;
 	activity_update_current(env);
-	// destroy all activities
 	close_activities(env, activities, n);
 	free(activities);
 }
@@ -238,7 +234,6 @@ void activity_start(JNIEnv *env, jobject activity_object)
 	if (activity_current)
 		activity_unfocus(env, activity_current);
 	activity_current = NULL;
-	/* -- run the activity's onCreate -- */
 	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.onCreate, NULL);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
@@ -297,7 +292,6 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity(JNIEnv
 				backlog_len = i + 1;
 			}
 
-			/* -- run the activity's onNewIntent -- */
 			(*env)->CallVoidMethod(env, backlog[i], handle_cache.activity.onNewIntent, intent);
 			if ((*env)->ExceptionCheck(env))
 				(*env)->ExceptionDescribe(env);
