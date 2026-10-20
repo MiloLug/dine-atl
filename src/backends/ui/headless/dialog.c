@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/shared/test_hooks.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"

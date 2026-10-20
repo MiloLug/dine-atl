@@ -5,7 +5,7 @@
 
 #include "src/slots/ui.h"
 
-#include "upcall.h"
+#include "test_hooks.h"
 
 static bool loaded, scripted;
 static char *rest; // the answers not given yet
@@ -48,4 +48,10 @@ bool atl_dialog_scripted(const struct ui_alert *alert, int *which)
 	fflush(stdout);
 	fprintf(stderr, "dialog: no scripted answer for \"%s\" (next answer: %s)\n", alert->title ?: "", answer ?: "none");
 	_exit(1);
+}
+
+void atl_test_window_ready(struct ui_window *window)
+{
+	if (getenv("ATL_DUMP_VIEWTREE"))
+		ui_window_dump(window, stdout);
 }

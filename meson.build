@@ -45,6 +45,11 @@ if ui_backend == 'uikit'
   add_project_arguments('-fobjc-arc', language: 'objc')
 endif
 
+test_hooks = get_option('test_hooks')
+if test_hooks
+  add_project_arguments('-DATL_TEST_HOOKS', language: 'c')
+endif
+
 # code shared by every build: JNI, ART/libcore, androidfw, sqlite and libc only
 atl_shared = static_library('atl_shared', [
 	'src/api-impl-jni/android_content_res_AssetManager.c',
@@ -68,10 +73,9 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_view_ViewGroup.c',
 	'src/shared/android_view_Window.c',
 	'src/shared/android_widget_TextView.c',
-	'src/shared/dialog_script.c',
 	'src/shared/startup.c',
 	'src/shared/upcall.c',
-], dependencies: [jni_dep, sqlite3_dep, art_incdir_dep],
+] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep],
    c_args: ['-D_LARGEFILE64_SOURCE'])
 
 backend_libs = []
@@ -255,11 +259,12 @@ elif host_backend == 'cli'
   backend_libs += static_library('atl_host_cli', 'src/backends/host/cli/host.c')
 endif
 
+records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/ui/records/dump.c'] : [])
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', ['src/backends/ui/records/ui.c', 'src/backends/ui/headless/dialog.c'])
+  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c'])
 elif ui_backend == 'uikit'
   # views are headless records until uikit draws them
-  backend_libs += static_library('atl_ui_uikit', ['src/backends/ui/records/ui.c', 'src/backends/ui/uikit/dialog.m'])
+  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
@@ -268,7 +273,7 @@ else
                                    'src/backends/ui/gtk/text.c',
                                    'src/backends/ui/gtk/view.c',
                                    'src/backends/ui/gtk/window.c',
-                                 ],
+                                 ] + (test_hooks ? ['src/backends/ui/gtk/dump.c'] : []),
                                  dependencies: [dependency('gtk4'), dependency('libportal'), dependency('jni')])
 endif
 

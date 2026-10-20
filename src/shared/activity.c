@@ -13,6 +13,7 @@
 
 #include "nav.h"
 #include "startup.h"
+#include "test_hooks.h"
 
 /* the activity stack; the last element is the top */
 static jobject *backlog = NULL;
@@ -154,8 +155,7 @@ void activity_window_ready(void)
 			(*env)->ExceptionDescribe(env);
 	}
 
-	if (getenv("ATL_DUMP_VIEWTREE"))
-		ui_window_dump(atl_window, stdout);
+	atl_test_window_ready(atl_window);
 }
 
 bool activity_task_front(void)

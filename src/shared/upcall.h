@@ -27,14 +27,9 @@ int atl_upcall_view_get_suggested_min(struct atl_ref *view, bool vertical);
 void atl_upcall_view_get_old_specs(struct atl_ref *view, int *width_spec, int *height_spec);
 /* View.layoutInternal: the view's own onLayout at width x height, which lays out its children. */
 void atl_upcall_view_layout(struct atl_ref *view, int width, int height);
-/* The app's window got its first layout: the activities regain focus, ATL_DUMP_VIEWTREE dumps. */
+/* The app's window got its first layout: the activities regain focus. */
 void atl_upcall_window_ready(void);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. */
 void atl_upcall_dialog_result(struct atl_ref *dialog, int which);
-
-struct ui_alert;
-/* With ATL_DIALOG_ANSWERS set (button or item labels or "!cancel", one per shown alert, separated
- * by ';'): the next answer as a result for alert; exits 1 when it doesn't match. Else false. */
-bool atl_dialog_scripted(const struct ui_alert *alert, int *which);
 
 #endif

@@ -52,9 +52,11 @@ void ui_window_set_back_enabled(struct ui_window *window, bool enabled);
 void ui_window_close(struct ui_window *window);
 /* The window's current size, px. */
 void ui_window_get_size(struct ui_window *window, int *width, int *height);
+#ifdef ATL_TEST_HOOKS
 /* Prints the shown activity's view tree: "viewtree: " lines, one per view with its class, frame
  * relative to the parent and text, then "viewtree: end". */
 void ui_window_dump(struct ui_window *window, FILE *out);
+#endif
 
 /* AlertDialog's content, valid only during the call; NULL or 0 when absent. */
 struct ui_alert {

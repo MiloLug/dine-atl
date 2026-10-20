@@ -23,23 +23,6 @@
 
 #define MAX_PASSES_IN_A_ROW  8
 
-enum node_kind {
-	NODE_VIEW, // ui_view_new: laid out by Java
-	NODE_TEXT, // ui_text_new: measured here
-};
-
-struct ui_view {
-	enum node_kind kind;
-	char *class_name;
-	struct atl_ref *ref;
-	struct ui_view **children;
-	size_t n_children;
-	int padding_left, padding_top, padding_right, padding_bottom;
-	int left, top, right, bottom;
-	char *text;
-	float text_size;
-};
-
 static struct ui_window *the_window;
 
 void ui_display_get(struct ui_display *display)
@@ -123,25 +106,6 @@ void ui_window_close(struct ui_window *window)
 void ui_window_get_size(struct ui_window *window, int *width, int *height)
 {
 	atl_window_size(width, height);
-}
-
-static void dump_view(FILE *out, struct ui_view *view, int depth)
-{
-	fprintf(out, "viewtree: %*s%s %d,%d %dx%d", depth * 2, "", view->class_name,
-	        view->left, view->top, view->right - view->left, view->bottom - view->top);
-	if (view->kind == NODE_TEXT)
-		fprintf(out, " \"%s\"", view->text);
-	fputc('\n', out);
-	for (size_t i = 0; i < view->n_children; i++)
-		dump_view(out, view->children[i], depth + 1);
-}
-
-void ui_window_dump(struct ui_window *window, FILE *out)
-{
-	if (window->shown)
-		dump_view(out, window->shown, 0);
-	fprintf(out, "viewtree: end\n");
-	fflush(out);
 }
 
 static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name)
