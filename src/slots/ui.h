@@ -50,6 +50,8 @@ void ui_window_show_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_remove_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_set_back_enabled(struct ui_window *window, bool enabled);
 void ui_window_close(struct ui_window *window);
+/* The window's current size, px. */
+void ui_window_get_size(struct ui_window *window, int *width, int *height);
 /* Prints the shown activity's view tree: "viewtree: " lines, one per view with its class, frame
  * relative to the parent and text, then "viewtree: end". */
 void ui_window_dump(struct ui_window *window, FILE *out);

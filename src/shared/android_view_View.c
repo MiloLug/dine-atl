@@ -3,6 +3,7 @@
 #include "src/api-impl-jni/util.h"
 #include "src/slots/ui.h"
 
+#include "startup.h"
 #include "view.h"
 
 void atl_view_traits_get(JNIEnv *env, jobject view, struct ui_view_traits *traits)
@@ -78,4 +79,14 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1measure(JNIEnv *env, jobje
 JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobject this, jlong widget_ptr, jint l, jint t, jint r, jint b)
 {
 	ui_view_layout(_PTR(widget_ptr), l, t, r, b, _GET_FLOAT_FIELD(this, "translationX"), _GET_FLOAT_FIELD(this, "translationY"));
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_getWindowVisibleDisplayFrame(JNIEnv *env, jobject this, jobject rect)
+{
+	int width, height;
+	ui_window_get_size(atl_window, &width, &height);
+	_SET_INT_FIELD(rect, "left", 0);
+	_SET_INT_FIELD(rect, "top", 0);
+	_SET_INT_FIELD(rect, "right", width);
+	_SET_INT_FIELD(rect, "bottom", height);
 }

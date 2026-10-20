@@ -64,6 +64,11 @@ void ui_window_close(struct ui_window *window)
 		gtk_window_close(GTK_WINDOW(window));
 }
 
+void ui_window_get_size(struct ui_window *window, int *width, int *height)
+{
+	gtk_window_get_default_size(GTK_WINDOW(window), width, height);
+}
+
 static void dump_view(FILE *out, GtkWidget *wrapper, GtkWidget *parent, int depth)
 {
 	WrapperWidget *wrapper_widget = WRAPPER_WIDGET(wrapper);

@@ -125,6 +125,11 @@ void ui_window_close(struct ui_window *window)
 	loop_main_quit();
 }
 
+void ui_window_get_size(struct ui_window *window, int *width, int *height)
+{
+	atl_window_size(width, height);
+}
+
 static void dump_view(FILE *out, struct ui_view *view, int depth)
 {
 	fprintf(out, "viewtree: %*s%s %d,%d %dx%d", depth * 2, "", view->class_name,
