@@ -1,6 +1,5 @@
 package android.app;
 
-import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.view.View;
@@ -8,11 +7,14 @@ import android.widget.Button;
 
 public class AlertDialog extends Dialog implements DialogInterface {
 
-	private Button[] buttons;
+	private CharSequence message;
+	private CharSequence[] items;
+	private OnClickListener itemsListener;
+	// positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
+	private final CharSequence[] buttonLabels = new CharSequence[3];
+	private final OnClickListener[] buttonListeners = new OnClickListener[3];
 
-	private native void nativeConstruct(long ptr, long button_positive, long button_negative, long button_neutral);
-	private native void nativeSetMessage(long ptr, String message);
-	private native void nativeSetItems(long ptr, String[] items, DialogInterface.OnClickListener listener);
+	private native void nativeShowAlert(long ptr, String title, String message, String[] items, String[] buttons, boolean cancelable);
 
 	public AlertDialog(Context context) {
 		this(context, 0);
@@ -20,40 +22,60 @@ public class AlertDialog extends Dialog implements DialogInterface {
 
 	public AlertDialog(Context context, int themeResId) {
 		super(context, themeResId);
-		Context themeless = ATLLoadedApp.getSystemApplication().createContext(null, null, 0);
-		// three buttons: positive, negative, neutral
-		buttons = new Button[] {new Button(themeless), new Button(themeless), new Button(themeless)};
-		buttons[0].setVisibility(View.GONE);
-		buttons[1].setVisibility(View.GONE);
-		buttons[2].setVisibility(View.GONE);
-		nativeConstruct(nativePtr, buttons[0].widget, buttons[1].widget, buttons[2].widget);
 	}
 
 	public void setMessage(CharSequence message) {
 		System.out.println("AlertDialog setMessage called with: '" + message + "'");
-		nativeSetMessage(nativePtr, String.valueOf(message));
+		this.message = message;
 	}
 
 	public void setButton(int whichButton, CharSequence text, OnClickListener listener) {
-		Button button = getButton(whichButton);
-		button.setText(text);
-		button.setOnClickListener(new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				listener.onClick(AlertDialog.this, whichButton);
-				dismiss();
-			}
-		});
-		button.setVisibility(View.VISIBLE);
+		buttonLabels[-1 - whichButton] = text;
+		buttonListeners[-1 - whichButton] = listener;
 	}
 
+	// the ui backend draws the buttons: there are no Button views
 	public Button getButton(int whichButton) {
-		// BUTTON_POSITIVE = -1, BUTTON_NEGATIVE = -2, BUTTON_NEUTRAL = -3
-		return buttons[-1 - whichButton];
+		return null;
 	}
 
 	public void setView(View view) {
 		setContentView(view);
+	}
+
+	void setItems(CharSequence[] items, OnClickListener listener) {
+		this.items = items;
+		this.itemsListener = listener;
+	}
+
+	@Override
+	void showNative() {
+		nativeShowAlert(nativePtr, string(title), string(message), strings(items), strings(buttonLabels), cancelable);
+	}
+
+	@Override
+	void atlDialogResult(int which) {
+		if (!isShowing() || which == RESULT_CANCEL) {
+			super.atlDialogResult(which);
+			return;
+		}
+		OnClickListener listener = which >= 0 ? itemsListener : buttonListeners[-1 - which];
+		if (listener != null)
+			listener.onClick(this, which);
+		dismiss();
+	}
+
+	private static String string(CharSequence text) {
+		return text != null ? text.toString() : null;
+	}
+
+	private static String[] strings(CharSequence[] texts) {
+		if (texts == null)
+			return null;
+		String[] strings = new String[texts.length];
+		for (int i = 0; i < texts.length; i++)
+			strings[i] = string(texts[i]);
+		return strings;
 	}
 
 	public static class Builder {
@@ -99,6 +121,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		}
 
 		public AlertDialog.Builder setCancelable(boolean cancelable) {
+			dialog.setCancelable(cancelable);
 			return this;
 		}
 
@@ -131,11 +154,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		}
 
 		public AlertDialog.Builder setItems(CharSequence[] items, final DialogInterface.OnClickListener listener) {
-			String[] stringItems = new String[items.length];
-			for (int i = 0; i < items.length; i++) {
-				stringItems[i] = String.valueOf(items[i]);
-			}
-			dialog.nativeSetItems(dialog.nativePtr, stringItems, listener);
+			dialog.setItems(items, listener);
 			return this;
 		}
 
@@ -144,6 +163,12 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		}
 
 		public Builder setOnCancelListener(OnCancelListener onCancelListener) {
+			dialog.setOnCancelListener(onCancelListener);
+			return this;
+		}
+
+		public Builder setOnDismissListener(OnDismissListener onDismissListener) {
+			dialog.setOnDismissListener(onDismissListener);
 			return this;
 		}
 

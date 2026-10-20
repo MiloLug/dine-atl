@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef android_app_Dialog_RESULT_CANCEL
+#define android_app_Dialog_RESULT_CANCEL -2147483648L
 /*
  * Class:     android_app_Dialog
  * Method:    nativeInit
@@ -25,14 +27,6 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle
 
 /*
  * Class:     android_app_Dialog
- * Method:    nativeSetContentView
- * Signature: (JJ)V
- */
-JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetContentView
-  (JNIEnv *, jobject, jlong, jlong);
-
-/*
- * Class:     android_app_Dialog
  * Method:    nativeShow
  * Signature: (J)V
  */
@@ -45,14 +39,6 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeShow
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeClose
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_app_Dialog
- * Method:    nativeIsShowing
- * Signature: (J)Z
- */
-JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeIsShowing
   (JNIEnv *, jobject, jlong);
 
 /*

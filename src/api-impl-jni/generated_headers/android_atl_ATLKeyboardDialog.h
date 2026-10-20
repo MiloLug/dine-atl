@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef android_atl_ATLKeyboardDialog_RESULT_CANCEL
+#define android_atl_ATLKeyboardDialog_RESULT_CANCEL -2147483648L
 /*
  * Class:     android_atl_ATLKeyboardDialog
  * Method:    nativeInit

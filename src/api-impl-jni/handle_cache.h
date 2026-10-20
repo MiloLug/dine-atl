@@ -97,6 +97,10 @@ struct handle_cache {
 	} view_group;
 	struct {
 		jclass class;
+		jmethodID atlDialogResult;
+	} dialog;
+	struct {
+		jclass class;
 		jmethodID extractFromAPK;
 	} asset_manager;
 	struct {

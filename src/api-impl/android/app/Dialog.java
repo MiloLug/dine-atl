@@ -17,22 +17,32 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager.LayoutParams;
+import java.util.HashSet;
+import java.util.Set;
 
 public class Dialog implements Window.Callback, DialogInterface {
+	// atlDialogResult's cancel, UI_DIALOG_CANCEL in the ui slot
+	static final int RESULT_CANCEL = Integer.MIN_VALUE;
+	// the ui backend holds dialogs weakly, and apps often drop the shown one
+	private static final Set<Dialog> shown = new HashSet<>();
+
 	protected long nativePtr;
 
 	protected native long nativeInit(long decor_view);
 	private native void nativeSetTitle(long ptr, String title);
-	private native void nativeSetContentView(long ptr, long widget);
 	private native void nativeShow(long ptr);
 	private native void nativeClose(long ptr);
-	private native boolean nativeIsShowing(long ptr);
 	private native void nativeSetCanceledOnTouchOutside(long ptr, boolean cancel);
 
 	private Context context;
 	private Window window;
+	CharSequence title;
+	boolean cancelable = true;
+	private boolean showing;
+	private boolean canceled;
 	private OnDismissListener onDismissListener;
 	private OnShowListener onShowListener;
+	private OnCancelListener onCancelListener;
 
 	public Dialog(Context context, int themeResId) {
 		this.context = context;
@@ -68,18 +78,23 @@ public class Dialog implements Window.Callback, DialogInterface {
 	}
 
 	public void setTitle(CharSequence title) {
+		this.title = title;
 		nativeSetTitle(nativePtr, String.valueOf(title));
 	}
 
 	public void setTitle(int titleId) {
-		nativeSetTitle(nativePtr, context.getString(titleId));
+		setTitle(context.getString(titleId));
 	}
 
 	public void setOwnerActivity(Activity activity) {}
 
-	public void setCancelable(boolean cancelable) {}
+	public void setCancelable(boolean cancelable) {
+		this.cancelable = cancelable;
+	}
 
-	public void setOnCancelListener(OnCancelListener onCancelListener) {}
+	public void setOnCancelListener(OnCancelListener onCancelListener) {
+		this.onCancelListener = onCancelListener;
+	}
 
 	public void setOnDismissListener(OnDismissListener onDismissListener) {
 		this.onDismissListener = onDismissListener;
@@ -94,6 +109,8 @@ public class Dialog implements Window.Callback, DialogInterface {
 		Runnable action = new Runnable() {
 			@Override
 			public void run() {
+				if (showing)
+					return;
 				onCreate(null);
 				// Read the size of the main window. Floating dialogs should be smaller as specified in the windowMinWidth* attributes.
 				// Non-floating are typically constructed with MATCH_PARENT layout params and thus get the exact size of the main window.
@@ -122,7 +139,10 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 				getWindow().getDecorView().internalSetDefaultMeasureSpec(widthMeasureSpec, heightMeasureSpec);
 
-				nativeShow(nativePtr);
+				showing = true;
+				canceled = false;
+				shown.add(Dialog.this);
+				showNative();
 				if (onShowListener != null)
 					onShowListener.onShow(Dialog.this);
 			}
@@ -134,12 +154,25 @@ public class Dialog implements Window.Callback, DialogInterface {
 		}
 	}
 
+	void showNative() {
+		nativeShow(nativePtr);
+	}
+
+	// from the ui backend: a button, an item or RESULT_CANCEL
+	void atlDialogResult(int which) {
+		if (showing && which == RESULT_CANCEL && cancelable)
+			cancel();
+	}
+
 	public boolean isShowing() {
-		return nativeIsShowing(nativePtr);
+		return showing;
 	}
 
 	public void dismiss() {
 		System.out.println("dismissing the Dialog " + Dialog.this);
+		if (!showing)
+			return;
+		showing = false;
 		// HACK: dismissing the Dialog takes some time in AOSP, as the request goes back and forth between the application
 		// and the system server. We replicate this behavior by adding 10 ms delay.
 		// This Hack is required for NewPipe RouterActivity which has a race condition. It subscribes an rxJava observable
@@ -148,6 +181,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 			@Override
 			public void run() {
 				nativeClose(nativePtr);
+				shown.remove(Dialog.this);
 				if (onDismissListener != null)
 					onDismissListener.onDismiss(Dialog.this);
 			}
@@ -159,6 +193,8 @@ public class Dialog implements Window.Callback, DialogInterface {
 	}
 
 	public void setCanceledOnTouchOutside(boolean cancel) {
+		if (cancel)
+			cancelable = true;
 		nativeSetCanceledOnTouchOutside(nativePtr, cancel);
 	}
 
@@ -214,6 +250,11 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 	@Override
 	public void cancel() {
+		if (!canceled) {
+			canceled = true;
+			if (onCancelListener != null)
+				onCancelListener.onCancel(this);
+		}
 		dismiss();
 	}
 

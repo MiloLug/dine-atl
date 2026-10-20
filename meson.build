@@ -52,6 +52,7 @@ atl_shared = static_library('atl_shared', [
 	'src/api-impl-jni/os/android_os_Process.c',
 	'src/api-impl-jni/util.c',
 	'src/shared/activity.c',
+	'src/shared/android_app_Dialog.c',
 	'src/shared/android_content_Context.c',
 	'src/shared/android_graphics_Paint.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
@@ -146,8 +147,6 @@ if desktop
     'src/api-impl-jni/android_os_Vibrator.c',
     'src/api-impl-jni/android_view_Window.c',
     'src/api-impl-jni/app/android_app_Activity.c',
-    'src/api-impl-jni/app/android_app_AlertDialog.c',
-    'src/api-impl-jni/app/android_app_Dialog.c',
     'src/api-impl-jni/app/android_app_NotificationManager.c',
     'src/api-impl-jni/app/android_app_WallpaperManager.c',
     'src/api-impl-jni/android_inputmethodservice_InputMethodService.c',
@@ -242,10 +241,11 @@ else
 endif
 
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', 'src/backends/ui/records/ui.c')
+  backend_libs += static_library('atl_ui_headless', ['src/backends/ui/records/ui.c', 'src/backends/ui/headless/dialog.c'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
+                                   'src/backends/ui/gtk/dialog.c',
                                    'src/backends/ui/gtk/display.c',
                                    'src/backends/ui/gtk/text.c',
                                    'src/backends/ui/gtk/view.c',

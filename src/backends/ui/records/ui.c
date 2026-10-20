@@ -6,6 +6,8 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "records.h"
+
 /* View records without a toolkit. Layout mirrors GTK's: the root at the window size, then each
  * ui_view_new view lays out its children. Fixed text metrics keep dumps exact. */
 
@@ -36,13 +38,6 @@ struct ui_view {
 	int left, top, right, bottom;
 	char *text;
 	float text_size;
-};
-
-struct ui_window {
-	struct ui_view *shown;
-	bool layout_pending;
-	int passes_in_a_row;
-	bool ready;
 };
 
 static struct ui_window *the_window;

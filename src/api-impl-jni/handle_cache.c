@@ -95,6 +95,9 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.view_group.class = _REF((*env)->FindClass(env, "android/view/ViewGroup"));
 	handle_cache.view_group.dispatchTouchEvent = _METHOD(handle_cache.view_group.class, "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z");
 
+	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
+	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)V");
+
 	handle_cache.asset_manager.class = _REF((*env)->FindClass(env, "android/content/res/AssetManager"));
 	handle_cache.asset_manager.extractFromAPK = _STATIC_METHOD(handle_cache.asset_manager.class, "extractFromAPK", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
 

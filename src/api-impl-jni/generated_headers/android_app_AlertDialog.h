@@ -7,29 +7,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef android_app_AlertDialog_RESULT_CANCEL
+#define android_app_AlertDialog_RESULT_CANCEL -2147483648L
 /*
  * Class:     android_app_AlertDialog
- * Method:    nativeConstruct
- * Signature: (JJJJ)V
+ * Method:    nativeShowAlert
+ * Signature: (JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;Z)V
  */
-JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeConstruct
-  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
-
-/*
- * Class:     android_app_AlertDialog
- * Method:    nativeSetMessage
- * Signature: (JLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetMessage
-  (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_app_AlertDialog
- * Method:    nativeSetItems
- * Signature: (J[Ljava/lang/String;Landroid/content/DialogInterface/OnClickListener;)V
- */
-JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetItems
-  (JNIEnv *, jobject, jlong, jobjectArray, jobject);
+JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert
+  (JNIEnv *, jobject, jlong, jstring, jstring, jobjectArray, jobjectArray, jboolean);
 
 #ifdef __cplusplus
 }

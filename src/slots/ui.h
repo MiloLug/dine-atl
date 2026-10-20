@@ -8,7 +8,7 @@
 /* ui slot: the app's window with its activity stack, and view nodes. Called on the Android main
  * thread. */
 
-struct ui_window; // the app's surface: one per process, holds the activities' root views
+struct ui_window; // the app's surface holding the activities' root views, or a Dialog's window
 struct ui_view;   // a view node; View.widget holds it
 struct atl_ref;   // a weak reference to a Java object, for upcalls
 
@@ -55,6 +55,26 @@ void ui_window_get_size(struct ui_window *window, int *width, int *height);
 /* Prints the shown activity's view tree: "viewtree: " lines, one per view with its class, frame
  * relative to the parent and text, then "viewtree: end". */
 void ui_window_dump(struct ui_window *window, FILE *out);
+
+/* AlertDialog's content, valid only during the call; NULL or 0 when absent. */
+struct ui_alert {
+	const char *title;
+	const char *message;
+	const char *const *items;
+	int n_items;
+	const char *buttons[3]; // positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
+	bool cancelable;
+};
+/* The result of a cancel (back, a tap outside, a Cancel action), next to buttons and items. */
+#define UI_DIALOG_CANCEL INT32_MIN
+
+/* A Dialog's window, with the decor view as its content. Results go to atl_upcall_dialog_result;
+ * the dialog closes only through ui_dialog_close. */
+struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor);
+/* Shows the alert instead of the decor view when alert isn't NULL. */
+void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
+void ui_dialog_close(struct ui_window *dialog);
+void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel);
 
 /* A View drawn by Java, possibly with children. */
 struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);

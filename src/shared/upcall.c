@@ -80,3 +80,15 @@ void atl_upcall_window_ready(void)
 {
 	activity_window_ready();
 }
+
+void atl_upcall_dialog_result(struct atl_ref *dialog, int which)
+{
+	JNIEnv *env = get_jni_env();
+	jobject dialog_obj = (*env)->NewLocalRef(env, (jobject)dialog);
+	if (!dialog_obj) // collected after its close
+		return;
+	(*env)->CallVoidMethod(env, dialog_obj, handle_cache.dialog.atlDialogResult, which);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, dialog_obj);
+}
