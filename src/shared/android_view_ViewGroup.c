@@ -6,3 +6,9 @@ JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1addView(JNIEnv *env, 
 {
 	ui_view_add_child(_PTR(widget), _PTR(child), index);
 }
+
+JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1removeView(JNIEnv *env, jobject this, jlong widget, jlong child)
+{
+	if (child)
+		ui_view_remove_child(_PTR(widget), _PTR(child));
+}

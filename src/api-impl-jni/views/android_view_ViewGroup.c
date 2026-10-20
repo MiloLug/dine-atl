@@ -9,11 +9,6 @@
 #include "../generated_headers/android_view_View.h"
 #include "../generated_headers/android_view_ViewGroup.h"
 
-JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1removeView(JNIEnv *env, jobject this, jlong widget, jlong child)
-{
-	gtk_widget_unparent(gtk_widget_get_parent(GTK_WIDGET(_PTR(child))));
-}
-
 JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1drawChildren(JNIEnv *env, jobject this, jlong widget_ptr, jlong snapshot_ptr)
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr))));

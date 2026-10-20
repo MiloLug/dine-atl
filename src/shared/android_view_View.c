@@ -1,6 +1,7 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_view_View.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 #include "startup.h"
@@ -37,6 +38,18 @@ JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, 
 	(*env)->ReleaseStringUTFChars(env, name_jstr, name);
 
 	return _INTPTR(view);
+}
+
+static void view_free(void *view)
+{
+	ui_view_free(view);
+}
+
+// on the FinalizerDaemon thread; after loop_main_quit the view stays allocated
+JNIEXPORT void JNICALL Java_android_view_View_native_1destructor(JNIEnv *env, jobject this, jlong widget_ptr)
+{
+	if (widget_ptr) // 0: the constructor threw first
+		loop_main_post(view_free, _PTR(widget_ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1setLayoutParams(JNIEnv *env, jobject this, jlong widget_ptr, jint width, jint height, jint gravity, jfloat weight,

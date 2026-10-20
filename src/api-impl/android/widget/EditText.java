@@ -43,7 +43,7 @@ public class EditText extends TextView {
 		native_setText(widget, text == null ? "" : text.toString());
 	}
 	@Override
-	public void setTextSize(float size) {}
+	void setRawTextSize(float size) {}
 
 	@Override
 	public void removeTextChangedListener(TextWatcher watcher) {

@@ -53,6 +53,14 @@ JNIEXPORT void JNICALL Java_android_view_Window_clear_1background
 
 /*
  * Class:     android_view_Window
+ * Method:    set_frame
+ * Signature: (ZIZ)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_set_1frame
+  (JNIEnv *, jobject, jboolean, jint, jboolean);
+
+/*
+ * Class:     android_view_Window
  * Method:    set_screen_brightness
  * Signature: (F)V
  */

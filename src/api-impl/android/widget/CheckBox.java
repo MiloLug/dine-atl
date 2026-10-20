@@ -38,7 +38,7 @@ public class CheckBox extends CompoundButton {
 	@Override
 	public void setTextColor(int color) {}
 	@Override
-	public void setTextSize(float size) {}
+	void setRawTextSize(float size) {}
 
 	@Override
 	public native void native_setText(long widget, String text);

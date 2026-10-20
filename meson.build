@@ -261,10 +261,9 @@ endif
 
 records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/ui/records/dump.c'] : [])
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c'])
+  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/views.c'])
 elif ui_backend == 'uikit'
-  # views are headless records until uikit draws them
-  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m'])
+  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/view.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
@@ -292,6 +291,9 @@ if host_backend == 'embedded'
                  include_directories: 'src/shared', # atl_embedded.h's "nav.h", installed next to it
                  install: true)
   install_headers('src/backends/host/embedded/atl_embedded.h', 'src/shared/nav.h', subdir: 'atl')
+  if ui_backend == 'uikit'
+    install_headers('src/backends/ui/uikit/surface.h', subdir: 'atl')
+  endif
 else
   if not desktop
     # a missing slot function or stray reference fails here instead of at ART's RTLD_NOW load;

@@ -40,8 +40,9 @@ struct ui_layout_params {
 	int margin_left, margin_top, margin_right, margin_bottom;
 };
 
-/* For hosts other than gtk, whose host creates its GtkApplicationWindow itself. */
-struct ui_window *ui_window_new(void);
+/* For hosts other than gtk, whose host creates its GtkApplicationWindow itself. surface: the
+ * platform view the app's views go in (uikit: a UIView, retained), or NULL. */
+struct ui_window *ui_window_new(void *surface);
 void ui_window_set_title(struct ui_window *window, const char *title);
 void ui_window_set_java(struct ui_window *window, struct atl_ref *window_ref);
 void ui_window_clear_background(struct ui_window *window);
@@ -52,6 +53,15 @@ void ui_window_set_back_enabled(struct ui_window *window, bool enabled);
 void ui_window_close(struct ui_window *window);
 /* The window's current size, px. */
 void ui_window_get_size(struct ui_window *window, int *width, int *height);
+
+/* What the shown activity asks of the host's frame around the window (iOS: the status bar; gtk:
+ * the header bar). */
+struct ui_frame {
+	bool has_color; // false: the app leaves the frame to the host, and the other fields mean nothing
+	uint32_t color; // ARGB
+	bool light;     // the frame is light: dark text and icons on it
+};
+void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame);
 #ifdef ATL_TEST_HOOKS
 /* Prints the shown activity's view tree: "viewtree: " lines, one per view with its class, frame
  * relative to the parent and text, then "viewtree: end". */
@@ -81,6 +91,11 @@ void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel
 /* A View drawn by Java, possibly with children. */
 struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);
 void ui_view_add_child(struct ui_view *parent, struct ui_view *child, int index);
+/* Detaches only: the view may be added again. A child the parent doesn't hold is ignored. */
+void ui_view_remove_child(struct ui_view *parent, struct ui_view *child);
+/* Java dropped the view. A parent that still holds it was dropped too and is freed without its
+ * children being walked. */
+void ui_view_free(struct ui_view *view);
 void ui_view_set_layout_params(struct ui_view *view, const struct ui_layout_params *params);
 void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int bottom);
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb);
@@ -96,5 +111,10 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 void ui_text_set_text(struct ui_view *view, const char *text);
 void ui_text_set_color(struct ui_view *view, uint32_t argb);
 void ui_text_set_size(struct ui_view *view, float size); // px
+/* Typeface.NORMAL, BOLD, ITALIC or BOLD_ITALIC; any view node, since Button and its subclasses
+ * share TextView's code. */
+void ui_text_set_style(struct ui_view *view, int style);
+#define UI_TEXT_BOLD   1
+#define UI_TEXT_ITALIC 2
 
 #endif

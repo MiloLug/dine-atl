@@ -64,3 +64,25 @@ void ui_window_get_size(struct ui_window *window, int *width, int *height)
 {
 	gtk_window_get_default_size(GTK_WINDOW(window), width, height);
 }
+
+// on the header bar the host set as the titlebar; one provider, reloaded, so frames don't stack
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
+{
+	GtkWidget *titlebar = gtk_window_get_titlebar(GTK_WINDOW(window));
+	GtkCssProvider *provider = g_object_get_data(G_OBJECT(titlebar), "frame_style_provider");
+	if (!provider) {
+		provider = gtk_css_provider_new();
+		gtk_style_context_add_provider(gtk_widget_get_style_context(titlebar), GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		g_object_set_data_full(G_OBJECT(titlebar), "frame_style_provider", provider, g_object_unref);
+	}
+	if (!frame->has_color) {
+		gtk_css_provider_load_from_string(provider, "");
+		return;
+	}
+	char *css = g_strdup_printf("* { background-image: none; background-color: #%06x%02x; color: %s; }", frame->color & 0xFFFFFF, frame->color >> 24, frame->light ? "rgba(0, 0, 0, 0.8)" : "white");
+	gtk_css_provider_load_from_string(provider, css);
+	g_free(css);
+}
+#pragma GCC diagnostic pop

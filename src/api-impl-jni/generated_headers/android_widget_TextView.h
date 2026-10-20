@@ -179,6 +179,8 @@ extern "C" {
 #define android_widget_TextView_SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION 512L
 #undef android_widget_TextView_SYSTEM_UI_FLAG_LAYOUT_STABLE
 #define android_widget_TextView_SYSTEM_UI_FLAG_LAYOUT_STABLE 256L
+#undef android_widget_TextView_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+#define android_widget_TextView_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR 8192L
 #undef android_widget_TextView_SYSTEM_UI_FLAG_LOW_PROFILE
 #define android_widget_TextView_SYSTEM_UI_FLAG_LOW_PROFILE 1L
 #undef android_widget_TextView_SYSTEM_UI_FLAG_VISIBLE
@@ -237,10 +239,10 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setText
 
 /*
  * Class:     android_widget_TextView
- * Method:    setTextSize
+ * Method:    native_setTextSize
  * Signature: (F)V
  */
-JNIEXPORT void JNICALL Java_android_widget_TextView_setTextSize
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextSize
   (JNIEnv *, jobject, jfloat);
 
 /*
@@ -249,6 +251,14 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_setTextSize
  * Signature: (I)V
  */
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextColor
+  (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     android_widget_TextView
+ * Method:    native_setTextStyle
+ * Signature: (I)V
+ */
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle
   (JNIEnv *, jobject, jint);
 
 /*

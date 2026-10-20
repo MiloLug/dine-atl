@@ -95,6 +95,11 @@ static void activity_focus(JNIEnv *env, jobject activity)
 		return;
 
 	ui_window_show_activity(atl_window, get_decor_view(env, activity));
+	jobject window = _GET_OBJ_FIELD(activity, "window", "Landroid/view/Window;");
+	(*env)->CallVoidMethod(env, window, handle_cache.window.updateFrame);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, window);
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onResume);
 	if ((*env)->ExceptionCheck(env))
@@ -161,6 +166,16 @@ void activity_window_ready(void)
 bool activity_task_front(void)
 {
 	return task_front;
+}
+
+bool activity_window_shown(JNIEnv *env, jobject window)
+{
+	if (!task_front || !backlog_len || _GET_BOOL_FIELD(backlog[backlog_len - 1], "finishing"))
+		return false;
+	jobject shown = _GET_OBJ_FIELD(backlog[backlog_len - 1], "window", "Landroid/view/Window;");
+	bool same = (*env)->IsSameObject(env, shown, window);
+	(*env)->DeleteLocalRef(env, shown);
+	return same;
 }
 
 static void task_move(bool front, bool by_host)

@@ -8,10 +8,9 @@
 #include "startup.h"
 #include "upcall.h"
 
-void atl_window_size(int *width, int *height)
+const struct atl_window_config *atl_window_get(void)
 {
-	*width = atl_window_width;
-	*height = atl_window_height;
+	return &atl_window_config;
 }
 
 void atl_upcall_looper_loop(void)

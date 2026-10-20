@@ -12,6 +12,8 @@
 
 #include "defines.h"
 #include "util.h"
+
+#include "src/shared/upcall.h"
 #include "generated_headers/android_content_res_AssetManager.h"
 
 #include <dirent.h>
@@ -137,7 +139,7 @@ JNIEXPORT void JNICALL Java_android_content_res_AssetManager_init(JNIEnv *env, j
 {
 	struct AssetManager *asset_manager = AssetManager_new();
 	const struct ResTable_config config = {
-		.density = /*ACONFIGURATION_DENSITY_MEDIUM*/ 160,
+		.density = atl_window_get()->density_dpi,
 		.sdkVersion = sdk_version,
 	};
 	AssetManager_setConfiguration(asset_manager, &config);

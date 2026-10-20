@@ -19,8 +19,12 @@ struct atl_embedded_config {
 	const char *apk;
 	const char *activity; // NULL: the manifest's main activity
 	const char *sdk_int;  // NULL: the app's minSdk
-	int window_width;     // 0: ATL's default size
+	int window_width;     // px; 0: ATL's default size
 	int window_height;
+	int density_dpi;      // 0: 160
+	int night;            // Configuration.UI_MODE_NIGHT_YES or _NO; 0: unknown
+	void *surface;        // the platform view the app's views go in (ui=uikit: a UIView, which
+	                      // may adopt ATLSurface from surface.h); NULL: none
 	const struct atl_embedded_listener *listener; // NULL: none; must outlive atl_embedded_main
 };
 

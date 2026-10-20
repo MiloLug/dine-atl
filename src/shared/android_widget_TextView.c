@@ -41,7 +41,12 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextColor(JNIEnv 
 	ui_text_set_color(text_view(env, this), color);
 }
 
-JNIEXPORT void JNICALL Java_android_widget_TextView_setTextSize(JNIEnv *env, jobject this, jfloat size)
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextSize(JNIEnv *env, jobject this, jfloat size)
 {
 	ui_text_set_size(text_view(env, this), size);
+}
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle(JNIEnv *env, jobject this, jint style)
+{
+	ui_text_set_style(text_view(env, this), style);
 }

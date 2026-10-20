@@ -17,6 +17,7 @@ public interface WindowManager {
 		public static final int FLAG_KEEP_SCREEN_ON = 0;
 		public static final int FLAG_DIM_BEHIND = 2;
 		public static final int FLAG_NOT_FOCUSABLE = 8;
+		public static final int FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS = 0x80000000;
 
 		public float screenBrightness = -1;
 		public int softInputMode;
@@ -34,6 +35,7 @@ public interface WindowManager {
 
 		public LayoutParams(int w, int h, int type, int flags, int format) {
 			super(w, h);
+			this.flags = flags;
 		}
 
 		public LayoutParams(int type) {

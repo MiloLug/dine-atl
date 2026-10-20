@@ -84,3 +84,14 @@ void ui_text_set_size(struct ui_view *view, float size)
 
 	pango_attr_list_unref(attrs);
 }
+
+void ui_text_set_style(struct ui_view *view, int style)
+{
+	GtkWidget *widget = GTK_WIDGET(view);
+	gtk_widget_remove_css_class(widget, "ATL-font-bold");
+	gtk_widget_remove_css_class(widget, "ATL-font-italic");
+	if (style & UI_TEXT_BOLD)
+		gtk_widget_add_css_class(widget, "ATL-font-bold");
+	if (style & UI_TEXT_ITALIC)
+		gtk_widget_add_css_class(widget, "ATL-font-italic");
+}

@@ -13,7 +13,7 @@
 
 /* Plain C entry for builds without a desktop toolkit: one app, one main activity. */
 
-#define USAGE "usage: %s [-c] [-l ACTIVITY] [-X JVM_OPTION]... APK...\n"
+#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY] [-X JVM_OPTION]... APK...\n"
 
 // -c: system navigation from stdin, one command per line; the loop slot has no fd watch
 static void *read_commands(void *data)
@@ -41,13 +41,21 @@ int main(int argc, char **argv)
 
 	const char *activity = NULL;
 	bool commands = false;
+	struct atl_window_config window = {ATL_WINDOW_WIDTH_DEFAULT, ATL_WINDOW_HEIGHT_DEFAULT, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN};
 	char **jvm_options = calloc(argc, sizeof(*jvm_options));
 	int n_jvm_options = 0;
 	int opt;
-	while ((opt = getopt(argc, argv, "cl:X:")) != -1) {
+	while ((opt = getopt(argc, argv, "cd:l:X:")) != -1) {
 		switch (opt) {
 			case 'c':
 				commands = true;
+				break;
+			case 'd':
+				window.density_dpi = atoi(optarg);
+				if (window.density_dpi <= 0) {
+					fprintf(stderr, USAGE, argv[0]);
+					return 1;
+				}
 				break;
 			case 'l':
 				activity = optarg;
@@ -67,9 +75,9 @@ int main(int argc, char **argv)
 
 	struct atl_paths paths;
 	atl_prepare(&paths, &argv[optind], argc - optind, false);
-	JNIEnv *env = atl_vm_start(&paths, NULL, jvm_options, ATL_WINDOW_WIDTH_DEFAULT, ATL_WINDOW_HEIGHT_DEFAULT);
+	JNIEnv *env = atl_vm_start(&paths, NULL, jvm_options, &window);
 
-	atl_app_create(env, ui_window_new());
+	atl_app_create(env, ui_window_new(NULL));
 	if (commands) {
 		pthread_t reader;
 		pthread_create(&reader, NULL, read_commands, NULL);

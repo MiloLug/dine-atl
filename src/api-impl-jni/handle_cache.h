@@ -103,6 +103,10 @@ struct handle_cache {
 	} dialog;
 	struct {
 		jclass class;
+		jmethodID updateFrame;
+	} window;
+	struct {
+		jclass class;
 		jmethodID extractFromAPK;
 	} asset_manager;
 	struct {

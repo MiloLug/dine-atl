@@ -12,8 +12,13 @@ struct ui_display;
 struct atl_ref *atl_ref_dup(struct atl_ref *ref);
 void atl_ref_free(struct atl_ref *ref);
 
-/* The app window's size the host asked for, px. */
-void atl_window_size(int *width, int *height);
+/* The app window the host asked for. */
+struct atl_window_config {
+	int width, height; // px
+	int density_dpi;
+	int night; // Configuration.UI_MODE_NIGHT_* value, or UI_DISPLAY_UNKNOWN
+};
+const struct atl_window_config *atl_window_get(void);
 
 void atl_upcall_looper_loop(void);
 /* Applies the known fields to Context.sys_config. */

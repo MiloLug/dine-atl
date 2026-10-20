@@ -12,6 +12,7 @@
 #include "../api-impl-jni/content/android_content_Context.h"
 #include "../shared/host_linux.h"
 #include "../shared/startup.h"
+#include "../slots/ui.h"
 
 #include "actions.h"
 #include "back_button.h"
@@ -246,7 +247,8 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);
 
-	JNIEnv *env = atl_vm_start(&paths, d->sdk_int, d->extra_jvm_options, d->window_width, d->window_height);
+	JNIEnv *env = atl_vm_start(&paths, d->sdk_int, d->extra_jvm_options,
+	                           &(struct atl_window_config){d->window_width, d->window_height, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN});
 
 	/* -- misc -- */
 

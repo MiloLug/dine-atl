@@ -2,8 +2,10 @@
 # Drives the nav APK (nav/, built by the superproject's tests/harness/apk.py) through the cli host's
 # -c commands in the headless build: Back finishes B, Back on the task root A moves the task to the
 # back, front and home move it again. A's list, shown while the task is in the back, appears only on
-# front and closes and comes back with the task. Each command's lifecycle, dialog and host lines must
-# come in order; a command that must do nothing is checked by the next command's lines coming first.
+# front and closes and comes back with the task. The window's frame follows the shown activity: A's
+# theme color; none for B, which clears the theme's flag, until B draws its own. Each command's
+# lifecycle, dialog, host and window lines must come in order; a command that must do nothing is
+# checked by the next command's lines coming first.
 # Usage: run-nav.sh <headless build dir> <nav.apk>
 set -euo pipefail
 
@@ -23,9 +25,9 @@ pid=$ATL_PID
 
 fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
 
-# the next "nav: ", "host: " or "dialog: " line into REPLY, without the log prefix
+# the next "nav: ", "host: ", "dialog: " or "window: " line into REPLY, without the log prefix
 next() {
-  local line re='(nav: .*|^host: .*|^dialog: .*)'
+  local line re='(nav: .*|^host: .*|^dialog: .*|^window: .*)'
   while IFS= read -r -t 30 line <&"${ATL[0]}"; do
     printf '%s\n' "$line" >>"$work/log"
     if [[ $line =~ $re ]]; then
@@ -34,12 +36,6 @@ next() {
     fi
   done
   fail "ATL went quiet or exited"
-}
-
-until_line() {
-  while next; do
-    [[ $REPLY == "$1" ]] && return 0
-  done
 }
 
 # the next lines are exactly the arguments
@@ -55,9 +51,11 @@ send() {
   printf '%s\n' "$1" >&"${ATL[1]}"
 }
 
-until_line "nav: B onResume"
+a_frame='window: frame #ff1a1b20' # Theme.DeviceDefault's colorPrimaryDark
+expect "nav: A onCreate" "nav: A onStart" "$a_frame" "nav: A onResume" "nav: A onPause" "nav: A onStop" \
+  "nav: B onCreate" "nav: B onStart" "window: frame none" "nav: B onResume" "window: frame #ff2196f3 light"
 send back
-expect "nav: B onPause" "nav: B onStop" "nav: A onRestart" "nav: A onStart" "nav: A onResume" "nav: B onDestroy"
+expect "nav: B onPause" "nav: B onStop" "nav: A onRestart" "nav: A onStart" "$a_frame" "nav: A onResume" "nav: B onDestroy"
 send back # the task root: the task moves to the back
 expect "nav: A onPause" "nav: A onStop" "host: task back app"
 send back # nothing while in the back

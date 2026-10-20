@@ -11,7 +11,7 @@
 
 /* Alerts as UIAlertControllers over the topmost presented view controller; items make an action
  * sheet. The ui calls come on the Android main thread and hop to UIKit's, taps hop back through
- * loop_main_post. Views have no UIKit counterpart yet: a Dialog with a content view shows nothing. */
+ * loop_main_post. A Dialog with a content view shows nothing yet. */
 
 struct ui_dialog_state {
 	struct atl_ref *ref;
@@ -113,34 +113,36 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 		return;
 	}
 	struct ui_dialog_state *state = dialog->dialog;
-	NSString *title = string(alert->title);
-	NSString *message = string(alert->message);
-	NSMutableArray<NSString *> *items = [NSMutableArray array];
-	for (int i = 0; i < alert->n_items; i++)
-		[items addObject:string(alert->items[i]) ?: @""];
-	NSMutableArray *buttons = [NSMutableArray array];
-	for (int i = 0; i < 3; i++)
-		[buttons addObject:string(alert->buttons[i]) ?: NSNull.null];
-	// a list or an alert without buttons is otherwise left only by Android's back
-	bool add_cancel = alert->cancelable && (items.count || (!alert->buttons[0] && !alert->buttons[1] && !alert->buttons[2]));
+	@autoreleasepool {
+		NSString *title = string(alert->title);
+		NSString *message = string(alert->message);
+		NSMutableArray<NSString *> *items = [NSMutableArray array];
+		for (int i = 0; i < alert->n_items; i++)
+			[items addObject:string(alert->items[i]) ?: @""];
+		NSMutableArray *buttons = [NSMutableArray array];
+		for (int i = 0; i < 3; i++)
+			[buttons addObject:string(alert->buttons[i]) ?: NSNull.null];
+		// a list or an alert without buttons is otherwise left only by Android's back
+		bool add_cancel = alert->cancelable && (items.count || (!alert->buttons[0] && !alert->buttons[1] && !alert->buttons[2]));
 
-	dispatch_async(dispatch_get_main_queue(), ^{
-		UIAlertControllerStyle style = items.count ? UIAlertControllerStyleActionSheet : UIAlertControllerStyleAlert;
-		UIAlertController *controller = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:style];
-		for (NSUInteger i = 0; i < items.count; i++)
-			[controller addAction:action(state, items[i], UIAlertActionStyleDefault, (int)i)];
-		for (int i = 2; i >= 0; i--) { // Android's order: neutral, negative, positive
-			if (buttons[i] != NSNull.null)
-				[controller addAction:action(state, buttons[i], UIAlertActionStyleDefault, -1 - i)];
-		}
-		if (add_cancel)
-			[controller addAction:action(state, @"Cancel", UIAlertActionStyleCancel, UI_DIALOG_CANCEL)];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UIAlertControllerStyle style = items.count ? UIAlertControllerStyleActionSheet : UIAlertControllerStyleAlert;
+			UIAlertController *controller = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:style];
+			for (NSUInteger i = 0; i < items.count; i++)
+				[controller addAction:action(state, items[i], UIAlertActionStyleDefault, (int)i)];
+			for (int i = 2; i >= 0; i--) { // Android's order: neutral, negative, positive
+				if (buttons[i] != NSNull.null)
+					[controller addAction:action(state, buttons[i], UIAlertActionStyleDefault, -1 - i)];
+			}
+			if (add_cancel)
+				[controller addAction:action(state, @"Cancel", UIAlertActionStyleCancel, UI_DIALOG_CANCEL)];
 
-		if (state->controller)
-			CFBridgingRelease(state->controller);
-		state->controller = (void *)CFBridgingRetain(controller);
-		present(state, controller);
-	});
+			if (state->controller)
+				CFBridgingRelease(state->controller);
+			state->controller = (void *)CFBridgingRetain(controller);
+			present(state, controller);
+		});
+	}
 }
 
 void ui_dialog_close(struct ui_window *dialog)

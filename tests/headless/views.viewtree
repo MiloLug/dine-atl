@@ -1,0 +1,6 @@
+viewtree: android.widget.FrameLayout 0,0 960x540
+viewtree:   android.widget.LinearLayout 0,0 960x540
+viewtree:     android.widget.TextView 0,0 960x17 "b"
+viewtree:     android.widget.TextView 0,17 960x17 "a"
+viewtree:     android.widget.TextView 0,34 960x17 "c"
+viewtree: end

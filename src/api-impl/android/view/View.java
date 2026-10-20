@@ -613,6 +613,8 @@ public class View implements Drawable.Callback {
 
 	public static final int SYSTEM_UI_FLAG_LAYOUT_STABLE = 256; // 0x100
 
+	public static final int SYSTEM_UI_FLAG_LIGHT_STATUS_BAR = 8192; // 0x2000
+
 	public static final int SYSTEM_UI_FLAG_LOW_PROFILE = 1; // 0x1
 
 	public static final int SYSTEM_UI_FLAG_VISIBLE = 0; // 0x0
@@ -923,6 +925,8 @@ public class View implements Drawable.Callback {
 
 	public int id = NO_ID;
 	private int system_ui_visibility = 0;
+	Window decor_window;
+	private static boolean fullscreen_applied; // gtk has one window
 	public ViewParent parent;
 	public AttributeSet attrs;
 	protected ViewGroup.LayoutParams layout_params;
@@ -1314,13 +1318,23 @@ public class View implements Drawable.Callback {
 	private native void nativeSetFullscreen(long widget, boolean fullscreen);
 
 	public void setSystemUiVisibility(int visibility) {
+		if (decor_window != null)
+			decor_window.setLightStatusBar((visibility & SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0, false);
 		/* LAYOUT_FULLSCREEN mode would make the app window continue behind semi-transparent status bar.
-		   Such a mode doesn't exist on desktop Linux, so we just use normal fullscreen for both modes. */
-		nativeSetFullscreen(widget, (visibility & (View.SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)) != 0);
+		   Such a mode doesn't exist on desktop Linux, so we just use normal fullscreen for both modes.
+		   Only on a change: the native is gtk-only. */
+		boolean fullscreen = (visibility & (View.SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)) != 0;
+		if (fullscreen != fullscreen_applied) {
+			nativeSetFullscreen(widget, fullscreen);
+			fullscreen_applied = fullscreen;
+		}
 		system_ui_visibility = visibility;
 	}
+	// the decor's light status bar flag is its Window's
 	public int getSystemUiVisibility() {
-		return system_ui_visibility;
+		if (decor_window == null)
+			return system_ui_visibility;
+		return (system_ui_visibility & ~SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) | (decor_window.isLightStatusBar() ? SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : 0);
 	};
 
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {

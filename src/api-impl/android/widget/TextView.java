@@ -70,7 +70,7 @@ public class TextView extends View {
 					setTextColor(aa.getColorStateList(com.android.internal.R.styleable.TextAppearance_textColor));
 				}
 				if (aa.hasValue(com.android.internal.R.styleable.TextAppearance_textSize)) {
-					setTextSize(aa.getDimensionPixelSize(com.android.internal.R.styleable.TextAppearance_textSize, 10));
+					setRawTextSize(aa.getDimensionPixelSize(com.android.internal.R.styleable.TextAppearance_textSize, 10));
 				}
 				aa.recycle();
 			}
@@ -78,7 +78,7 @@ public class TextView extends View {
 				setTextColor(a.getColorStateList(com.android.internal.R.styleable.TextView_textColor));
 			}
 			if (a.hasValue(com.android.internal.R.styleable.TextView_textSize)) {
-				setTextSize(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_textSize, 10));
+				setRawTextSize(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_textSize, 10));
 			}
 
 			if (a.hasValue(com.android.internal.R.styleable.TextView_textStyle)) {
@@ -137,11 +137,16 @@ public class TextView extends View {
 	public native final void native_setText(String text);
 
 	public void setTextSize(int unit, float size) {
-		if (unit != TypedValue.COMPLEX_UNIT_SP)
-			System.out.println("setTextSize called with non-SP unit (" + unit + "), we don't currently handle that");
-		setTextSize(size);
+		setRawTextSize(TypedValue.applyDimension(unit, size, getResources().getDisplayMetrics()));
 	}
-	public native void setTextSize(float size);
+	public void setTextSize(float size) {
+		setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+	}
+	// px; package-private so that subclasses whose widget isn't a text node override it
+	void setRawTextSize(float size) {
+		native_setTextSize(size);
+	}
+	private native final void native_setTextSize(float size);
 
 	public native final void native_setTextColor(int color);
 	public void setTextColor(int color) {
@@ -154,24 +159,9 @@ public class TextView extends View {
 		}
 	}
 	public void setTypeface(Typeface tf, int style) {
-		String[] classesToRemove = {"ATL-font-bold", "ATL-font-italic"};
-		native_removeClasses(widget, classesToRemove);
-
-		switch (style) {
-			case Typeface.BOLD:
-				native_addClass(widget, "ATL-font-bold");
-				break;
-			case Typeface.ITALIC:
-				native_addClass(widget, "ATL-font-italic");
-				break;
-			case Typeface.BOLD_ITALIC:
-				native_addClass(widget, "ATL-font-bold");
-				native_addClass(widget, "ATL-font-italic");
-				break;
-			default:
-				break;
-		}
+		native_setTextStyle(style);
 	}
+	private native final void native_setTextStyle(int style);
 	public void setTypeface(Typeface tf) {}
 	public void setLineSpacing(float add, float mult) {}
 	public final void setLinksClickable(boolean whether) {}

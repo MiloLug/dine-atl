@@ -61,7 +61,7 @@ public abstract class CompoundButton extends Button implements Checkable {
 	@Override
 	public void setTextColor(int color) {}
 	@Override
-	public void setTextSize(float size) {}
+	void setRawTextSize(float size) {}
 	@Override
 	public CharSequence getText() {
 		return "FIXME CompoundButton.getText()";

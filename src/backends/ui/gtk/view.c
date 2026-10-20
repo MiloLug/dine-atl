@@ -71,6 +71,19 @@ void ui_view_add_child(struct ui_view *parent_view, struct ui_view *child, int i
 	gtk_widget_insert_before(gtk_widget_get_parent(GTK_WIDGET(child)), parent, iter);
 }
 
+void ui_view_remove_child(struct ui_view *parent, struct ui_view *child)
+{
+	GtkWidget *wrapper = gtk_widget_get_parent(GTK_WIDGET(child));
+	if (gtk_widget_get_parent(wrapper) == GTK_WIDGET(parent))
+		gtk_widget_unparent(wrapper);
+}
+
+// drops the ref ui_view_new took for Java; a parent holds its own
+void ui_view_free(struct ui_view *view)
+{
+	g_object_unref(gtk_widget_get_parent(GTK_WIDGET(view)));
+}
+
 void ui_view_set_layout_params(struct ui_view *view, const struct ui_layout_params *params)
 {
 	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(view));

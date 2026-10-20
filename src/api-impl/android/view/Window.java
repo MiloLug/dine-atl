@@ -35,6 +35,17 @@ public class Window {
 
 	public long native_window;
 	private ViewGroup decorView;
+	private final InsetsController insets_controller = new InsetsController(this);
+
+	// the status bar as PhoneWindow.generateLayout sets it up: the theme's values, read once by
+	// getDecorView, setContentView or the show, unless the app set them first
+	private boolean bars_styled;
+	private int forced_flags;
+	private int status_bar_color = 0xFF000000;
+	private boolean status_bar_color_forced;
+	private boolean light_status_bar;
+	private boolean light_status_bar_forced;
+	private boolean light_by_controller;
 
 	private Window.Callback callback;
 	private Context context;
@@ -44,6 +55,7 @@ public class Window {
 		this.context = context;
 		decorView = new FrameLayout(context);
 		decorView.setId(android.R.id.content);
+		decorView.decor_window = this;
 	}
 
 	public void set_native_window(long native_window) {
@@ -51,9 +63,19 @@ public class Window {
 		set_jobject(native_window, this);
 	}
 
-	public void addFlags(int flags) {}
-	public void setFlags(int flags, int mask) {}
-	public void clearFlags(int flags) {}
+	public void addFlags(int flags) {
+		setFlags(flags, flags);
+	}
+
+	public void setFlags(int flags, int mask) {
+		forced_flags |= mask;
+		params.flags = (params.flags & ~mask) | (flags & mask);
+		frameChanged();
+	}
+
+	public void clearFlags(int flags) {
+		setFlags(0, flags);
+	}
 
 	public final Callback getCallback() {
 		return this.callback;
@@ -69,11 +91,13 @@ public class Window {
 				setBackgroundDrawable(ta.getDrawable(0));
 			ta.recycle();
 		}
+		styleBars();
 		decorView.removeAllViews();
 		decorView.addView(view);
 	}
 
 	public View getDecorView() {
+		styleBars();
 		return decorView;
 	}
 
@@ -108,15 +132,20 @@ public class Window {
 	}
 
 	public void setAttributes(WindowManager.LayoutParams params) {
+		this.params = params;
+		frameChanged();
 		if (params.screenBrightness != -1)
 			set_screen_brightness(params.screenBrightness);
-		this.params = params;
 		setLayout(params.width, params.height);
 	}
 
 	public void takeSurface(SurfaceHolder.Callback2 callback) {}
 
-	public void setStatusBarColor(int color) {}
+	public void setStatusBarColor(int color) {
+		status_bar_color_forced = true;
+		status_bar_color = color;
+		frameChanged();
+	}
 
 	public void setNavigationBarColor(int color) {}
 
@@ -142,7 +171,51 @@ public class Window {
 		setBackgroundDrawable(context.getDrawable(resId));
 	}
 
-	public int getStatusBarColor() { return 0xFFFF0000; }
+	public int getStatusBarColor() {
+		return status_bar_color;
+	}
+
+	// by_controller: setSystemBarsAppearance, which takes over from the decor's system UI flags
+	void setLightStatusBar(boolean light, boolean by_controller) {
+		if (light_by_controller && !by_controller)
+			return;
+		light_by_controller |= by_controller;
+		light_status_bar_forced = true;
+		light_status_bar = light;
+		frameChanged();
+	}
+
+	boolean isLightStatusBar() {
+		return light_status_bar;
+	}
+
+	private void styleBars() {
+		if (bars_styled)
+			return;
+		bars_styled = true;
+		TypedArray a = context.obtainStyledAttributes(com.android.internal.R.styleable.Window);
+		if (!status_bar_color_forced)
+			status_bar_color = a.getColor(com.android.internal.R.styleable.Window_statusBarColor, 0xFF000000);
+		if (!a.getBoolean(com.android.internal.R.styleable.Window_windowIsFloating, false)
+		    && context.get_atl_loaded_app().effective_sdk_compat >= 21
+		    && a.getBoolean(com.android.internal.R.styleable.Window_windowDrawsSystemBarBackgrounds, false))
+			params.flags |= WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS & ~forced_flags;
+		if (!light_status_bar_forced)
+			light_status_bar = a.getBoolean(com.android.internal.R.styleable.Window_windowLightStatusBar, false);
+		a.recycle();
+	}
+
+	// activity.c calls it by name (handle_cache) when the activity is shown
+	private void updateFrame() {
+		styleBars();
+		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar);
+	}
+
+	// before styleBars the activity's show publishes the frame
+	private void frameChanged() {
+		if (bars_styled)
+			updateFrame();
+	}
 
 	public Context getContext() {
 		return context;
@@ -183,7 +256,7 @@ public class Window {
 	public void setDecorFitsSystemWindows(boolean fits) {}
 
 	public WindowInsetsController getInsetsController() {
-		return new InsetsController();
+		return insets_controller;
 	}
 
 	public void setStatusBarContrastEnforced(boolean enforced) {}
@@ -205,5 +278,6 @@ public class Window {
 	public native void set_layout(long native_window, int width, int height);
 	private static native void set_jobject(long ptr, Window obj);
 	private native void clear_background(long native_window);
+	private native void set_frame(boolean has_color, int color, boolean light);
 	private native void set_screen_brightness(float brightness);
 }

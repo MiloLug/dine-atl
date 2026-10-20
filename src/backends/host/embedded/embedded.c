@@ -62,12 +62,16 @@ static int exited(int status)
 int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 {
 	listener = config->listener;
-	int width = config->window_width ?: ATL_WINDOW_WIDTH_DEFAULT;
-	int height = config->window_height ?: ATL_WINDOW_HEIGHT_DEFAULT;
-	if (atl_vm_init(env, width, height) < 0)
+	struct atl_window_config window = {
+		.width = config->window_width ?: ATL_WINDOW_WIDTH_DEFAULT,
+		.height = config->window_height ?: ATL_WINDOW_HEIGHT_DEFAULT,
+		.density_dpi = config->density_dpi ?: ATL_DENSITY_DPI_DEFAULT,
+		.night = config->night ?: UI_DISPLAY_UNKNOWN,
+	};
+	if (atl_vm_init(env, &window) < 0)
 		return exited(-1);
 
-	atl_app_create(env, ui_window_new());
+	atl_app_create(env, ui_window_new(config->surface));
 	activity_start(env, atl_activity_create_main(env, config->activity, NULL));
 	loop_main_run();
 	return exited(0);

@@ -39,8 +39,7 @@ char *apk_path;
 char *app_data_dir;
 
 struct ui_window *atl_window;
-int atl_window_width;
-int atl_window_height;
+struct atl_window_config atl_window_config;
 
 char *get_app_data_dir(void)
 {
@@ -262,22 +261,23 @@ static JNIEnv *create_vm(const struct atl_paths *paths, const char *sdk_int, cha
 	return env;
 }
 
-JNIEnv *atl_vm_start(const struct atl_paths *paths, const char *sdk_int, char *const *extra_jvm_options, int window_width, int window_height)
+JNIEnv *atl_vm_start(const struct atl_paths *paths, const char *sdk_int, char *const *extra_jvm_options, const struct atl_window_config *window)
 {
 	JNIEnv *env = create_vm(paths, sdk_int, extra_jvm_options);
-	if (atl_vm_init(env, window_width, window_height) < 0)
+	if (atl_vm_init(env, window) < 0)
 		exit(1);
 	return env;
 }
 
-int atl_vm_init(JNIEnv *env, int window_width, int window_height)
+int atl_vm_init(JNIEnv *env, const struct atl_window_config *window)
 {
-	atl_window_width = window_width;
-	atl_window_height = window_height;
+	atl_window_config = *window;
 
+	// DisplayMetrics reads density_dpi once, in <clinit>: set before set_up_handle_cache initializes classes
 	jclass display_class = (*env)->FindClass(env, "android/view/Display");
-	_SET_STATIC_INT_FIELD(display_class, "window_width", window_width);
-	_SET_STATIC_INT_FIELD(display_class, "window_height", window_height);
+	_SET_STATIC_INT_FIELD(display_class, "window_width", window->width);
+	_SET_STATIC_INT_FIELD(display_class, "window_height", window->height);
+	_SET_STATIC_INT_FIELD(display_class, "density_dpi", window->density_dpi);
 
 	/* -- register our JNI library under the appropriate classloader -- */
 

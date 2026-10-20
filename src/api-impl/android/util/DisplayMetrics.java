@@ -278,10 +278,6 @@ public class DisplayMetrics {
 	}
 
 	private static int getDeviceDensity() {
-		// qemu.sf.lcd_density can be used to override ro.sf.lcd_density
-		// when running in the emulator, allowing for dynamic configurations.
-		// The reason for this is that ro.sf.lcd_density is write-once and is
-		// set by the init process when it parses build.prop before anything else.
-		return DENSITY_DEFAULT;
+		return Display.density_dpi;
 	}
 }

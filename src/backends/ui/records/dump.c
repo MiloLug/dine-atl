@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "src/slots/ui.h"
 
@@ -21,4 +22,15 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 		dump_view(out, window->shown, 0);
 	fprintf(out, "viewtree: end\n");
 	fflush(out);
+}
+
+void records_test_view_freed(const struct ui_view *view)
+{
+	if (!getenv("ATL_DUMP_VIEWTREE"))
+		return;
+	printf("viewfreed: %s", view->class_name);
+	if (view->kind == NODE_TEXT)
+		printf(" \"%s\"", view->text);
+	putchar('\n');
+	fflush(stdout);
 }
