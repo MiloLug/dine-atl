@@ -79,4 +79,11 @@ void ui_dialog_close(struct ui_window *dialog)
 	fflush(stdout);
 }
 
+void ui_dialog_free(struct ui_window *dialog)
+{
+	atl_ref_free(dialog->dialog->ref);
+	free(dialog->dialog);
+	free(dialog);
+}
+
 void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel) {}

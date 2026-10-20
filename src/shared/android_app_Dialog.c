@@ -5,7 +5,10 @@
 #include "src/api-impl-jni/generated_headers/android_app_AlertDialog.h"
 #include "src/api-impl-jni/generated_headers/android_app_Dialog.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/loop.h"
 #include "src/slots/ui.h"
+
+#include "test_hooks.h"
 
 _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RESULT_CANCEL is the slot's cancel");
 
@@ -29,6 +32,18 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeShow(JNIEnv *env, jobject t
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeClose(JNIEnv *env, jobject this, jlong ptr)
 {
 	ui_dialog_close(_PTR(ptr));
+}
+
+static void dialog_free(void *dialog)
+{
+	atl_test_dialog_freed();
+	ui_dialog_free(dialog);
+}
+
+// finalize calls it on the FinalizerDaemon thread; after loop_main_quit the dialog stays allocated
+JNIEXPORT void JNICALL Java_android_app_Dialog_nativeDestroy(JNIEnv *env, jobject this, jlong ptr)
+{
+	loop_main_post(dialog_free, _PTR(ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside(JNIEnv *env, jobject this, jlong ptr, jboolean cancel)

@@ -106,12 +106,3 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1draw(JNIE
 		gdk_paintable_snapshot(paintable, snapshot, width, height);
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1ref(JNIEnv *env, jobject this, jlong paintable_ptr)
-{
-	g_object_ref(G_OBJECT(_PTR(paintable_ptr)));
-}
-
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref(JNIEnv *env, jobject this, jlong paintable_ptr)
-{
-	g_object_unref(G_OBJECT(_PTR(paintable_ptr)));
-}

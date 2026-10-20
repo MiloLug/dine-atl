@@ -32,11 +32,17 @@ static void backlog_push(jobject activity)
 	backlog[backlog_len++] = activity;
 }
 
+/* Posted callbacks and host startup run in the Android thread's base JNI frame, which never pops: a
+ * local ref left there keeps its object forever. Posted paths into Java push a local frame. */
+
 static struct ui_view *get_decor_view(JNIEnv *env, jobject activity)
 {
 	jobject window_jobj = _GET_OBJ_FIELD(activity, "window", "Landroid/view/Window;");
 	jobject decor_view_jobj = _GET_OBJ_FIELD(window_jobj, "decorView", "Landroid/view/ViewGroup;");
-	return _PTR(_GET_LONG_FIELD(decor_view_jobj, "widget"));
+	struct ui_view *decor = _PTR(_GET_LONG_FIELD(decor_view_jobj, "widget"));
+	(*env)->DeleteLocalRef(env, decor_view_jobj);
+	(*env)->DeleteLocalRef(env, window_jobj);
+	return decor;
 }
 
 static void activity_close(JNIEnv *env, jobject activity)
@@ -125,6 +131,7 @@ static bool back_has_target(JNIEnv *env)
 	jmethodID current_activity_on_back_pressed_method_id = (*env)->GetMethodID(env, current_activity_class, "onBackPressed", "()V");
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, current_activity_class);
 
 	return backlog_len > 1 || handle_cache.activity.onBackPressed != current_activity_on_back_pressed_method_id;
 }
@@ -184,11 +191,13 @@ static void task_move(bool front, bool by_host)
 		return;
 	task_front = front;
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 16);
 	// before the lifecycle: shows from onStop wait for the front, shows from onResume go on top
 	(*env)->CallStaticVoidMethod(env, handle_cache.dialog.class, handle_cache.dialog.atlTaskMoved, front);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
 	activity_update_current(env);
+	(*env)->PopLocalFrame(env, NULL);
 	host_task_moved(front, by_host);
 }
 
@@ -239,6 +248,7 @@ static void close_activities(JNIEnv *env, jobject *activities, size_t n)
 void activity_close_all(void)
 {
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 16);
 	jobject *activities = backlog;
 	size_t n = backlog_len;
 	backlog = NULL;
@@ -246,6 +256,7 @@ void activity_close_all(void)
 	activity_update_current(env);
 	close_activities(env, activities, n);
 	free(activities);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 static void close_window_if_empty(void *window)

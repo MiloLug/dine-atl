@@ -43,6 +43,14 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeClose
 
 /*
  * Class:     android_app_Dialog
+ * Method:    nativeDestroy
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_app_Dialog_nativeDestroy
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     android_app_Dialog
  * Method:    nativeSetCanceledOnTouchOutside
  * Signature: (JZ)V
  */

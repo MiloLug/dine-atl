@@ -54,6 +54,7 @@ void records_root_added(struct ui_window *window, struct ui_view *root);
 void records_root_shown(struct ui_window *window, struct ui_view *root);
 void records_root_removed(struct ui_window *window, struct ui_view *root);
 void records_frame_changed(struct ui_window *window); // window->frame
+void records_window_closed(struct ui_window *window); // the last hook for this window
 void records_padding_changed(struct ui_view *view);
 void records_background_changed(struct ui_view *view, uint32_t argb);
 // NODE_TEXT only

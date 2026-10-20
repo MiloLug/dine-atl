@@ -14,9 +14,15 @@ struct ui_window;
 bool atl_dialog_scripted(const struct ui_alert *alert, int *which);
 /* The app's window got its first layout: with ATL_DUMP_VIEWTREE set, prints its view tree. */
 void atl_test_window_ready(struct ui_window *window);
+/* A Dialog's window is being freed: with ATL_DUMP_VIEWTREE set, prints "dialogfreed:". */
+void atl_test_dialog_freed(void);
+/* gfx=record freed a Drawable's record: with ATL_DUMP_VIEWTREE set, prints "drawablefreed:". */
+void atl_test_drawable_freed(void);
 #else
 static inline bool atl_dialog_scripted(const struct ui_alert *alert, int *which) { return false; }
 static inline void atl_test_window_ready(struct ui_window *window) {}
+static inline void atl_test_dialog_freed(void) {}
+static inline void atl_test_drawable_freed(void) {}
 #endif
 
 #endif

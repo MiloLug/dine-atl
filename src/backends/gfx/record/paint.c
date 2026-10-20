@@ -1,5 +1,8 @@
+#include <stdatomic.h>
 #include <stdlib.h>
 
+#include "src/shared/test_hooks.h"
+#include "src/shared/upcall.h"
 #include "src/slots/gfx.h"
 
 /* Plain records; nothing on the headless paths draws yet. */
@@ -10,6 +13,7 @@ struct gfx_paint {
 
 struct gfx_drawable {
 	struct atl_ref *drawable_ref;
+	atomic_int refs;
 };
 
 struct gfx_paint *gfx_paint_new(void)
@@ -28,5 +32,20 @@ struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)
 {
 	struct gfx_drawable *drawable = calloc(1, sizeof(*drawable));
 	drawable->drawable_ref = drawable_ref;
+	drawable->refs = 1;
 	return drawable;
+}
+
+void gfx_drawable_ref(struct gfx_drawable *drawable)
+{
+	atomic_fetch_add(&drawable->refs, 1);
+}
+
+void gfx_drawable_unref(struct gfx_drawable *drawable)
+{
+	if (atomic_fetch_sub(&drawable->refs, 1) != 1)
+		return;
+	atl_test_drawable_freed();
+	atl_ref_free(drawable->drawable_ref);
+	free(drawable);
 }

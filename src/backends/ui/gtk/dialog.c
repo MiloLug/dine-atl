@@ -141,6 +141,17 @@ void ui_dialog_close(struct ui_window *dialog)
 	gtk_widget_set_visible(GTK_WIDGET(dialog), FALSE);
 }
 
+void ui_dialog_free(struct ui_window *dialog)
+{
+	struct dialog_state *state = get_state(dialog);
+	remove_touch_outside(state);
+	gtk_window_destroy(GTK_WINDOW(dialog)); // before state goes: its signal handlers get it
+
+	g_object_unref(state->decor);
+	atl_ref_free(state->ref);
+	g_free(state);
+}
+
 static gboolean on_touch_outside(GtkEventControllerLegacy *controller, GdkEvent *event, struct ui_window *dialog)
 {
 	GdkEventType event_type = gdk_event_get_event_type(event);

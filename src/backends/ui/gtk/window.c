@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 
 #include "src/main-executable/back_button.h"
+#include "src/shared/upcall.h"
 #include "src/slots/ui.h"
 
 #include "gtk_ui.h"
@@ -23,10 +24,15 @@ void ui_window_set_title(struct ui_window *window, const char *title)
 	gtk_window_set_title(GTK_WINDOW(window), title);
 }
 
+static void free_ref(gpointer ref)
+{
+	atl_ref_free(ref);
+}
+
 // read back by View.native_get_window
 void ui_window_set_java(struct ui_window *window, struct atl_ref *window_ref)
 {
-	g_object_set_data(G_OBJECT(window), "jobject", window_ref);
+	g_object_set_data_full(G_OBJECT(window), "jobject", window_ref, free_ref);
 }
 
 void ui_window_clear_background(struct ui_window *window)

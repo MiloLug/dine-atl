@@ -83,7 +83,9 @@ int main(int argc, char **argv)
 		pthread_create(&reader, NULL, read_commands, NULL);
 		pthread_detach(reader);
 	}
-	activity_start(env, atl_activity_create_main(env, activity, NULL));
+	jobject main_activity = atl_activity_create_main(env, activity, NULL);
+	activity_start(env, main_activity);
+	(*env)->DeleteLocalRef(env, main_activity); // this frame lasts the app's lifetime
 	loop_main_run();
 
 	atl_exit(env, 0);

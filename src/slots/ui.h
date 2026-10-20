@@ -86,6 +86,8 @@ struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *deco
 /* Shows the alert instead of the decor view when alert isn't NULL. */
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
 void ui_dialog_close(struct ui_window *dialog);
+/* Java dropped the Dialog; it was closed or never shown. */
+void ui_dialog_free(struct ui_window *dialog);
 void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel);
 
 /* A View drawn by Java, possibly with children. */

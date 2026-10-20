@@ -22,6 +22,7 @@ void records_background_changed(struct ui_view *view, uint32_t argb) {}
 void records_text_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
 void records_layout_done(struct ui_window *window) {}
+void records_window_closed(struct ui_window *window) {}
 
 void records_view_freed(struct ui_view *view)
 {

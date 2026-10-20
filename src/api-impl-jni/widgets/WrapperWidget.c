@@ -441,13 +441,17 @@ static void root_changed_cb(WrapperWidget *wrapper, GParamSpec *pspec, gpointer 
 {
 	GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(wrapper));
 	JNIEnv *env = get_jni_env();
+	jobject view = (*env)->NewLocalRef(env, wrapper->jobj);
+	if (!view) // collected: a dropped tree leaving its window, e.g. a freed Dialog's
+		return;
 	if (!root)
 		currently_unmapping = wrapper->child;
-	(*env)->CallVoidMethod(env, wrapper->jobj, root ? handle_cache.view.onAttachedToWindow : handle_cache.view.onDetachedFromWindow);
+	(*env)->CallVoidMethod(env, view, root ? handle_cache.view.onAttachedToWindow : handle_cache.view.onDetachedFromWindow);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
 	if (!root)
 		currently_unmapping = NULL;
+	(*env)->DeleteLocalRef(env, view);
 }
 
 void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, const struct ui_view_traits *traits)

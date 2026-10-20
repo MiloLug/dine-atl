@@ -72,7 +72,9 @@ int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 		return exited(-1);
 
 	atl_app_create(env, ui_window_new(config->surface));
-	activity_start(env, atl_activity_create_main(env, config->activity, NULL));
+	jobject activity = atl_activity_create_main(env, config->activity, NULL);
+	activity_start(env, activity);
+	(*env)->DeleteLocalRef(env, activity); // this frame lasts the app's lifetime
 	loop_main_run();
 	return exited(0);
 }

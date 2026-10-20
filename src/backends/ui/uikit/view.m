@@ -31,7 +31,7 @@
 @end
 
 static struct ui_window *app_window;
-static void *surface; // a retained UIView
+static void *surface; // a retained UIView; blocks capture it when queued, the window's close clears it
 
 static NSMutableArray<dispatch_block_t> *pending;
 static bool flush_posted;
@@ -158,10 +158,11 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 {
 	if (window != app_window || !surface)
 		return;
+	void *target = surface;
 	@autoreleasepool {
 		enqueue(^{
 			native(root).hidden = YES;
-			[(__bridge UIView *)surface addSubview:native(root)];
+			[(__bridge UIView *)target addSubview:native(root)];
 		});
 	}
 }
@@ -170,10 +171,11 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 {
 	if (window != app_window || !surface)
 		return;
+	void *target = surface;
 	@autoreleasepool {
 		enqueue(^{
 			UIView *shown = native(root);
-			UIView *surface_view = (__bridge UIView *)surface;
+			UIView *surface_view = (__bridge UIView *)target;
 			for (UIView *other in surface_view.subviews)
 				other.hidden = other != shown;
 			[surface_view bringSubviewToFront:shown];
@@ -197,12 +199,28 @@ void records_frame_changed(struct ui_window *window)
 	if (window != app_window || !surface)
 		return;
 	struct ui_frame frame = window->frame;
+	void *target = surface;
 	@autoreleasepool {
 		enqueue(^{
-			id surface_view = (__bridge id)surface;
+			id surface_view = (__bridge id)target;
 			if ([surface_view conformsToProtocol:@protocol(ATLSurface)])
 				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light];
 		});
+	}
+}
+
+// the loop quits after this, so no flush_post would run
+void records_window_closed(struct ui_window *window)
+{
+	if (window != app_window || !surface)
+		return;
+	void *closed = surface;
+	surface = NULL;
+	@autoreleasepool {
+		enqueue(^{
+			CFRelease(closed);
+		});
+		flush();
 	}
 }
 

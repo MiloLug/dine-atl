@@ -27,3 +27,14 @@ struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)
 {
 	return (struct gfx_drawable *)java_paintable_new((jweak)drawable_ref);
 }
+
+// any GdkPaintable: the gtk-only Drawable natives make the others
+void gfx_drawable_ref(struct gfx_drawable *drawable)
+{
+	g_object_ref(drawable);
+}
+
+void gfx_drawable_unref(struct gfx_drawable *drawable)
+{
+	g_object_unref(drawable);
+}

@@ -1,7 +1,12 @@
 package dev.dine.views;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,8 +15,8 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/* Drops views and has them collected twice: during onCreate, and after the first layout, for a view
- * that was laid out, with a layout pass after its free. Finishing stops the main loop. */
+/* Drops views, a dialog and a drawable and has them collected: during onCreate, and after the first
+ * layout for a view that was laid out, with a layout pass after its free. Finishing stops the loop. */
 public class MainActivity extends Activity {
 	private static final String TAG = "views";
 
@@ -36,6 +41,15 @@ public class MainActivity extends Activity {
 		content.addView(b, 0);
 		content.removeView(content.getChildAt(3)); // d
 		setContentView(content); // drops x and y's column
+		new AlertDialog.Builder(this).setMessage("never shown").create();
+		new Drawable() { // draws itself: the backend keeps a record for it
+			public void draw(Canvas canvas) {}
+			public void setAlpha(int alpha) {}
+			public void setColorFilter(ColorFilter filter) {}
+			public int getOpacity() {
+				return PixelFormat.TRANSLUCENT;
+			}
+		};
 		return content;
 	}
 

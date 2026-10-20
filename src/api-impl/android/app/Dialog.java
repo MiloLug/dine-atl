@@ -32,6 +32,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 	private native void nativeSetTitle(long ptr, String title);
 	private native void nativeShow(long ptr);
 	private native void nativeClose(long ptr);
+	private native void nativeDestroy(long ptr);
 	private native void nativeSetCanceledOnTouchOutside(long ptr, boolean cancel);
 	private static native boolean nativeTaskFront();
 
@@ -56,6 +57,16 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 	public Dialog(Context context) {
 		this(context, 0);
+	}
+
+	@Override
+	protected void finalize() throws Throwable {
+		try {
+			if (nativePtr != 0) // 0: the constructor threw first
+				nativeDestroy(nativePtr);
+		} finally {
+			super.finalize();
+		}
 	}
 
 	public final boolean requestWindowFeature(int featureId) {

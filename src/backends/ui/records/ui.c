@@ -117,6 +117,7 @@ void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
 
 void ui_window_close(struct ui_window *window)
 {
+	records_window_closed(window);
 	loop_main_quit();
 }
 

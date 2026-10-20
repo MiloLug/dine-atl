@@ -55,3 +55,21 @@ void atl_test_window_ready(struct ui_window *window)
 	if (getenv("ATL_DUMP_VIEWTREE"))
 		ui_window_dump(window, stdout);
 }
+
+static void print_freed(const char *line)
+{
+	if (!getenv("ATL_DUMP_VIEWTREE"))
+		return;
+	puts(line);
+	fflush(stdout);
+}
+
+void atl_test_dialog_freed(void)
+{
+	print_freed("dialogfreed:");
+}
+
+void atl_test_drawable_freed(void)
+{
+	print_freed("drawablefreed:");
+}
