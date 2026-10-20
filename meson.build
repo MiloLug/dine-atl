@@ -36,6 +36,14 @@ endif
 if (loop_backend == 'cfrunloop') != apple
   error('loop=cfrunloop is the loop for Apple targets, and only for them')
 endif
+if ui_backend == 'uikit'
+  if not apple
+    error('ui=uikit is for Apple targets')
+  endif
+  add_languages('objc', native: false)
+  add_project_dependencies(incdir_dep, language: 'objc')
+  add_project_arguments('-fobjc-arc', language: 'objc')
+endif
 
 # code shared by every build: JNI, ART/libcore, androidfw, sqlite and libc only
 atl_shared = static_library('atl_shared', [
@@ -249,6 +257,9 @@ endif
 
 if ui_backend == 'headless'
   backend_libs += static_library('atl_ui_headless', ['src/backends/ui/records/ui.c', 'src/backends/ui/headless/dialog.c'])
+elif ui_backend == 'uikit'
+  # views are headless records until uikit draws them
+  backend_libs += static_library('atl_ui_uikit', ['src/backends/ui/records/ui.c', 'src/backends/ui/uikit/dialog.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',

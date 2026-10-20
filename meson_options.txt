@@ -6,7 +6,7 @@ option('host', type: 'combo', choices: ['gtk', 'cli', 'embedded'], value: 'gtk',
        description: 'Process entry and app launch')
 option('loop', type: 'combo', choices: ['glib', 'poll', 'cfrunloop'], value: 'glib',
        description: 'Android main-thread loop integration')
-option('ui', type: 'combo', choices: ['gtk', 'headless'], value: 'gtk',
+option('ui', type: 'combo', choices: ['gtk', 'headless', 'uikit'], value: 'gtk',
        description: 'Windows and view nodes')
 option('gfx', type: 'combo', choices: ['gsk', 'record'], value: 'gsk',
        description: 'Paint, drawables and drawing')
