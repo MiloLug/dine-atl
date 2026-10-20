@@ -35,10 +35,10 @@ int atl_set_app(struct atl_paths *paths, char *const *apks, int napks);
 void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, bool instrument);
 /* ATL's options for JNI_CreateJavaVM, without VM-wide ones such as -Xcheck:jni; NULL on error.
  * Free with atl_vm_options_free once the VM exists. */
-JavaVMOption *atl_vm_options(const struct atl_paths *paths, const char *sdk_int, int *count);
+JavaVMOption *atl_vm_options(const struct atl_paths *paths, int *count);
 void atl_vm_options_free(JavaVMOption *options, int count);
 /* Creates the VM, then atl_vm_init. Exits on error. */
-JNIEnv *atl_vm_start(const struct atl_paths *paths, const char *sdk_int, char *const *extra_jvm_options, const struct atl_window_config *window);
+JNIEnv *atl_vm_start(const struct atl_paths *paths, char *const *extra_jvm_options, const struct atl_window_config *window);
 /* On a VM created with atl_vm_options: loads translation_layer_main and fills the handle cache.
  * -1 on error. */
 int atl_vm_init(JNIEnv *env, const struct atl_window_config *window);

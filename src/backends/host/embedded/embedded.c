@@ -33,7 +33,7 @@ JavaVMOption *atl_embedded_vm_options(const struct atl_embedded_config *config, 
 	};
 	if (atl_set_app(&paths, (char *const[]){(char *)config->apk}, 1) < 0)
 		return NULL;
-	return atl_vm_options(&paths, config->sdk_int, count);
+	return atl_vm_options(&paths, count);
 }
 
 void atl_embedded_vm_options_free(JavaVMOption *options, int count)

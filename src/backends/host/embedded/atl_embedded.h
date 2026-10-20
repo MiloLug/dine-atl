@@ -18,7 +18,6 @@ struct atl_embedded_config {
 	const char *framework_res_apk;
 	const char *apk;
 	const char *activity; // NULL: the manifest's main activity
-	const char *sdk_int;  // NULL: the app's minSdk
 	int window_width;     // px; 0: ATL's default size
 	int window_height;
 	int density_dpi;      // 0: 160

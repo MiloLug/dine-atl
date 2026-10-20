@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 
 	struct atl_paths paths;
 	atl_prepare(&paths, &argv[optind], argc - optind, false);
-	JNIEnv *env = atl_vm_start(&paths, NULL, jvm_options, &window);
+	JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
 
 	atl_app_create(env, ui_window_new(NULL));
 	if (commands) {

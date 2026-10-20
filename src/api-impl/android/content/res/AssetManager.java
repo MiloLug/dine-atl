@@ -49,13 +49,6 @@ import java.util.zip.ZipEntry;
  * bytes.
  */
 public final class AssetManager {
-	static {
-		if (Build.VERSION.RESOURCES_SDK_INT == 0) {
-			// If we reach there, continuing execution will only result in a corrupted state
-			throw new IllegalStateException("AssetManager initialized before SDK_INT is set.");
-		}
-	}
-
 	/* modes used when opening an asset */
 
 	/**

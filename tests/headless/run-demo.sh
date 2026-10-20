@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs demo_app.apk in the headless build (no display) and compares its view-tree dump with
-# demo_app.viewtree, or demo_app.<DPI>.viewtree at another density. Exit 0 on a match.
+# demo_app.viewtree, or demo_app.<DPI>.viewtree at another density. Its frame is
+# Theme.DeviceDefault's bar color: demo_app's minSdk, 19, is below ATL's fixed level. Exit 0 on a
+# match.
 #
 # Usage: run-demo.sh <headless build dir> <demo_app.apk> [--density DPI] [--update]
 # The build dir's own libtranslation_layer_main.so must load: RUN_FROM_BUILDDIR resolves
@@ -42,6 +44,7 @@ fail() { echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
 grep -q "Added shared library \"$build/libtranslation_layer_main.so\"\|Added shared library \"./libtranslation_layer_main.so\"" "$work/log" \
   || fail "the headless libtranslation_layer_main.so didn't load"
 grep -q -- "- onResume - yay!" "$work/log" || fail "no onResume"
+grep -qx 'window: frame #ff1a1b20' "$work/log" || fail "no window: frame #ff1a1b20"
 grep '^viewtree:' "$work/log" >"$work/viewtree" || fail "no view-tree dump"
 
 if [[ $update ]]; then

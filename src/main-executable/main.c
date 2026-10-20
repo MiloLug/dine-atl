@@ -125,7 +125,6 @@ struct jni_callback_data {
 	char *prgname;
 	char **extra_jvm_options;
 	char **extra_string_keys;
-	char *sdk_int;
 };
 
 static char *uri_option = NULL;
@@ -247,8 +246,8 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);
 
-	JNIEnv *env = atl_vm_start(&paths, d->sdk_int, d->extra_jvm_options,
-	                           &(struct atl_window_config){d->window_width, d->window_height, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN});
+	JNIEnv *env = atl_vm_start(&paths, d->extra_jvm_options,
+	                  &(struct atl_window_config){d->window_width, d->window_height, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN});
 
 	/* -- misc -- */
 
@@ -543,7 +542,6 @@ void init_cmd_parameters(GApplication *app, struct jni_callback_data *d)
 		{ "install-internal",  0 , 0, G_OPTION_ARG_NONE,         &d->install_internal,          "copy an apk to _installed_apks_ but don't create a desktop entry",                             NULL            },
 		{ "extra-jvm-option", 'X', 0, G_OPTION_ARG_STRING_ARRAY, &d->extra_jvm_options,         "pass an additional option directly to art (e.g -X \"-verbose:jni\")",                          "\"OPTION\""    },
 		{ "extra-string-key", 'e', 0, G_OPTION_ARG_STRING_ARRAY, &d->extra_string_keys,         "pass a string extra (-e key=value)",                                                           "\"KEY=VALUE\"" },
-		{ "sdk-int",           0 , 0, G_OPTION_ARG_STRING,       &d->sdk_int,                   "shorthand for -X \"-DBuild.VERSION.SDK_INT=<version>\"",                                                           "SDK_INT" },
 		/* long_name | short_name | flags                     | arg                  | arg_data     | description                                                                              | arg_desc */
 		{ "uri",              'u', G_OPTION_FLAG_OPTIONAL_ARG, G_OPTION_ARG_CALLBACK, option_uri_cb, "open the given URI inside the application",                                               "URI"           },
 		{NULL}
@@ -577,7 +575,6 @@ int main(int argc, char **argv)
 	callback_data->prgname = argv[0];
 	callback_data->extra_jvm_options = NULL;
 	callback_data->extra_string_keys = NULL;
-	callback_data->sdk_int = NULL;
 
 	app = gtk_application_new("com.example.demo_application", G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN | G_APPLICATION_CAN_OVERRIDE_APP_ID);
 

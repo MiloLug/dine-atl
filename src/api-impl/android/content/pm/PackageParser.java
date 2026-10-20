@@ -1177,11 +1177,8 @@ public class PackageParser {
 						pkg.applicationInfo.minSdkVersion = android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 					} else {
 						pkg.applicationInfo.minSdkVersion = minVers;
-						if (minVers > SDK_VERSION) {
-							// outError[0] = "Requires newer sdk version #" + minVers + " (current version is #" + SDK_VERSION + ")";
-							// mParseError = PackageManager.INSTALL_FAILED_OLDER_SDK;
-							// return null;
-						}
+						if (minVers > SDK_VERSION)
+							Slog.w(TAG, "Requires newer sdk version #" + minVers + " (current version is #" + SDK_VERSION + "), running anyway");
 					}
 
 					if (targetCode != null) {

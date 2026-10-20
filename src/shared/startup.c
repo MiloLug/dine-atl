@@ -32,7 +32,6 @@
 #define TEST_RUNNER_JAR_PATH_LOCAL        "./test_runner.jar"
 
 #define JDWP_ARG                          "-XjdwpOptions:transport=dt_socket,server=y,suspend=y,address="
-#define SDK_INT_ARG                       "-DBuild.VERSION.SDK_INT="
 
 char *apk_path;
 // the equivalent of /data/data/com.example.app/
@@ -177,9 +176,9 @@ void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, bool ins
 	free(dex_install_dir);
 }
 
-JavaVMOption *atl_vm_options(const struct atl_paths *paths, const char *sdk_int, int *count)
+JavaVMOption *atl_vm_options(const struct atl_paths *paths, int *count)
 {
-	JavaVMOption *options = calloc(5, sizeof(*options));
+	JavaVMOption *options = calloc(4, sizeof(*options));
 	int n = 0;
 
 	if (getenv("RUN_FROM_BUILDDIR")) {
@@ -192,14 +191,6 @@ JavaVMOption *atl_vm_options(const struct atl_paths *paths, const char *sdk_int,
 	// ATLLoadedApp relies on the first element in atl.app.class.path being the main apk
 	options[n++].optionString = construct_classpath("-Datl.app.class.path=", (char *[]){paths->apk_classpath}, 1);
 	options[n++].optionString = construct_classpath("-Datl.app.library.path=", (char *[]){paths->natives_dir, paths->app_lib_dir}, 2);
-	char *sdk_int_option;
-	if (sdk_int) {
-		if (asprintf(&sdk_int_option, SDK_INT_ARG "%s", sdk_int) < 0) {
-			atl_vm_options_free(options, n);
-			return NULL;
-		}
-		options[n++].optionString = sdk_int_option;
-	}
 
 	*count = n;
 	return options;
@@ -213,10 +204,10 @@ void atl_vm_options_free(JavaVMOption *options, int count)
 }
 
 // the VM-wide options of the Linux hosts plus ATL's own
-static JNIEnv *create_vm(const struct atl_paths *paths, const char *sdk_int, char *const *extra_jvm_options)
+static JNIEnv *create_vm(const struct atl_paths *paths, char *const *extra_jvm_options)
 {
 	int n_atl;
-	JavaVMOption *atl_options = atl_vm_options(paths, sdk_int, &n_atl);
+	JavaVMOption *atl_options = atl_vm_options(paths, &n_atl);
 	if (!atl_options)
 		exit(1);
 
@@ -261,9 +252,9 @@ static JNIEnv *create_vm(const struct atl_paths *paths, const char *sdk_int, cha
 	return env;
 }
 
-JNIEnv *atl_vm_start(const struct atl_paths *paths, const char *sdk_int, char *const *extra_jvm_options, const struct atl_window_config *window)
+JNIEnv *atl_vm_start(const struct atl_paths *paths, char *const *extra_jvm_options, const struct atl_window_config *window)
 {
-	JNIEnv *env = create_vm(paths, sdk_int, extra_jvm_options);
+	JNIEnv *env = create_vm(paths, extra_jvm_options);
 	if (atl_vm_init(env, window) < 0)
 		exit(1);
 	return env;
