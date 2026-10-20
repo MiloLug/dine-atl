@@ -15,6 +15,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.activity.onPostResume = _METHOD(handle_cache.activity.class, "onPostResume", "()V");
 	handle_cache.activity.onDestroy = _METHOD(handle_cache.activity.class, "onDestroy", "()V");
 	handle_cache.activity.onStop = _METHOD(handle_cache.activity.class, "onStop", "()V");
+	handle_cache.activity.onRestart = _METHOD(handle_cache.activity.class, "onRestart", "()V");
 	handle_cache.activity.onPause = _METHOD(handle_cache.activity.class, "onPause", "()V");
 	handle_cache.activity.onBackPressed = _METHOD(handle_cache.activity.class, "onBackPressed", "()V");
 	handle_cache.activity.onNewIntent = _METHOD(handle_cache.activity.class, "onNewIntent", "(Landroid/content/Intent;)V");

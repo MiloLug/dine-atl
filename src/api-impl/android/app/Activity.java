@@ -50,6 +50,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 	private Activity resultActivity;
 	private int resultRequestCode;
 	private boolean paused = false;
+	private boolean stopped = false; // set by native code: onStop ran, onRestart is due
 	private CharSequence title = null;
 	List<Fragment> fragments = new ArrayList<>();
 	boolean destroyed = false;
@@ -489,9 +490,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 		return title;
 	}
 
+	// Android 12+: the task root moves to the back instead of finishing, when the host lets it
 	public void onBackPressed() {
 		System.out.println("onBackPressed() called");
-		finish();
+		if (!isTaskRoot() || !moveTaskToBack(false))
+			finish();
 	}
 
 	public void setIntent(Intent newIntent) {
@@ -561,6 +564,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 	public void overridePendingTransition(int enterAnim, int exitAnim) {}
 
 	public native boolean isTaskRoot();
+	private static native boolean nativeMoveTaskToBack();
 
 	public void postponeEnterTransition() {}
 
@@ -620,8 +624,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 		return System.identityHashCode(this.getApplicationContext());
 	}
 
-	boolean moveTaskToBack(boolean nonroot) {
-		return true;
+	public boolean moveTaskToBack(boolean nonRoot) {
+		if (!nonRoot && !isTaskRoot())
+			return false;
+		return nativeMoveTaskToBack();
 	}
 
 	void setFinishOnTouchOutside(boolean finish) {

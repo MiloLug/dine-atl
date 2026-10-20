@@ -241,6 +241,12 @@ else
                                  dependencies: dependency('threads'))
 endif
 
+if host_backend == 'gtk'
+  backend_libs += static_library('atl_host_gtk', 'src/backends/host/gtk/host.c')
+elif host_backend == 'cli'
+  backend_libs += static_library('atl_host_cli', 'src/backends/host/cli/host.c')
+endif
+
 if ui_backend == 'headless'
   backend_libs += static_library('atl_ui_headless', ['src/backends/ui/records/ui.c', 'src/backends/ui/headless/dialog.c'])
 else

@@ -7,9 +7,11 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_app_Activity.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/host.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "nav.h"
 #include "startup.h"
 
 /* the activity stack; the last element is the top */
@@ -17,6 +19,8 @@ static jobject *backlog = NULL;
 static size_t backlog_len = 0;
 static size_t backlog_cap = 0;
 static jobject activity_current = NULL;
+// in the back, no activity is focused; the stack and the window stay
+static bool task_front = true;
 
 static void backlog_push(jobject activity)
 {
@@ -58,9 +62,12 @@ static void activity_unfocus(JNIEnv *env, jobject activity)
 			(*env)->ExceptionDescribe(env);
 	}
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStop);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	if (!_GET_BOOL_FIELD(activity, "stopped")) {
+		_SET_BOOL_FIELD(activity, "stopped", true);
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStop);
+		if ((*env)->ExceptionCheck(env))
+			(*env)->ExceptionDescribe(env);
+	}
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, false);
 	if ((*env)->ExceptionCheck(env))
@@ -71,6 +78,15 @@ static void activity_focus(JNIEnv *env, jobject activity)
 {
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
+
+	if (_GET_BOOL_FIELD(activity, "stopped")) {
+		_SET_BOOL_FIELD(activity, "stopped", false);
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onRestart);
+		if ((*env)->ExceptionCheck(env))
+			(*env)->ExceptionDescribe(env);
+		if (_GET_BOOL_FIELD(activity, "finishing"))
+			return;
+	}
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStart);
 	if ((*env)->ExceptionCheck(env))
@@ -110,7 +126,7 @@ static bool back_has_target(JNIEnv *env)
 
 static void activity_update_current(JNIEnv *env)
 {
-	jobject activity_new = backlog_len ? backlog[backlog_len - 1] : NULL;
+	jobject activity_new = task_front && backlog_len ? backlog[backlog_len - 1] : NULL;
 
 	if (activity_current != activity_new) {
 		if (activity_current)
@@ -143,18 +159,48 @@ void activity_window_ready(void)
 		ui_window_dump(atl_window, stdout);
 }
 
-void current_activity_back_pressed(void)
+static void task_move(bool front, bool by_host)
+{
+	if (task_front == front)
+		return;
+	task_front = front;
+	activity_update_current(get_jni_env());
+	host_task_moved(front, by_host);
+}
+
+static void nav_back(void *data)
 {
 	JNIEnv *env = get_jni_env();
+	if (!activity_current)
+		return;
+	(*env)->CallVoidMethod(env, activity_current, handle_cache.activity.onBackPressed);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+}
 
-	// Either a new activity was added to the backlog or the current activity's onBackPressed method was changed
-	if (back_has_target(env)) {
-		(*env)->CallVoidMethod(env, activity_current, handle_cache.activity.onBackPressed);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
-	} else {
-		ui_window_set_back_enabled(atl_window, false);
-	}
+static void nav_home(void *data)
+{
+	task_move(false, true);
+}
+
+static void nav_front(void *data)
+{
+	task_move(true, true);
+}
+
+bool atl_nav_back(void)
+{
+	return loop_main_post(nav_back, NULL);
+}
+
+bool atl_nav_home(void)
+{
+	return loop_main_post(nav_home, NULL);
+}
+
+bool atl_nav_front(void)
+{
+	return loop_main_post(nav_front, NULL);
 }
 
 // closes activities[n-1] down to activities[0], the order the stack held them in
@@ -265,6 +311,17 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity(JNIEnv
 	free(activities_to_close);
 
 	return found;
+}
+
+static void task_to_back(void *data)
+{
+	task_move(false, false);
+}
+
+JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeMoveTaskToBack(JNIEnv *env, jclass class)
+{
+	// posted: the activity's callbacks don't run inside the app's onBackPressed
+	return host_task_to_back() && loop_main_post(task_to_back, NULL);
 }
 
 JNIEXPORT jboolean JNICALL Java_android_app_Activity_isTaskRoot(JNIEnv *env, jobject this)

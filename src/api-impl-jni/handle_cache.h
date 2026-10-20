@@ -11,6 +11,7 @@ struct handle_cache {
 		jmethodID onWindowFocusChanged;
 		jmethodID onDestroy;
 		jmethodID onStop;
+		jmethodID onRestart;
 		jmethodID onPause;
 		jmethodID onBackPressed;
 		jmethodID onNewIntent;

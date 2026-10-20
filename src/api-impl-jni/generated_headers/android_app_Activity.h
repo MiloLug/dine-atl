@@ -33,6 +33,14 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_isTaskRoot
 
 /*
  * Class:     android_app_Activity
+ * Method:    nativeMoveTaskToBack
+ * Signature: ()Z
+ */
+JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeMoveTaskToBack
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     android_app_Activity
  * Method:    nativeFinish
  * Signature: (J)V
  */

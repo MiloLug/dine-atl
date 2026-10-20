@@ -3,6 +3,7 @@
 
 #include "src/api-impl-jni/app/android_app_Activity.h"
 #include "src/shared/startup.h"
+#include "src/slots/host.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
@@ -38,6 +39,13 @@ void atl_embedded_vm_options_free(JavaVMOption *options, int count)
 {
 	atl_vm_options_free(options, count);
 }
+
+bool host_task_to_back(void)
+{
+	return true;
+}
+
+void host_task_moved(bool front, bool by_host) {}
 
 int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 {
