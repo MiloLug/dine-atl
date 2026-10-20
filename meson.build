@@ -284,8 +284,9 @@ if host_backend == 'embedded'
   static_library('translation_layer_main', 'src/backends/host/embedded/embedded.c',
                  link_whole: [atl_shared] + backend_libs,
                  dependencies: [jni_dep, art_incdir_dep],
+                 include_directories: 'src/shared', # atl_embedded.h's "nav.h", installed next to it
                  install: true)
-  install_headers('src/backends/host/embedded/atl_embedded.h', subdir: 'atl')
+  install_headers('src/backends/host/embedded/atl_embedded.h', 'src/shared/nav.h', subdir: 'atl')
 else
   if not desktop
     # a missing slot function or stray reference fails here instead of at ART's RTLD_NOW load;

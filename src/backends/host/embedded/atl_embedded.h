@@ -3,6 +3,8 @@
 
 #include <jni.h>
 
+#include "nav.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +21,7 @@ struct atl_embedded_config {
 	const char *sdk_int;  // NULL: the app's minSdk
 	int window_width;     // 0: ATL's default size
 	int window_height;
+	const struct atl_embedded_listener *listener; // NULL: none; must outlive atl_embedded_main
 };
 
 /* NULL on error, after printing it to stderr. */

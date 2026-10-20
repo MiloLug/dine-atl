@@ -11,6 +11,7 @@
 
 static struct atl_paths paths;
 static bool started;
+static const struct atl_embedded_listener *listener;
 
 /* ART on Apple loads a library linked into the app only if this hook exists (System.loadLibrary
  * finds natives with dlsym on the main image). ART rejects JNI_VERSION_1_8. */
@@ -45,17 +46,29 @@ bool host_task_to_back(void)
 	return true;
 }
 
-void host_task_moved(bool front, bool by_host) {}
+void host_task_moved(bool front, bool by_host)
+{
+	if (listener && listener->task_moved)
+		listener->task_moved(listener->context, front, by_host);
+}
+
+static int exited(int status)
+{
+	if (listener && listener->exited)
+		listener->exited(listener->context, status);
+	return status;
+}
 
 int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 {
+	listener = config->listener;
 	int width = config->window_width ?: ATL_WINDOW_WIDTH_DEFAULT;
 	int height = config->window_height ?: ATL_WINDOW_HEIGHT_DEFAULT;
 	if (atl_vm_init(env, width, height) < 0)
-		return -1;
+		return exited(-1);
 
 	atl_app_create(env, ui_window_new());
 	activity_start(env, atl_activity_create_main(env, config->activity, NULL));
 	loop_main_run();
-	return 0;
+	return exited(0);
 }
