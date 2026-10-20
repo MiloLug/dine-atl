@@ -26,6 +26,7 @@ static struct {
 	CFRunLoopTimerRef timer;
 	bool dispatch_pending;
 	struct post *posts, *posts_tail;
+	bool quit;
 } main_loop = {.mutex = PTHREAD_MUTEX_INITIALIZER};
 
 static void dispatch(void)
@@ -73,7 +74,9 @@ void loop_main_prepare(void)
 	main_loop.timer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent() + IDLE_INTERVAL, IDLE_INTERVAL, 0, 0, main_timer_fired, NULL);
 	CFRunLoopAddSource(main_loop.loop, main_loop.source, kCFRunLoopCommonModes);
 	CFRunLoopAddTimer(main_loop.loop, main_loop.timer, kCFRunLoopCommonModes);
+	pthread_mutex_lock(&main_loop.mutex);
 	main_loop.bound = true;
+	pthread_mutex_unlock(&main_loop.mutex);
 	loop_main_wake();
 }
 
@@ -95,11 +98,15 @@ void loop_main_wake(void)
 	signal_main();
 }
 
-void loop_main_post(void (*fn)(void *data), void *data)
+bool loop_main_post(void (*fn)(void *data), void *data)
 {
+	pthread_mutex_lock(&main_loop.mutex);
+	if (!main_loop.bound || main_loop.quit) {
+		pthread_mutex_unlock(&main_loop.mutex);
+		return false;
+	}
 	struct post *post = malloc(sizeof(*post));
 	*post = (struct post){fn, data, NULL};
-	pthread_mutex_lock(&main_loop.mutex);
 	if (main_loop.posts_tail)
 		main_loop.posts_tail->next = post;
 	else
@@ -107,6 +114,7 @@ void loop_main_post(void (*fn)(void *data), void *data)
 	main_loop.posts_tail = post;
 	pthread_mutex_unlock(&main_loop.mutex);
 	signal_main();
+	return true;
 }
 
 void loop_main_run(void)
@@ -116,6 +124,9 @@ void loop_main_run(void)
 
 void loop_main_quit(void)
 {
+	pthread_mutex_lock(&main_loop.mutex);
+	main_loop.quit = true;
+	pthread_mutex_unlock(&main_loop.mutex);
 	CFRunLoopStop(main_loop.loop);
 }
 

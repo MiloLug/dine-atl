@@ -57,9 +57,11 @@ static struct {
 void loop_main_prepare(void)
 {
 	init_cond(&main_loop.cond);
+	pthread_mutex_lock(&main_loop.mutex);
 	main_loop.thread = pthread_self();
 	main_loop.bound = true;
 	main_loop.ready_at = 0;
+	pthread_mutex_unlock(&main_loop.mutex);
 }
 
 bool loop_is_main_thread(void)
@@ -82,11 +84,15 @@ void loop_main_wake(void)
 	pthread_mutex_unlock(&main_loop.mutex);
 }
 
-void loop_main_post(void (*fn)(void *data), void *data)
+bool loop_main_post(void (*fn)(void *data), void *data)
 {
+	pthread_mutex_lock(&main_loop.mutex);
+	if (!main_loop.bound || main_loop.quit) {
+		pthread_mutex_unlock(&main_loop.mutex);
+		return false;
+	}
 	struct post *post = malloc(sizeof(*post));
 	*post = (struct post){fn, data, NULL};
-	pthread_mutex_lock(&main_loop.mutex);
 	if (main_loop.posts_tail)
 		main_loop.posts_tail->next = post;
 	else
@@ -94,6 +100,7 @@ void loop_main_post(void (*fn)(void *data), void *data)
 	main_loop.posts_tail = post;
 	pthread_cond_signal(&main_loop.cond);
 	pthread_mutex_unlock(&main_loop.mutex);
+	return true;
 }
 
 void loop_main_run(void)

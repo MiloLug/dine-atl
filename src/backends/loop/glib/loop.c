@@ -59,11 +59,15 @@ static gboolean run_post(gpointer user_data)
 	return G_SOURCE_REMOVE;
 }
 
-void loop_main_post(void (*fn)(void *data), void *data)
+// no quit: the gtk host's GApplication owns the loop
+bool loop_main_post(void (*fn)(void *data), void *data)
 {
+	if (!source)
+		return false;
 	struct post *post = g_new(struct post, 1);
 	*post = (struct post){fn, data};
 	g_idle_add(run_post, post);
+	return true;
 }
 
 /* libandroid's ALooper (libutils' Looper): app native code under native=bionic attaches fds to a

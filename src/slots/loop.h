@@ -14,8 +14,9 @@ bool loop_is_main_thread(void);
 void loop_main_schedule(int timeout_ms);
 /* Dispatch as soon as possible. Any thread. */
 void loop_main_wake(void);
-/* Runs fn(data) once on the main thread. Any thread. */
-void loop_main_post(void (*fn)(void *data), void *data);
+/* Runs fn(data) once on the main thread. Any thread. False, and fn never runs, before
+ * loop_main_prepare and after loop_main_quit. */
+bool loop_main_post(void (*fn)(void *data), void *data);
 /* For hosts that own the main loop; the gtk host runs GApplication instead. */
 void loop_main_run(void);
 void loop_main_quit(void);

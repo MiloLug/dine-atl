@@ -68,7 +68,8 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 		return;
 	struct answer *answer = malloc(sizeof(*answer));
 	*answer = (struct answer){dialog->dialog->ref, which};
-	loop_main_post(give_answer, answer); // after Dialog.show returns, as a tap would come
+	if (!loop_main_post(give_answer, answer)) // after Dialog.show returns, as a tap would come
+		free(answer);
 }
 
 void ui_dialog_close(struct ui_window *dialog)

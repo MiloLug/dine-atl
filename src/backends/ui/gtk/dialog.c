@@ -120,7 +120,8 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 	if (alert && atl_dialog_scripted(alert, &which)) {
 		struct answer *answer = malloc(sizeof(*answer));
 		*answer = (struct answer){dialog, which};
-		loop_main_post(give_answer, answer);
+		if (!loop_main_post(give_answer, answer))
+			free(answer);
 	}
 }
 
