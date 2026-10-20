@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/shared/upcall.h"
+#include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 #include "../records/records.h"
 
-/* Dialogs print what they show as "dialog: " lines. */
+/* Dialogs print what they show as "dialog: " lines; alerts take ATL_DIALOG_ANSWERS. */
 
 struct ui_dialog_state {
 	struct atl_ref *ref;
@@ -17,6 +19,18 @@ struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *deco
 	window->dialog = calloc(1, sizeof(*window->dialog));
 	window->dialog->ref = dialog_ref;
 	return window;
+}
+
+struct answer {
+	struct atl_ref *ref;
+	int which;
+};
+
+static void give_answer(void *data)
+{
+	struct answer *answer = data;
+	atl_upcall_dialog_result(answer->ref, answer->which);
+	free(answer);
 }
 
 static void print_labels(const char *name, const char *const *labels, int count)
@@ -48,6 +62,13 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 	}
 	printf("%s\n", alert->cancelable ? " cancelable" : "");
 	fflush(stdout);
+
+	int which;
+	if (!atl_dialog_scripted(alert, &which))
+		return;
+	struct answer *answer = malloc(sizeof(*answer));
+	*answer = (struct answer){dialog->dialog->ref, which};
+	loop_main_post(give_answer, answer); // after Dialog.show returns, as a tap would come
 }
 
 void ui_dialog_close(struct ui_window *dialog)

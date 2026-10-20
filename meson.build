@@ -60,6 +60,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_view_ViewGroup.c',
 	'src/shared/android_view_Window.c',
 	'src/shared/android_widget_TextView.c',
+	'src/shared/dialog_script.c',
 	'src/shared/startup.c',
 	'src/shared/upcall.c',
 ], dependencies: [jni_dep, sqlite3_dep, art_incdir_dep],

@@ -1,10 +1,12 @@
 #include <gtk/gtk.h>
+#include <stdlib.h>
 
 #include "src/shared/upcall.h"
+#include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 /* A dialog is a GtkWindow over the app window. Java decides when it closes: close-request and a
- * tap outside become cancel results. */
+ * tap outside become cancel results. ATL_DIALOG_ANSWERS answers alerts through their widgets. */
 
 extern GtkWidget *window; // the gtk host's app window
 
@@ -12,6 +14,8 @@ struct dialog_state {
 	struct atl_ref *ref;
 	GtkWidget *decor;                  // the decor view's wrapper
 	GtkEventController *touch_outside; // on the app window while set
+	GtkWidget *buttons[3];             // the shown alert's, as in ui_alert
+	GtkListBox *items;
 };
 
 static struct dialog_state *get_state(struct ui_window *dialog)
@@ -60,8 +64,10 @@ static GtkWidget *alert_content(struct dialog_state *state, const struct ui_aler
 		gtk_label_set_max_width_chars(GTK_LABEL(label), 50);
 		gtk_box_append(GTK_BOX(box), label);
 	}
+	state->items = NULL;
 	if (alert->items) {
 		GtkWidget *list = gtk_list_box_new();
+		state->items = GTK_LIST_BOX(list);
 		gtk_list_box_set_activate_on_single_click(GTK_LIST_BOX(list), TRUE);
 		for (int i = 0; i < alert->n_items; i++)
 			gtk_list_box_append(GTK_LIST_BOX(list), gtk_label_new(alert->items[i]));
@@ -71,15 +77,34 @@ static GtkWidget *alert_content(struct dialog_state *state, const struct ui_aler
 	GtkWidget *buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 1);
 	gtk_widget_set_halign(buttons, GTK_ALIGN_END);
 	for (int i = 2; i >= 0; i--) { // Android's order: neutral, negative, positive
+		state->buttons[i] = NULL;
 		if (!alert->buttons[i])
 			continue;
-		GtkWidget *button = gtk_button_new_with_label(alert->buttons[i]);
+		GtkWidget *button = state->buttons[i] = gtk_button_new_with_label(alert->buttons[i]);
 		g_object_set_data(G_OBJECT(button), "which", GINT_TO_POINTER(-1 - i));
 		g_signal_connect(button, "clicked", G_CALLBACK(on_button_clicked), state);
 		gtk_box_append(GTK_BOX(buttons), button);
 	}
 	gtk_box_append(GTK_BOX(box), buttons);
 	return box;
+}
+
+struct answer {
+	struct ui_window *dialog;
+	int which;
+};
+
+static void give_answer(void *data)
+{
+	struct answer *answer = data;
+	struct dialog_state *state = get_state(answer->dialog);
+	if (answer->which == UI_DIALOG_CANCEL)
+		gtk_window_close(GTK_WINDOW(answer->dialog));
+	else if (answer->which < 0)
+		gtk_widget_activate(state->buttons[-1 - answer->which]);
+	else
+		gtk_widget_activate(GTK_WIDGET(gtk_list_box_get_row_at_index(state->items, answer->which)));
+	free(answer);
 }
 
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
@@ -90,6 +115,13 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 		gtk_window_set_child(GTK_WINDOW(dialog), alert_content(get_state(dialog), alert));
 	}
 	gtk_window_present(GTK_WINDOW(dialog));
+
+	int which;
+	if (alert && atl_dialog_scripted(alert, &which)) {
+		struct answer *answer = malloc(sizeof(*answer));
+		*answer = (struct answer){dialog, which};
+		loop_main_post(give_answer, answer);
+	}
 }
 
 static void remove_touch_outside(struct dialog_state *state)

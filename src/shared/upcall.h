@@ -32,4 +32,9 @@ void atl_upcall_window_ready(void);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. */
 void atl_upcall_dialog_result(struct atl_ref *dialog, int which);
 
+struct ui_alert;
+/* With ATL_DIALOG_ANSWERS set (button or item labels or "!cancel", one per shown alert, separated
+ * by ';'): the next answer as a result for alert; exits 1 when it doesn't match. Else false. */
+bool atl_dialog_scripted(const struct ui_alert *alert, int *which);
+
 #endif
