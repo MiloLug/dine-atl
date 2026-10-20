@@ -242,7 +242,7 @@ else
 endif
 
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', 'src/backends/ui/headless/ui.c')
+  backend_libs += static_library('atl_ui_headless', 'src/backends/ui/records/ui.c')
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
