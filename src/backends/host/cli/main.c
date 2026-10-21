@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,15 +6,18 @@
 #include <unistd.h>
 
 #include "src/api-impl-jni/app/android_app_Activity.h"
+#include "src/api-impl-jni/defines.h"
+#include "src/api-impl-jni/handle_cache.h"
 #include "src/shared/host_linux.h"
 #include "src/shared/nav.h"
 #include "src/shared/startup.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
-/* Plain C entry for builds without a desktop toolkit: one app, one main activity. */
+/* Plain C entry for builds without a desktop toolkit: one app, and its main activity or an
+ * instrumentation. */
 
-#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY] [-X JVM_OPTION]... APK...\n"
+#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY | --instrument CLASS] [-X JVM_OPTION]... APK...\n"
 
 // -c: system navigation from stdin, one command per line; the loop slot has no fd watch
 static void *read_commands(void *data)
@@ -35,20 +39,39 @@ static void *read_commands(void *data)
 	return NULL;
 }
 
+static void start_instrumentation(JNIEnv *env, const char *class_name)
+{
+	jmethodID create = _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;");
+	(*env)->CallStaticObjectMethod(env, handle_cache.instrumentation.class, create, _JSTRING(class_name), NULL);
+	if ((*env)->ExceptionCheck(env)) {
+		// create handles Exceptions itself; after an Error no runner thread would ever exit
+		(*env)->ExceptionDescribe(env);
+		exit(1);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	atl_linux_host_init();
 
 	const char *activity = NULL;
+	const char *instrumentation = NULL;
 	bool commands = false;
 	struct atl_window_config window = {ATL_WINDOW_WIDTH_DEFAULT, ATL_WINDOW_HEIGHT_DEFAULT, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN};
 	char **jvm_options = calloc(argc, sizeof(*jvm_options));
 	int n_jvm_options = 0;
+	static const struct option long_options[] = {
+		{"instrument", required_argument, NULL, 'I'},
+		{0},
+	};
 	int opt;
-	while ((opt = getopt(argc, argv, "cd:l:X:")) != -1) {
+	while ((opt = getopt_long(argc, argv, "cd:l:X:", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 'c':
 				commands = true;
+				break;
+			case 'I':
+				instrumentation = optarg;
 				break;
 			case 'd':
 				window.density_dpi = atoi(optarg);
@@ -68,13 +91,13 @@ int main(int argc, char **argv)
 				return 1;
 		}
 	}
-	if (optind == argc) {
+	if (optind == argc || (instrumentation && activity)) {
 		fprintf(stderr, USAGE, argv[0]);
 		return 1;
 	}
 
 	struct atl_paths paths;
-	atl_prepare(&paths, &argv[optind], argc - optind, false);
+	atl_prepare(&paths, &argv[optind], argc - optind, instrumentation != NULL);
 	JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
 
 	atl_app_create(env, ui_window_new(NULL));
@@ -83,9 +106,14 @@ int main(int argc, char **argv)
 		pthread_create(&reader, NULL, read_commands, NULL);
 		pthread_detach(reader);
 	}
-	jobject main_activity = atl_activity_create_main(env, activity, NULL);
-	activity_start(env, main_activity);
-	(*env)->DeleteLocalRef(env, main_activity); // this frame lasts the app's lifetime
+	if (instrumentation) {
+		// the runner's thread ends the process with System.exit
+		start_instrumentation(env, instrumentation);
+	} else {
+		jobject main_activity = atl_activity_create_main(env, activity, NULL);
+		activity_start(env, main_activity);
+		(*env)->DeleteLocalRef(env, main_activity); // this frame lasts the app's lifetime
+	}
 	loop_main_run();
 
 	atl_exit(env, 0);
