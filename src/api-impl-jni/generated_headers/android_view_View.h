@@ -415,14 +415,6 @@ JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsFocused
 
 /*
  * Class:     android_view_View
- * Method:    native_getMatrix
- * Signature: (JJ)Z
- */
-JNIEXPORT jboolean JNICALL Java_android_view_View_native_1getMatrix
-  (JNIEnv *, jobject, jlong, jlong);
-
-/*
- * Class:     android_view_View
  * Method:    nativeIsAttachedToWindow
  * Signature: (J)Z
  */

@@ -8,12 +8,21 @@
 
 #define ANDROID_BITMAP_RESULT_SUCCESS 0
 
+/* app threads that never return to Java keep every local ref they make */
+static int config_int(JNIEnv *env, jobject bitmap, const char *field)
+{
+	jobject config = _GET_OBJ_FIELD(bitmap, "config", "Landroid/graphics/Bitmap$Config;");
+	int value = _GET_INT_FIELD(config, field);
+	(*env)->DeleteLocalRef(env, config);
+	return value;
+}
+
 int AndroidBitmap_getInfo(JNIEnv *env, jobject bitmap, struct AndroidBitmapInfo *info)
 {
 	info->width = _GET_INT_FIELD(bitmap, "width");
 	info->height = _GET_INT_FIELD(bitmap, "height");
 	info->stride = _GET_INT_FIELD(bitmap, "stride");
-	info->format = _GET_INT_FIELD(_GET_OBJ_FIELD(bitmap, "config", "Landroid/graphics/Bitmap$Config;"), "android_memory_format");
+	info->format = config_int(env, bitmap, "android_memory_format");
 	return ANDROID_BITMAP_RESULT_SUCCESS;
 }
 
@@ -22,7 +31,7 @@ int AndroidBitmap_lockPixels(JNIEnv *env, jobject bitmap, void **pixels)
 	printf("AndroidBitmap_lockPixels\n");
 	GdkTexture *texture = _PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J")));
 	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = _GET_INT_FIELD(_GET_OBJ_FIELD(bitmap, "config", "Landroid/graphics/Bitmap$Config;"), "gdk_memory_format");
+	int format = config_int(env, bitmap, "gdk_memory_format");
 	if (format == -1) {
 		printf("AndroidBitmap_lockPixels: format not implemented\n");
 		exit(1);
@@ -60,7 +69,7 @@ int AndroidBitmap_unlockPixels(JNIEnv *env, jobject bitmap)
 	int width = _GET_INT_FIELD(bitmap, "width");
 	int height = _GET_INT_FIELD(bitmap, "height");
 	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = _GET_INT_FIELD(_GET_OBJ_FIELD(bitmap, "config", "Landroid/graphics/Bitmap$Config;"), "gdk_memory_format");
+	int format = config_int(env, bitmap, "gdk_memory_format");
 	if (format == -1) {
 		printf("AndroidBitmap_lockPixels: format not implemented\n");
 		exit(1);

@@ -159,6 +159,7 @@ static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, do
 	}
 
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8); // GTK calls it from the base JNI frame
 	jobject intent = (*env)->NewObject(env, handle_cache.intent.class, handle_cache.intent.constructor);
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING("android.intent.action.SEND"));
 	_SET_OBJ_FIELD(intent, "data", "Landroid/net/Uri;", (*env)->CallStaticObjectMethod(env, handle_cache.uri.class, handle_cache.uri.parse, _JSTRING(data)));
@@ -167,12 +168,13 @@ static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, do
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 	}
-	if (!activity) {
+	gboolean resolved = activity != NULL;
+	if (resolved)
+		activity_start(env, activity);
+	else
 		fprintf(stderr, "failed to resolve activity to handle URI: %s\n", data);
-		return FALSE;
-	}
-	activity_start(env, activity);
-	return TRUE;
+	(*env)->PopLocalFrame(env, NULL);
+	return resolved;
 }
 
 static gboolean install_dbus_service_file(const char *package_name, const char *exec_cmd)

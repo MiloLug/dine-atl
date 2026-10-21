@@ -149,17 +149,14 @@ GVariant *intent_serialize(JNIEnv *env, jobject intent)
 
 jobject intent_deserialize(JNIEnv *env, GVariant *variant)
 {
-	const char *action;
-	const char *className;
-	const char *data;
+	char *action_copy;
+	char *className_copy;
+	char *data_copy;
 	GVariantIter *extras;
-	g_variant_get(variant, INTENT_G_VARIANT_TYPE_STRING, &action, &className, &data, &extras, NULL);
-	if (action && action[0] == '\0')
-		action = NULL;
-	if (className && className[0] == '\0')
-		className = NULL;
-	if (data && data[0] == '\0')
-		data = NULL;
+	g_variant_get(variant, INTENT_G_VARIANT_TYPE_STRING, &action_copy, &className_copy, &data_copy, &extras, NULL);
+	const char *action = action_copy[0] ? action_copy : NULL;
+	const char *className = className_copy[0] ? className_copy : NULL;
+	const char *data = data_copy[0] ? data_copy : NULL;
 
 	jobject intent = (*env)->NewObject(env, handle_cache.intent.class, handle_cache.intent.constructor);
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING(action));
@@ -199,6 +196,9 @@ jobject intent_deserialize(JNIEnv *env, GVariant *variant)
 		}
 	}
 	g_variant_iter_free(extras);
+	g_free(action_copy);
+	g_free(className_copy);
+	g_free(data_copy);
 	return intent;
 }
 

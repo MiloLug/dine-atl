@@ -13,17 +13,31 @@
 #include "../generated_headers/android_view_View.h"
 #include "../generated_headers/android_webkit_WebView.h"
 
+static void finish_not_found(WebKitURISchemeRequest *request)
+{
+	GError *error = g_error_new(G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "no asset for %s", webkit_uri_scheme_request_get_uri(request));
+	webkit_uri_scheme_request_finish_error(request, error);
+	g_error_free(error);
+}
+
 static void asset_uri_scheme_request_cb(WebKitURISchemeRequest *request, gpointer user_data)
 {
 	const gchar *path = webkit_uri_scheme_request_get_path(request);
-	if (path == NULL)
+	if (path == NULL) {
+		finish_not_found(request);
 		return;
+	}
 	path += 1; // remove the leading '/'
 	JNIEnv *env = get_jni_env();
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(webkit_uri_scheme_request_get_web_view(request))));
 	jobject asset_manager_obj = (*env)->CallObjectMethod(env, wrapper->jobj, handle_cache.webview.internalGetAssetManager);
 	struct AssetManager *asset_manager = _PTR(_GET_LONG_FIELD(asset_manager_obj, "mObject"));
+	(*env)->DeleteLocalRef(env, asset_manager_obj); // WebKit calls it from the base JNI frame
 	struct Asset *asset = AssetManager_openNonAsset(asset_manager, path, ACCESS_STREAMING);
+	if (!asset) {
+		finish_not_found(request);
+		return;
+	}
 	GInputStream *stream = asset_input_stream_new(asset);
 	webkit_uri_scheme_request_finish(request, stream, Asset_getLength(asset), NULL);
 	g_object_unref(stream);
@@ -33,7 +47,9 @@ static void web_view_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(web_view)));
 	JNIEnv *env = get_jni_env();
-	(*env)->CallVoidMethod(env, wrapper->jobj, handle_cache.webview.internalLoadChanged, load_event, _JSTRING(webkit_web_view_get_uri(web_view)));
+	jstring uri = _JSTRING(webkit_web_view_get_uri(web_view));
+	(*env)->CallVoidMethod(env, wrapper->jobj, handle_cache.webview.internalLoadChanged, load_event, uri);
+	(*env)->DeleteLocalRef(env, uri); // WebKit calls it from the base JNI frame
 }
 
 static gboolean decide_policy(WebKitWebView *web_view, WebKitPolicyDecision *decision, WebKitPolicyDecisionType type, WrapperWidget *wrapper)
@@ -45,7 +61,9 @@ static gboolean decide_policy(WebKitWebView *web_view, WebKitPolicyDecision *dec
 		const gchar *uri = webkit_uri_request_get_uri(request);
 
 		JNIEnv *env = get_jni_env();
-		jboolean result = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.webview.internalShouldOverrideUrlLoading, _JSTRING(uri));
+		jstring uri_jstring = _JSTRING(uri);
+		jboolean result = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.webview.internalShouldOverrideUrlLoading, uri_jstring);
+		(*env)->DeleteLocalRef(env, uri_jstring); // WebKit calls it from the base JNI frame
 		if (result)
 			webkit_policy_decision_ignore(decision);
 		else

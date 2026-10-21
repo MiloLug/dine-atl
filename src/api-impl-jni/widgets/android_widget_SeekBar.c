@@ -40,6 +40,7 @@ static void on_change_value(GtkRange *self, GtkScrollType *scroll, gdouble value
 	jmethodID on_progress_changed = _METHOD(listener_class, "onProgressChanged", "(Landroid/widget/SeekBar;IZ)V");
 	jmethodID on_start_tracking = _METHOD(listener_class, "onStartTrackingTouch", "(Landroid/widget/SeekBar;)V");
 	jmethodID on_stop_tracking = _METHOD(listener_class, "onStopTrackingTouch", "(Landroid/widget/SeekBar;)V");
+	(*env)->DeleteLocalRef(env, listener_class); // GTK calls it from the base JNI frame
 	(*env)->CallVoidMethod(env, listener, on_start_tracking, wrapper->jobj);
 	(*env)->CallVoidMethod(env, listener, on_progress_changed, wrapper->jobj, (int)value, TRUE);
 	(*env)->CallVoidMethod(env, listener, on_stop_tracking, wrapper->jobj);

@@ -135,41 +135,49 @@ static void on_bus_acquired(GDBusConnection *connection, const char *name, gpoin
 static gboolean on_new_endpoint(Connector1 *connector, GDBusMethodInvocation *invocation, gpointer user_data)
 {
 	GVariant *parameters = g_dbus_method_invocation_get_parameters(invocation);
-	const char *token;
+	char *token;
 	g_variant_get_child(parameters, 0, "s", &token);
-	const char *endpoint;
+	char *endpoint;
 	g_variant_get_child(parameters, 1, "s", &endpoint);
 	connector1_complete_new_endpoint(connector, invocation);
 
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 16); // D-Bus calls it from the base JNI frame
 	jobject intent = (*env)->NewObject(env, handle_cache.intent.class, handle_cache.intent.constructor);
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING("org.unifiedpush.android.connector.NEW_ENDPOINT"));
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraCharSequence, _JSTRING("token"), _JSTRING(token));
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraCharSequence, _JSTRING("endpoint"), _JSTRING(endpoint));
+	g_free(token);
+	g_free(endpoint);
 
 	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 	}
+	(*env)->PopLocalFrame(env, NULL);
 	return TRUE;
 }
 
 static gboolean on_message(Connector1 *connector, GDBusMethodInvocation *invocation, gpointer user_data)
 {
 	GVariant *parameters = g_dbus_method_invocation_get_parameters(invocation);
-	const char *token;
+	char *token;
 	g_variant_get_child(parameters, 0, "s", &token);
 	gsize size;
-	const int8_t *message = g_variant_get_fixed_array(g_variant_get_child_value(parameters, 1), &size, 1);
+	GVariant *message_variant = g_variant_get_child_value(parameters, 1);
+	const int8_t *message = g_variant_get_fixed_array(message_variant, &size, 1);
 	connector1_complete_message(connector, invocation);
 
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 16); // D-Bus calls it from the base JNI frame
 	jobject intent = (*env)->NewObject(env, handle_cache.intent.class, handle_cache.intent.constructor);
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING("org.unifiedpush.android.connector.MESSAGE"));
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraCharSequence, _JSTRING("token"), _JSTRING(token));
+	g_free(token);
 	jbyteArray bytesMessage = (*env)->NewByteArray(env, size);
 	(*env)->SetByteArrayRegion(env, bytesMessage, 0, size, message);
+	g_variant_unref(message_variant);
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraByteArray, _JSTRING("bytesMessage"), bytesMessage);
 
 	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
@@ -177,6 +185,7 @@ static gboolean on_message(Connector1 *connector, GDBusMethodInvocation *invocat
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 	}
+	(*env)->PopLocalFrame(env, NULL);
 	return TRUE;
 }
 

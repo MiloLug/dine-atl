@@ -45,8 +45,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 			if ((*env)->ExceptionCheck(env))
 				(*env)->ExceptionDescribe(env);
 
-			const char *id = g_markup_printf_escaped("0x%08x", id_jint);
-			g_value_set_string(value, id);
+			g_value_take_string(value, g_markup_printf_escaped("0x%08x", id_jint));
 			break;
 		}
 

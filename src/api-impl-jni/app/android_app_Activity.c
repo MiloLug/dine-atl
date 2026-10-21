@@ -46,6 +46,7 @@ static void file_dialog_callback(GObject *source_object, GAsyncResult *res, gpoi
 
 	GFile *file = finish_functions[d->action](dialog, res, NULL);
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8); // GTK calls it from the base JNI frame
 	jmethodID fileChooserResultCallback = _METHOD(handle_cache.activity.class, "fileChooserResultCallback", "(IIILjava/lang/String;)V");
 
 	if (file) {
@@ -60,6 +61,8 @@ static void file_dialog_callback(GObject *source_object, GAsyncResult *res, gpoi
 	} else {
 		(*env)->CallVoidMethod(env, d->activity, fileChooserResultCallback, d->request_code, RESULT_CANCELED, d->action, NULL);
 	}
+	_UNREF(d->activity);
+	(*env)->PopLocalFrame(env, NULL);
 	free(d);
 }
 
@@ -93,6 +96,7 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeFileChooser(JNIEnv *env, 
 		gtk_file_dialog_select_folder,
 	};
 	file_dialog_functions[action](dialog, window, NULL, file_dialog_callback, callback_data);
+	g_object_unref(dialog);
 }
 
 JNIEXPORT jboolean JNICALL Java_android_app_Activity_isInMultiWindowMode(JNIEnv *env, jobject this)

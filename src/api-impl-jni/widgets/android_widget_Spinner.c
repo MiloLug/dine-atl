@@ -40,9 +40,16 @@ static void range_list_item_class_init(RangeListItemClass *cls) {}
 static void range_list_item_init(RangeListItem *self) {}
 G_DEFINE_TYPE(RangeListItem, range_list_item, G_TYPE_OBJECT)
 
+static void delete_global_ref(gpointer ref)
+{
+	JNIEnv *env = get_jni_env();
+	_UNREF(ref);
+}
+
 static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item, jobject this)
 {
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8); // GTK calls it from the base JNI frame
 
 	guint index = gtk_list_item_get_position(list_item);
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_list_item_get_child(list_item));
@@ -54,12 +61,14 @@ static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item
 	}
 	jmethodID getView = _METHOD_OF(model->adapter, "getDropDownView", "(ILandroid/view/View;Landroid/view/ViewGroup;)Landroid/view/View;");
 	jobject view = (*env)->CallObjectMethod(env, model->adapter, getView, index, wrapper ? wrapper->jobj : NULL, model->jobject);
-	view = _REF(view);
+	// the wrapper's ref is weak: the row keeps the view alive while its widget is the row's child
+	g_object_set_data_full(G_OBJECT(list_item), "atl-view", _REF(view), delete_global_ref);
 	GtkWidget *child = gtk_widget_get_parent(GTK_WIDGET(_PTR(_GET_LONG_FIELD(view, "widget"))));
 	jobject background_drawable = _GET_OBJ_FIELD(this, "popupBackground", "Landroid/graphics/drawable/Drawable;");
 	GdkPaintable *background_paintable = background_drawable ? GDK_PAINTABLE(_PTR(_GET_LONG_FIELD(background_drawable, "paintable"))) : NULL;
 	wrapper_widget_set_background(WRAPPER_WIDGET(child), background_paintable);
 	gtk_list_item_set_child(list_item, child);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 JNIEXPORT jlong JNICALL Java_android_widget_Spinner_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)

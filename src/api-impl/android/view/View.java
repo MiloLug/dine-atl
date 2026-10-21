@@ -1937,7 +1937,6 @@ public class View implements Drawable.Callback {
 
 	protected boolean awakenScrollBars() { return false; }
 
-	protected native boolean native_getMatrix(long widget, long matrix);
 	public Matrix getMatrix() {
 		return Matrix.IDENTITY_MATRIX;
 	}
