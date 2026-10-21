@@ -19,6 +19,8 @@ void records_root_shown(struct ui_window *window, struct ui_view *root) {}
 void records_root_removed(struct ui_window *window, struct ui_view *root) {}
 void records_padding_changed(struct ui_view *view) {}
 void records_background_changed(struct ui_view *view, uint32_t argb) {}
+void records_visibility_changed(struct ui_view *view) {}
+void records_progress_changed(struct ui_view *view) {}
 void records_text_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
 void records_layout_done(struct ui_window *window) {}
@@ -33,9 +35,10 @@ void records_frame_changed(struct ui_window *window)
 {
 	const struct ui_frame *frame = &window->frame;
 	if (frame->has_color)
-		printf("window: frame #%08x%s\n", frame->color, frame->light ? " light" : "");
+		printf("window: frame #%08x%s", frame->color, frame->light ? " light" : "");
 	else
-		printf("window: frame none\n");
+		printf("window: frame none");
+	printf("%s\n", frame->fullscreen ? " fullscreen" : "");
 	fflush(stdout);
 }
 

@@ -437,25 +437,6 @@ static gboolean on_key_released(GtkEventControllerKey *controller, guint keyval,
 	return ret;
 }
 
-GtkWidget *currently_unmapping = NULL;
-
-static void root_changed_cb(WrapperWidget *wrapper, GParamSpec *pspec, gpointer user_data)
-{
-	GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(wrapper));
-	JNIEnv *env = get_jni_env();
-	jobject view = (*env)->NewLocalRef(env, wrapper->jobj);
-	if (!view) // collected: a dropped tree leaving its window, e.g. a freed Dialog's
-		return;
-	if (!root)
-		currently_unmapping = wrapper->child;
-	(*env)->CallVoidMethod(env, view, root ? handle_cache.view.onAttachedToWindow : handle_cache.view.onDetachedFromWindow);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-	if (!root)
-		currently_unmapping = NULL;
-	(*env)->DeleteLocalRef(env, view);
-}
-
 void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, const struct ui_view_traits *traits)
 {
 	JNIEnv *env = get_jni_env();
@@ -497,7 +478,6 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 		gtk_widget_add_controller(GTK_WIDGET(wrapper), controller);
 		gtk_widget_set_focusable(GTK_WIDGET(wrapper), TRUE);
 	}
-	g_signal_connect(wrapper, "notify::root", G_CALLBACK(root_changed_cb), NULL);
 }
 
 void wrapper_widget_set_jobject(WrapperWidget *wrapper, JNIEnv *env, jobject jobj)

@@ -36,5 +36,8 @@ void atl_upcall_view_layout(struct atl_ref *view, int width, int height);
 void atl_upcall_window_ready(void);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. */
 void atl_upcall_dialog_result(struct atl_ref *dialog, int which);
+/* ViewTreeObserver.dispatchOnGlobalLayout and dispatchOnPreDraw (ui_window_observe). */
+void atl_upcall_global_layout(struct atl_ref *observer);
+void atl_upcall_pre_draw(struct atl_ref *observer);
 
 #endif

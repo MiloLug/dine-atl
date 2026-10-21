@@ -83,6 +83,30 @@ void atl_upcall_window_ready(void)
 	activity_window_ready();
 }
 
+static void call_observer(struct atl_ref *observer, jmethodID method)
+{
+	JNIEnv *env = get_jni_env();
+	jobject observer_obj = (*env)->NewLocalRef(env, (jobject)observer);
+	if (!observer_obj)
+		return;
+	(*env)->CallVoidMethod(env, observer_obj, method); // dispatchOnPreDraw's boolean is ignored
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->DeleteLocalRef(env, observer_obj);
+}
+
+void atl_upcall_global_layout(struct atl_ref *observer)
+{
+	call_observer(observer, handle_cache.view_tree_observer.dispatchOnGlobalLayout);
+}
+
+void atl_upcall_pre_draw(struct atl_ref *observer)
+{
+	call_observer(observer, handle_cache.view_tree_observer.dispatchOnPreDraw);
+}
+
 void atl_upcall_dialog_result(struct atl_ref *dialog, int which)
 {
 	JNIEnv *env = get_jni_env();

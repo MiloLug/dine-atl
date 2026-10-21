@@ -40,10 +40,13 @@ static void range_list_item_class_init(RangeListItemClass *cls) {}
 static void range_list_item_init(RangeListItem *self) {}
 G_DEFINE_TYPE(RangeListItem, range_list_item, G_TYPE_OBJECT)
 
-static void delete_global_ref(gpointer ref)
+static void row_view_release(gpointer view)
 {
 	JNIEnv *env = get_jni_env();
-	_UNREF(ref);
+	(*env)->CallVoidMethod(env, view, handle_cache.view.dispatchDetachedFromWindow);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	_UNREF(view);
 }
 
 static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item, jobject this)
@@ -61,8 +64,17 @@ static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item
 	}
 	jmethodID getView = _METHOD_OF(model->adapter, "getDropDownView", "(ILandroid/view/View;Landroid/view/ViewGroup;)Landroid/view/View;");
 	jobject view = (*env)->CallObjectMethod(env, model->adapter, getView, index, wrapper ? wrapper->jobj : NULL, model->jobject);
-	// the wrapper's ref is weak: the row keeps the view alive while its widget is the row's child
-	g_object_set_data_full(G_OBJECT(list_item), "atl-view", _REF(view), delete_global_ref);
+	/* the wrapper's ref is weak: the row keeps the view alive while its widget is the row's child,
+	 * and the view is attached as a row's root while bound */
+	jobject old_view = g_object_steal_data(G_OBJECT(list_item), "atl-view");
+	if (old_view && !(*env)->IsSameObject(env, old_view, view))
+		row_view_release(old_view);
+	else if (old_view)
+		_UNREF(old_view);
+	(*env)->CallVoidMethod(env, view, handle_cache.view.dispatchAttachedToWindow);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	g_object_set_data_full(G_OBJECT(list_item), "atl-view", _REF(view), row_view_release);
 	GtkWidget *child = gtk_widget_get_parent(GTK_WIDGET(_PTR(_GET_LONG_FIELD(view, "widget"))));
 	jobject background_drawable = _GET_OBJ_FIELD(this, "popupBackground", "Landroid/graphics/drawable/Drawable;");
 	GdkPaintable *background_paintable = background_drawable ? GDK_PAINTABLE(_PTR(_GET_LONG_FIELD(background_drawable, "paintable"))) : NULL;

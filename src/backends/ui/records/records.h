@@ -17,6 +17,8 @@ struct ui_dialog_state;
 enum node_kind {
 	NODE_VIEW, // ui_view_new: laid out by Java
 	NODE_TEXT, // ui_text_new: measured by the backend
+	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5
+	NODE_PROGRESS, // ui_progress_new
 };
 
 struct ui_view {
@@ -30,11 +32,29 @@ struct ui_view {
 	char *text;
 	float text_size; // px
 	int text_style;  // UI_TEXT_BOLD, UI_TEXT_ITALIC
+	bool markup;
+	int visibility;  // UI_VIEW_VISIBLE, INVISIBLE or GONE
+	float alpha;
+	bool enabled;
+	struct gfx_drawable *background; // held; nothing draws it before M5
+	struct gfx_drawable *image;      // NODE_IMAGE, held
+	int image_width, image_height;   // px, -1: none
+	int scale_type;
+	float fraction; // NODE_PROGRESS
+	bool indeterminate;
 	void *native;    // the backend's object; uikit: a UIView, touched only on UIKit's thread
+};
+
+struct ui_observation {
+	struct ui_observation *next;
+	struct ui_window *window; // NULL once the window is freed
+	struct atl_ref *observer;
+	enum ui_observe what;
 };
 
 struct ui_window {
 	struct ui_view *shown;
+	struct ui_observation *observations;
 	bool layout_pending;
 	int passes_in_a_row;
 	bool ready;
@@ -57,9 +77,13 @@ void records_frame_changed(struct ui_window *window); // window->frame
 void records_window_closed(struct ui_window *window); // the last hook for this window
 void records_padding_changed(struct ui_view *view);
 void records_background_changed(struct ui_view *view, uint32_t argb);
+void records_visibility_changed(struct ui_view *view); // visibility, alpha, enabled
+void records_progress_changed(struct ui_view *view);   // NODE_PROGRESS: fraction, indeterminate
 // NODE_TEXT only
 void records_text_changed(struct ui_view *view); // text, size or style
 void records_text_color_changed(struct ui_view *view, uint32_t argb);
+/* ui_dialog_free's part: the window's observations wait for their ui_window_unobserve. */
+void records_observations_orphan(struct ui_window *window);
 /* The text's size in px within max_width (-1: unbounded), without padding. */
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
 /* A layout pass ended; the shown root's frames are current. */

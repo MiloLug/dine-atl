@@ -50,7 +50,27 @@ if test_hooks
   add_project_arguments('-DATL_TEST_HOOKS', language: 'c')
 endif
 
-# code shared by every build: JNI, ART/libcore, androidfw, sqlite and libc only
+# Matrix: desktop links the graphene gtk4 uses; other builds the wrap without GObject, so no glib.
+# Apple apps link the installed libgraphene-1.0.a beside the archive.
+if desktop
+  graphene_dep = dependency('graphene-1.0')
+else
+  graphene_dep = subproject('graphene', default_options: ['gobject_types=false', 'introspection=disabled',
+                                                          'tests=false', 'installed_tests=false',
+                                                          'default_library=static']).get_variable('graphene_dep')
+endif
+
+# hax.jar's javac writes src/api-impl-jni/generated_headers, which the C natives include
+jni_headers_dep = declare_dependency()
+if not meson.is_cross_build()
+  add_languages('java')
+  bootclasspath_dir = libart_dep.get_variable(pkgconfig: 'libdir') / 'java'
+  bootclasspath = bootclasspath_dir / 'core-all_classes.jar' + ':' + bootclasspath_dir / 'core-junit_classes.jar' + ':' + bootclasspath_dir / 'junit-runner_classes.jar'
+  subdir('src/api-impl')
+  jni_headers_dep = declare_dependency(sources: hax_jar)
+endif
+
+# code shared by every build: JNI, ART/libcore, androidfw, sqlite, graphene and libc only
 atl_shared = static_library('atl_shared', [
 	'src/api-impl-jni/android_content_res_AssetManager.c',
 	'src/api-impl-jni/android_os_Environment.c',
@@ -67,15 +87,19 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/activity.c',
 	'src/shared/android_app_Dialog.c',
 	'src/shared/android_content_Context.c',
+	'src/shared/android_graphics_Matrix.c',
 	'src/shared/android_graphics_Paint.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
 	'src/shared/android_view_View.c',
 	'src/shared/android_view_ViewGroup.c',
+	'src/shared/android_view_ViewTreeObserver.c',
 	'src/shared/android_view_Window.c',
+	'src/shared/android_widget_ImageView.c',
+	'src/shared/android_widget_ProgressBar.c',
 	'src/shared/android_widget_TextView.c',
 	'src/shared/startup.c',
 	'src/shared/upcall.c',
-] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep],
+] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],
    c_args: ['-D_LARGEFILE64_SOURCE'])
 
 backend_libs = []
@@ -180,7 +204,6 @@ if desktop
     'src/api-impl-jni/graphics/android_atl_GskCanvas.c',
     'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
     'src/api-impl-jni/graphics/android_graphics_BitmapFactory.c',
-    'src/api-impl-jni/graphics/android_graphics_Matrix.c',
     'src/api-impl-jni/graphics/android_graphics_Paint.c',
     'src/api-impl-jni/graphics/android_graphics_Path.c',
     'src/api-impl-jni/graphics/android_graphics_Region.c',
@@ -201,7 +224,6 @@ if desktop
     'src/api-impl-jni/views/android_view_inputmethod_InputMethodManager.c',
     'src/api-impl-jni/views/android_view_View.c',
     'src/api-impl-jni/views/android_view_ViewGroup.c',
-    'src/api-impl-jni/views/android_view_ViewTreeObserver.c',
     'src/api-impl-jni/views/android_view_WindowManagerImpl.c',
     'src/api-impl-jni/widgets/WrapperWidget.c',
     'src/api-impl-jni/widgets/android_view_SurfaceView.c',
@@ -212,10 +234,8 @@ if desktop
     'src/api-impl-jni/widgets/android_widget_DatePicker.c',
     'src/api-impl-jni/widgets/android_widget_EditText.c',
     'src/api-impl-jni/widgets/android_widget_ImageButton.c',
-    'src/api-impl-jni/widgets/android_widget_ImageView.c',
     'src/api-impl-jni/widgets/android_widget_PopupMenu.c',
     'src/api-impl-jni/widgets/android_widget_PopupWindow.c',
-    'src/api-impl-jni/widgets/android_widget_Progressbar.c',
     'src/api-impl-jni/widgets/android_widget_RadioButton.c',
     'src/api-impl-jni/widgets/android_widget_ScrollView.c',
     'src/api-impl-jni/widgets/android_widget_Spinner.c',
@@ -254,7 +274,7 @@ else
 endif
 
 if host_backend == 'gtk'
-  backend_libs += static_library('atl_host_gtk', 'src/backends/host/gtk/host.c')
+  backend_libs += static_library('atl_host_gtk', 'src/backends/host/gtk/host.c', dependencies: dependency('gtk4'))
 elif host_backend == 'cli'
   backend_libs += static_library('atl_host_cli', 'src/backends/host/cli/host.c')
 endif
@@ -271,6 +291,7 @@ else
                                    'src/backends/ui/gtk/display.c',
                                    'src/backends/ui/gtk/text.c',
                                    'src/backends/ui/gtk/view.c',
+                                   'src/backends/ui/gtk/widgets.c',
                                    'src/backends/ui/gtk/window.c',
                                  ] + (test_hooks ? ['src/backends/ui/gtk/dump.c'] : []),
                                  dependencies: [dependency('gtk4'), dependency('libportal'), dependency('jni')])
@@ -307,7 +328,7 @@ else
   	install: true,
   	install_dir: get_option('libdir') / 'java/dex/android_translation_layer/natives',
   	install_rpath: '$ORIGIN/:' + get_option('prefix') / get_option('libdir') / 'art',
-  	dependencies: [jni_dep, sqlite3_dep, libart_dep] + legacy_deps,
+  	dependencies: [jni_dep, sqlite3_dep, libart_dep, jni_headers_dep] + legacy_deps,
   	link_with: legacy_link_with,
   	link_args: legacy_link_args,
   	c_args: ['-D_LARGEFILE64_SOURCE'] + legacy_c_args)
@@ -354,16 +375,8 @@ endif
 
 # Java runs on the build machine; a cross build takes the jars and JNI headers from a native build
 if not meson.is_cross_build()
-  add_languages('java')
-
-  bootclasspath_dir = libart_dep.get_variable(pkgconfig: 'libdir') / 'java'
-  bootclasspath = bootclasspath_dir / 'core-all_classes.jar' + ':' + bootclasspath_dir / 'core-junit_classes.jar' + ':' + bootclasspath_dir / 'junit-runner_classes.jar'
-
   # dex: d8 plus a manifest (see build-aux/d8-jar.sh)
   d8_jar = find_program('build-aux/d8-jar.sh')
-
-  # hax.jar
-  subdir('src/api-impl')
 
   # api-impl.jar
   custom_target('api-impl.jar', build_by_default: true, input: [hax_jar], output: ['api-impl.jar'],

@@ -88,8 +88,8 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.view.getAllSuperClasses = _METHOD(handle_cache.view.class, "getAllSuperClasses", "()Ljava/lang/String;");
 	handle_cache.view.dispatchKeyEvent = _METHOD(handle_cache.view.class, "dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z");
 	handle_cache.view.onKeyDown = _METHOD(handle_cache.view.class, "onKeyDown", "(ILandroid/view/KeyEvent;)Z");
-	handle_cache.view.onAttachedToWindow = _METHOD(handle_cache.view.class, "onAttachedToWindow", "()V");
-	handle_cache.view.onDetachedFromWindow = _METHOD(handle_cache.view.class, "onDetachedFromWindow", "()V");
+	handle_cache.view.dispatchAttachedToWindow = _METHOD(handle_cache.view.class, "dispatchAttachedToWindow", "()V");
+	handle_cache.view.dispatchDetachedFromWindow = _METHOD(handle_cache.view.class, "dispatchDetachedFromWindow", "()V");
 	handle_cache.view.dispatchHoverEvent = _METHOD(handle_cache.view.class, "dispatchHoverEvent", "(Landroid/view/MotionEvent;)Z");
 	handle_cache.view.propagateInvalidation = _METHOD(handle_cache.view.class, "propagateInvalidation", "()V");
 

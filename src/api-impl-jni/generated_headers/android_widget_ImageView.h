@@ -224,10 +224,10 @@ JNIEXPORT jlong JNICALL Java_android_widget_ImageView_native_1constructor
 /*
  * Class:     android_widget_ImageView
  * Method:    native_setDrawable
- * Signature: (JJ)V
+ * Signature: (JJII)V
  */
 JNIEXPORT void JNICALL Java_android_widget_ImageView_native_1setDrawable
-  (JNIEnv *, jobject, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jint, jint);
 
 /*
  * Class:     android_widget_ImageView

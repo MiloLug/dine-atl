@@ -10,5 +10,7 @@ bool host_task_to_back(void);
 /* The task moved to the front or back: by_host for atl_nav_home and atl_nav_front, else by the app.
  * Not for the first start. */
 void host_task_moved(bool front, bool by_host);
+/* Whether the shown activity's window keeps the screen on (FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn). */
+void host_keep_screen_on(bool on);
 
 #endif

@@ -259,6 +259,54 @@ void ui_view_request_layout(struct ui_view *view)
 	atl_safe_gtk_widget_queue_resize(GTK_WIDGET(view));
 }
 
+void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled)
+{
+	GtkWidget *widget = GTK_WIDGET(view);
+	GtkWidget *wrapper = gtk_widget_get_parent(widget);
+
+	atl_safe_gtk_widget_set_visible(wrapper, visibility != UI_VIEW_GONE);
+	gtk_widget_set_opacity(wrapper, (visibility != UI_VIEW_INVISIBLE) * alpha);
+	if (!JAVA_IS_WIDGET(widget))
+		gtk_widget_set_sensitive(wrapper, enabled && visibility != UI_VIEW_INVISIBLE && alpha != 0.0f);
+}
+
+void ui_view_children_moved(struct ui_view *view)
+{
+	atl_safe_gtk_widget_queue_allocate(GTK_WIDGET(view));
+}
+
+void ui_view_invalidate(struct ui_view *view)
+{
+	wrapper_widget_queue_draw(WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view))));
+}
+
+/* we kinda need per-widget css */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable)
+{
+	GtkWidget *widget = GTK_WIDGET(view);
+	GdkPaintable *paintable = drawable ? GDK_PAINTABLE(drawable) : NULL;
+	wrapper_widget_set_background(WRAPPER_WIDGET(gtk_widget_get_parent(widget)), paintable);
+	GtkStyleContext *style_context = gtk_widget_get_style_context(widget);
+
+	GtkCssProvider *old_provider = g_object_get_data(G_OBJECT(widget), "background_style_provider");
+	if (old_provider)
+		gtk_style_context_remove_provider(style_context, GTK_STYLE_PROVIDER(old_provider));
+
+	GtkCssProvider *css_provider = gtk_css_provider_new();
+
+	char *css_string = g_markup_printf_escaped("* { background-image: none; background-color: #00000000; }");
+	gtk_css_provider_load_from_string(css_provider, css_string);
+	g_free(css_string);
+
+	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
+	if (paintable)
+		widget_set_needs_allocation(widget);
+}
+#pragma GCC diagnostic pop
+
 void ui_view_set_background_color(struct ui_view *view, uint32_t color)
 {
 	GtkWidget *widget = GTK_WIDGET(view);

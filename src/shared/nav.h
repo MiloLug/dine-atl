@@ -24,6 +24,8 @@ struct atl_embedded_listener {
 	void (*task_moved)(void *context, bool front, bool by_host);
 	/* right before atl_embedded_main returns its status */
 	void (*exited)(void *context, int status);
+	/* the shown activity's window keeps the screen on (FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn) or stops */
+	void (*keep_screen_on)(void *context, bool on);
 };
 
 #ifdef __cplusplus

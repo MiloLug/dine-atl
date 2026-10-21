@@ -926,7 +926,6 @@ public class View implements Drawable.Callback {
 	public int id = NO_ID;
 	private int system_ui_visibility = 0;
 	Window decor_window;
-	private static boolean fullscreen_applied; // gtk has one window
 	public ViewParent parent;
 	public AttributeSet attrs;
 	protected ViewGroup.LayoutParams layout_params;
@@ -1269,7 +1268,7 @@ public class View implements Drawable.Callback {
 	protected native void native_layout(long widget, int l, int t, int r, int b);
 	protected native void native_requestLayout(long widget);
 	protected native void native_setBackgroundDrawable(long widget, long paintable);
-	protected native void native_queueAllocate(long widget);
+	protected native void native_childrenMoved(long widget);
 
 	protected native void native_addClass(long widget, String className);
 	protected native void native_removeClass(long widget, String className);
@@ -1315,19 +1314,13 @@ public class View implements Drawable.Callback {
 	}
 	private native void nativeRequestFocus(long widget, int direction);
 
-	private native void nativeSetFullscreen(long widget, boolean fullscreen);
-
 	public void setSystemUiVisibility(int visibility) {
 		if (decor_window != null)
 			decor_window.setLightStatusBar((visibility & SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0, false);
-		/* LAYOUT_FULLSCREEN mode would make the app window continue behind semi-transparent status bar.
-		   Such a mode doesn't exist on desktop Linux, so we just use normal fullscreen for both modes.
-		   Only on a change: the native is gtk-only. */
-		boolean fullscreen = (visibility & (View.SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)) != 0;
-		if (fullscreen != fullscreen_applied) {
-			nativeSetFullscreen(widget, fullscreen);
-			fullscreen_applied = fullscreen;
-		}
+		// Android ORs the flags of every view in the window; here the last view to set them wins
+		Window window = getRootView().decor_window;
+		if (window != null)
+			window.setViewFullscreen((visibility & SYSTEM_UI_FLAG_FULLSCREEN) != 0);
 		system_ui_visibility = visibility;
 	}
 	// the decor's light status bar flag is its Window's
@@ -1355,9 +1348,8 @@ public class View implements Drawable.Callback {
 
 	public void setSelected(boolean selected) {}
 
-	public native Window native_get_window(long widget);
 	public ViewTreeObserver getViewTreeObserver() {
-		Window window = native_get_window(widget);
+		Window window = attachedToWindow ? attachedWindow : getRootView().decor_window;
 		if (window != null) {
 			if (window.view_tree_observer == null)
 				window.view_tree_observer = new ViewTreeObserver(window);
@@ -1465,11 +1457,9 @@ public class View implements Drawable.Callback {
 
 	protected void onScrollChanged(int l, int t, int oldl, int oldt) {}
 
+	// the window's origin is the origin of ATL's coordinates
 	public void getLocationOnScreen(int[] location) {
-		Rect rect = new Rect();
-		getGlobalVisibleRect(rect);
-		location[0] = rect.left;
-		location[1] = rect.top;
+		getLocationInWindow(location);
 	}
 
 	public boolean performHapticFeedback(int feedbackConstant) {
@@ -1532,7 +1522,20 @@ public class View implements Drawable.Callback {
 	}
 
 	public void getLocationInWindow(int[] location) {
-		getLocationOnScreen(location);
+		float x = 0;
+		float y = 0;
+		for (View view = this; view != null;) {
+			x += view.getLeft() + view.getTranslationX();
+			y += view.getTop() + view.getTranslationY();
+			View parent = view.parent instanceof View ? (View)view.parent : null;
+			if (parent != null) {
+				x -= parent.getScrollX();
+				y -= parent.getScrollY();
+			}
+			view = parent;
+		}
+		location[0] = Math.round(x);
+		location[1] = Math.round(y);
 	}
 
 	public void addOnAttachStateChangeListener(OnAttachStateChangeListener l) {
@@ -1907,13 +1910,13 @@ public class View implements Drawable.Callback {
 	public void setTranslationX(float translationX) {
 		this.translationX = translationX;
 		if (parent instanceof View)
-			((View)parent).native_queueAllocate(((View)parent).widget);
+			((View)parent).native_childrenMoved(((View)parent).widget);
 	}
 
 	public void setTranslationY(float translationY) {
 		this.translationY = translationY;
 		if (parent instanceof View)
-			((View)parent).native_queueAllocate(((View)parent).widget);
+			((View)parent).native_childrenMoved(((View)parent).widget);
 	}
 
 	public void setX(float x) {
@@ -2083,9 +2086,44 @@ public class View implements Drawable.Callback {
 
 	public void setPaddingRelative(int start, int top, int end, int bottom) {}
 
-	private native boolean nativeIsAttachedToWindow(long widget);
+	boolean attachedToWindow;
+	// kept from attach to detach: a view detached from its parent first (detachViewFromParent) has no root
+	private Window attachedWindow;
 	public boolean isAttachedToWindow() {
-		return nativeIsAttachedToWindow(widget);
+		return attachedToWindow;
+	}
+
+	// called on roots only; ViewGroup passes it on
+	public void dispatchAttachedToWindow() {
+		if (attachedToWindow)
+			return;
+		attachedToWindow = true;
+		attachedWindow = getRootView().decor_window;
+		ViewTreeObserver floating = floating_observer;
+		floating_observer = null;
+		if (floating != null) {
+			ViewTreeObserver observer = getViewTreeObserver();
+			if (observer != floating)
+				observer.merge(floating);
+		}
+		if (keepScreenOn)
+			windowKeepsScreenOn(true);
+		onAttachedToWindow();
+		if (onAttachStateChangeListener != null)
+			onAttachStateChangeListener.onViewAttachedToWindow(this);
+	}
+
+	// isAttachedToWindow stays true in onDetachedFromWindow, as on Android
+	public void dispatchDetachedFromWindow() {
+		if (!attachedToWindow)
+			return;
+		onDetachedFromWindow();
+		if (onAttachStateChangeListener != null)
+			onAttachStateChangeListener.onViewDetachedFromWindow(this);
+		if (keepScreenOn)
+			windowKeepsScreenOn(false);
+		attachedToWindow = false;
+		attachedWindow = null;
 	}
 
 	public void requestApplyInsets() {}
@@ -2170,35 +2208,23 @@ public class View implements Drawable.Callback {
 	}
 
 	private boolean keepScreenOn = false;
-	private static native void native_keep_screen_on(long widget, boolean keepScreenOn);
 	public void setKeepScreenOn(boolean screenOn) {
 		if (isAttachedToWindow() && keepScreenOn != screenOn)
-			native_keep_screen_on(widget, screenOn);
+			windowKeepsScreenOn(screenOn);
 		keepScreenOn = screenOn;
+	}
+
+	private void windowKeepsScreenOn(boolean keeps) {
+		if (attachedWindow != null)
+			attachedWindow.viewKeepsScreenOn(keeps);
 	}
 
 	public boolean getKeepScreenOn() {
 		return keepScreenOn;
 	}
 
-	protected void onAttachedToWindow() {
-		if (onAttachStateChangeListener != null) {
-			onAttachStateChangeListener.onViewAttachedToWindow(this);
-		}
-		if (keepScreenOn)
-			native_keep_screen_on(widget, true);
-		if (floating_observer != null) {
-			getViewTreeObserver().merge(floating_observer);
-			floating_observer = null;
-		}
-	}
-	protected void onDetachedFromWindow() {
-		if (onAttachStateChangeListener != null) {
-			onAttachStateChangeListener.onViewDetachedFromWindow(this);
-		}
-		if (keepScreenOn)
-			native_keep_screen_on(widget, false);
-	}
+	protected void onAttachedToWindow() {}
+	protected void onDetachedFromWindow() {}
 
 	public void setLayerType(int layerType, Paint paint) {}
 
@@ -2260,10 +2286,8 @@ public class View implements Drawable.Callback {
 
 	public boolean canScrollHorizontally(int direction) { return false; }
 
-	protected native boolean native_getGlobalVisibleRect(long widget, Rect visibleRect);
-
 	public boolean getGlobalVisibleRect(Rect visibleRect) {
-		return native_getGlobalVisibleRect(widget, visibleRect);
+		return getGlobalVisibleRect(visibleRect, null);
 	}
 
 	public boolean onCheckIsTextEditor() { return false; }
@@ -2473,9 +2497,18 @@ public class View implements Drawable.Callback {
 	}
 
 	public boolean getGlobalVisibleRect(Rect visibleRect, Point globalOffset) {
-		boolean result = native_getGlobalVisibleRect(widget, visibleRect);
-		globalOffset.set(visibleRect.left, visibleRect.top);
-		return result;
+		int[] location = new int[2];
+		getLocationInWindow(location);
+		visibleRect.set(location[0], location[1], location[0] + getWidth(), location[1] + getHeight());
+		if (globalOffset != null)
+			globalOffset.set(location[0], location[1]);
+		for (ViewParent parent = this.parent; parent instanceof View; parent = ((View)parent).parent) {
+			View view = (View)parent;
+			view.getLocationInWindow(location);
+			if (!visibleRect.intersect(location[0], location[1], location[0] + view.getWidth(), location[1] + view.getHeight()))
+				return false;
+		}
+		return !visibleRect.isEmpty();
 	}
 
 	public void restoreHierarchyState(SparseArray<Parcelable> container) {}
@@ -2519,7 +2552,8 @@ public class View implements Drawable.Callback {
 	public void announceForAccessibility(CharSequence text) {}
 
 	public WindowInsetsController getWindowInsetsController() {
-		return native_get_window(widget).getInsetsController();
+		Window window = getRootView().decor_window;
+		return window != null ? window.getInsetsController() : null;
 	}
 
 	public final boolean isKeyboardNavigationCluster() { return false; }

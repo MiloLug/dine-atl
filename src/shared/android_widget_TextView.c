@@ -18,12 +18,9 @@ JNIEXPORT jlong JNICALL Java_android_widget_TextView_native_1constructor(JNIEnv 
 
 	struct ui_view_traits traits;
 	atl_view_traits_get(env, this, &traits);
-
-	jclass class = _CLASS(this);
-	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
-	const char *name = (*env)->GetStringUTFChars(env, name_jstr, NULL);
+	char *name = atl_view_class_name(env, this);
 	struct ui_view *view = ui_text_new((struct atl_ref *)_WEAK_REF(this), name, &traits, text);
-	(*env)->ReleaseStringUTFChars(env, name_jstr, name);
+	free(name);
 	free(text);
 
 	return _INTPTR(view);
@@ -49,4 +46,9 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextSize(JNIEnv *
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle(JNIEnv *env, jobject this, jint style)
 {
 	ui_text_set_style(text_view(env, this), style);
+}
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1set_1markup(JNIEnv *env, jobject this, jint markup)
+{
+	ui_text_set_markup(_PTR(_GET_LONG_FIELD(this, "widget")), markup);
 }

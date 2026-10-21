@@ -12,3 +12,9 @@ void host_task_moved(bool front, bool by_host)
 	printf("host: task %s %s\n", front ? "front" : "back", by_host ? "host" : "app");
 	fflush(stdout);
 }
+
+void host_keep_screen_on(bool on)
+{
+	printf("host: keep screen on %d\n", on);
+	fflush(stdout);
+}

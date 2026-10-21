@@ -287,10 +287,10 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundDrawable
 
 /*
  * Class:     android_view_View
- * Method:    native_queueAllocate
+ * Method:    native_childrenMoved
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_android_view_View_native_1queueAllocate
+JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved
   (JNIEnv *, jobject, jlong);
 
 /*
@@ -351,22 +351,6 @@ JNIEXPORT void JNICALL Java_android_view_View_nativeRequestFocus
 
 /*
  * Class:     android_view_View
- * Method:    nativeSetFullscreen
- * Signature: (JZ)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetFullscreen
-  (JNIEnv *, jobject, jlong, jboolean);
-
-/*
- * Class:     android_view_View
- * Method:    native_get_window
- * Signature: (J)Landroid/view/Window;
- */
-JNIEXPORT jobject JNICALL Java_android_view_View_native_1get_1window
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
  * Method:    nativeInvalidate
  * Signature: (J)V
  */
@@ -412,30 +396,6 @@ JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnLongClickListener
  */
 JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsFocused
   (JNIEnv *, jclass, jlong);
-
-/*
- * Class:     android_view_View
- * Method:    nativeIsAttachedToWindow
- * Signature: (J)Z
- */
-JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsAttachedToWindow
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
- * Method:    native_keep_screen_on
- * Signature: (JZ)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_native_1keep_1screen_1on
-  (JNIEnv *, jclass, jlong, jboolean);
-
-/*
- * Class:     android_view_View
- * Method:    native_getGlobalVisibleRect
- * Signature: (JLandroid/graphics/Rect;)Z
- */
-JNIEXPORT jboolean JNICALL Java_android_view_View_native_1getGlobalVisibleRect
-  (JNIEnv *, jobject, jlong, jobject);
 
 /*
  * Class:     android_view_View

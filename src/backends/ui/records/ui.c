@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "src/shared/upcall.h"
+#include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
@@ -45,19 +46,45 @@ static void lay_out(struct ui_window *window)
 	atl_upcall_view_measure(root->ref, config->width | MEASURE_SPEC_EXACTLY, config->height | MEASURE_SPEC_EXACTLY);
 	atl_upcall_view_layout(root->ref, config->width, config->height);
 
-	if (!window->layout_pending)
-		window->passes_in_a_row = 0;
 	if (!window->ready) {
 		window->ready = true;
 		atl_upcall_window_ready();
 	}
 }
 
+// the observers of one kind, as of now: a listener may add or remove observations
+static void notify_observers(struct ui_window *window, enum ui_observe what)
+{
+	size_t count = 0;
+	for (struct ui_observation *o = window->observations; o; o = o->next)
+		count += o->what == what;
+	if (!count)
+		return;
+	struct atl_ref **observers = malloc(count * sizeof(*observers)), **next = observers;
+	for (struct ui_observation *o = window->observations; o; o = o->next) {
+		if (o->what == what)
+			*next++ = atl_ref_dup(o->observer);
+	}
+	for (size_t i = 0; i < count; i++) {
+		if (what == UI_OBSERVE_LAYOUT)
+			atl_upcall_global_layout(observers[i]);
+		else
+			atl_upcall_pre_draw(observers[i]);
+		atl_ref_free(observers[i]);
+	}
+	free(observers);
+}
+
+// nothing draws on these backends: a layout pass stands in for the frame
 static void layout_pass(void *data)
 {
 	struct ui_window *window = data;
 	window->layout_pending = false;
 	lay_out(window);
+	notify_observers(window, UI_OBSERVE_LAYOUT);
+	notify_observers(window, UI_OBSERVE_DRAW);
+	if (!window->layout_pending) // a listener that keeps requesting layout counts too
+		window->passes_in_a_row = 0;
 	records_layout_done(window);
 }
 
@@ -77,11 +104,6 @@ struct ui_window *ui_window_new(void *surface)
 }
 
 void ui_window_set_title(struct ui_window *window, const char *title) {}
-
-void ui_window_set_java(struct ui_window *window, struct atl_ref *window_ref)
-{
-	atl_ref_free(window_ref);
-}
 
 void ui_window_clear_background(struct ui_window *window) {}
 
@@ -109,7 +131,8 @@ void ui_window_set_back_enabled(struct ui_window *window, bool enabled) {}
 void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
 {
 	struct ui_frame *current = &window->frame;
-	if (current->has_color == frame->has_color && (!frame->has_color || (current->color == frame->color && current->light == frame->light)))
+	if (current->has_color == frame->has_color && current->fullscreen == frame->fullscreen
+	    && (!frame->has_color || (current->color == frame->color && current->light == frame->light)))
 		return;
 	*current = *frame;
 	records_frame_changed(window);
@@ -127,12 +150,48 @@ void ui_window_get_size(struct ui_window *window, int *width, int *height)
 	*height = atl_window_get()->height;
 }
 
+bool ui_window_is_multi_window(struct ui_window *window)
+{
+	return false;
+}
+
+struct ui_observation *ui_window_observe(struct ui_window *window, struct atl_ref *observer, enum ui_observe what)
+{
+	struct ui_observation *observation = malloc(sizeof(*observation));
+	*observation = (struct ui_observation){.next = window->observations, .window = window, .observer = observer, .what = what};
+	window->observations = observation;
+	return observation;
+}
+
+void ui_window_unobserve(struct ui_window *window, struct ui_observation *observation)
+{
+	if (observation->window) {
+		for (struct ui_observation **link = &observation->window->observations; *link; link = &(*link)->next) {
+			if (*link == observation) {
+				*link = observation->next;
+				break;
+			}
+		}
+	}
+	atl_ref_free(observation->observer);
+	free(observation);
+}
+
+void records_observations_orphan(struct ui_window *window)
+{
+	for (struct ui_observation *o = window->observations; o; o = o->next)
+		o->window = NULL;
+	window->observations = NULL;
+}
+
 static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name)
 {
 	struct ui_view *view = calloc(1, sizeof(*view));
 	view->kind = kind;
 	view->ref = view_ref;
 	view->class_name = strdup(class_name);
+	view->alpha = 1;
+	view->enabled = true;
 	if (kind == NODE_TEXT) {
 		view->text = strdup("");
 		view->text_size = DEFAULT_TEXT_SIZE_SP * atl_window_get()->density_dpi / 160;
@@ -169,12 +228,28 @@ void ui_view_remove_child(struct ui_view *parent, struct ui_view *child)
 	}
 }
 
+static void hold(struct gfx_drawable **held, struct gfx_drawable *drawable)
+{
+	if (drawable)
+		gfx_drawable_ref(drawable);
+	if (*held)
+		gfx_drawable_unref(*held);
+	*held = drawable;
+}
+
+static void set_background(struct ui_view *view, struct gfx_drawable *drawable)
+{
+	hold(&view->background, drawable);
+}
+
 void ui_view_free(struct ui_view *view)
 {
 	records_test_view_freed(view);
 	free(view->children); // the children may be freed already
 	free(view->class_name);
 	free(view->text);
+	set_background(view, NULL);
+	hold(&view->image, NULL);
 	atl_ref_free(view->ref);
 	records_view_freed(view);
 }
@@ -192,7 +267,30 @@ void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int
 
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb)
 {
+	set_background(view, NULL);
 	records_background_changed(view, argb);
+}
+
+void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable)
+{
+	set_background(view, drawable);
+	records_background_changed(view, 0);
+}
+
+void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled)
+{
+	view->visibility = visibility;
+	view->alpha = alpha;
+	view->enabled = enabled;
+	records_visibility_changed(view);
+}
+
+void ui_view_invalidate(struct ui_view *view) {}
+
+// layout applies the translations: a pass moves the frames
+void ui_view_children_moved(struct ui_view *view)
+{
+	ui_view_request_layout(view);
 }
 
 void ui_view_request_layout(struct ui_view *view)
@@ -227,6 +325,14 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 				max_width = 0;
 		}
 		records_text_extent(view, max_width, &content_width, &content_height);
+	} else if (view->kind == NODE_IMAGE) {
+		content_width = view->image_width > 0 ? view->image_width : 0;
+		content_height = view->image_height > 0 ? view->image_height : 0;
+	} else if (view->kind == NODE_PROGRESS) {
+		// Widget.ProgressBar's 48dp; a bar 20dp tall, as Widget.ProgressBar.Horizontal
+		int dp = atl_window_get()->density_dpi;
+		content_width = 48 * dp / 160;
+		content_height = (view->indeterminate ? 48 : 20) * dp / 160;
 	}
 	*width = resolve(content_width + padding_h, width_spec);
 	*height = resolve(content_height + padding_v, height_spec);
@@ -276,4 +382,46 @@ void ui_text_set_style(struct ui_view *view, int style)
 	view->text_style = style;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
+}
+
+void ui_text_set_markup(struct ui_view *view, bool markup)
+{
+	view->markup = markup;
+}
+
+struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
+{
+	struct ui_view *view = view_new(NODE_IMAGE, view_ref, class_name);
+	view->image_width = view->image_height = -1;
+	return view;
+}
+
+void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, int width, int height)
+{
+	hold(&view->image, drawable);
+	view->image_width = width;
+	view->image_height = height;
+	ui_view_request_layout(view);
+}
+
+void ui_image_set_scale_type(struct ui_view *view, int scale_type)
+{
+	view->scale_type = scale_type;
+}
+
+struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
+{
+	return view_new(NODE_PROGRESS, view_ref, class_name);
+}
+
+void ui_progress_set_fraction(struct ui_view *view, float fraction)
+{
+	view->fraction = fraction;
+	records_progress_changed(view);
+}
+
+void ui_progress_set_indeterminate(struct ui_view *view, bool indeterminate)
+{
+	view->indeterminate = indeterminate;
+	records_progress_changed(view);
 }

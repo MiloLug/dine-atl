@@ -122,6 +122,8 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 			}
 		}
 		native_addView(widget, child.widget, sortedIndex, params);
+		if (attachedToWindow)
+			child.dispatchAttachedToWindow();
 		if (callOnViewAdded) {
 			onViewAdded(child);
 			if (onHierarchyChangeListener != null)
@@ -153,6 +155,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected void removeViewInternal(View child) {
 		if (child == null || child.parent != this)
 			return;
+		child.dispatchDetachedFromWindow();
 		child.parent = null;
 		children.remove(child);
 		native_removeView(widget, child.widget);
@@ -178,6 +181,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	public void removeAllViews() {
 		for (Iterator<View> it = children.iterator(); it.hasNext();) {
 			View child = it.next();
+			child.dispatchDetachedFromWindow();
 			child.parent = null;
 			it.remove();
 			native_removeView(widget, child.widget);
@@ -196,6 +200,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	public void attachViewToParent(View view, int index, LayoutParams params) {
 		if (!detachedChildren.remove(view)) {
 			addViewInternal(view, index, params, false);
+			return;
 		}
 		if (!checkLayoutParams(params))
 			params = generateLayoutParams(params);
@@ -211,11 +216,33 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected void removeDetachedView(View child, boolean animate) {
 		if (!detachedChildren.remove(child))
 			return;
+		child.dispatchDetachedFromWindow();
 		child.parent = null;
 		native_removeView(widget, child.widget);
 		if (onHierarchyChangeListener != null) {
 			onHierarchyChangeListener.onChildViewRemoved(this, child);
 		}
+	}
+
+	@Override
+	public void dispatchAttachedToWindow() {
+		if (attachedToWindow)
+			return;
+		super.dispatchAttachedToWindow();
+		// onAttachedToWindow may add or remove children
+		for (View child : new ArrayList<View>(children)) {
+			if (child.parent == this)
+				child.dispatchAttachedToWindow();
+		}
+	}
+
+	@Override
+	public void dispatchDetachedFromWindow() {
+		if (!attachedToWindow)
+			return;
+		for (View child : new ArrayList<View>(children))
+			child.dispatchDetachedFromWindow();
+		super.dispatchDetachedFromWindow();
 	}
 
 	@Override
@@ -505,14 +532,37 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		// FIXME
 	}
 
-	private native void native_offsetRect(long from_widget, long to_widget, Rect rect);
-
 	public final void offsetDescendantRectToMyCoords(View descendant, Rect rect) {
-		native_offsetRect(descendant.widget, widget, rect);
+		offsetRectBetweenParentAndChild(descendant, rect, true);
 	}
 
 	public final void offsetRectIntoDescendantCoords(View descendant, Rect rect) {
-		native_offsetRect(widget, descendant.widget, rect);
+		offsetRectBetweenParentAndChild(descendant, rect, false);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	void offsetRectBetweenParentAndChild(View descendant, Rect rect, boolean offsetFromChildToParent) {
+		if (descendant == this)
+			return;
+		ViewParent theParent = descendant.parent;
+		while (theParent instanceof View && theParent != this) {
+			int dx = descendant.getLeft() - descendant.getScrollX();
+			int dy = descendant.getTop() - descendant.getScrollY();
+			if (offsetFromChildToParent)
+				rect.offset(dx, dy);
+			else
+				rect.offset(-dx, -dy);
+			descendant = (View)theParent;
+			theParent = descendant.parent;
+		}
+		if (theParent != this)
+			throw new IllegalArgumentException("parameter must be a descendant of this view");
+		int dx = descendant.getLeft() - descendant.getScrollX();
+		int dy = descendant.getTop() - descendant.getScrollY();
+		if (offsetFromChildToParent)
+			rect.offset(dx, dy);
+		else
+			rect.offset(-dx, -dy);
 	}
 
 	public boolean getClipToPadding() { return false; }

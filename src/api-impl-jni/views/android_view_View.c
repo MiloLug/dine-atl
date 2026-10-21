@@ -457,41 +457,8 @@ JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnClickListener(JNIEnv *e
 	widget_set_needs_allocation(widget);
 }
 
-JNIEXPORT jint JNICALL Java_android_view_View_getWidth(JNIEnv *env, jobject this)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(_GET_LONG_FIELD(this, "widget")));
-
-	if (ATL_IS_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget))) {
-		AndroidLayout *layout = ATL_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget));
-		return layout->real_width;
-	}
-	return gtk_widget_get_width(widget);
-}
-
-JNIEXPORT jint JNICALL Java_android_view_View_getHeight(JNIEnv *env, jobject this)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(_GET_LONG_FIELD(this, "widget")));
-
-	if (ATL_IS_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget))) {
-		AndroidLayout *layout = ATL_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget));
-		return layout->real_height;
-	}
-	return gtk_widget_get_height(widget);
-}
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-JNIEXPORT void JNICALL Java_android_view_View_native_1setVisibility(JNIEnv *env, jobject this, jlong widget_ptr, jint visibility, jfloat alpha, jboolean sensitive)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GtkWidget *wrapper = gtk_widget_get_parent(widget);
-
-	atl_safe_gtk_widget_set_visible(wrapper, visibility != android_view_View_GONE);
-	gtk_widget_set_opacity(wrapper, (visibility != android_view_View_INVISIBLE) * alpha);
-	if (!JAVA_IS_WIDGET(widget))
-		gtk_widget_set_sensitive(wrapper, sensitive && visibility != android_view_View_INVISIBLE && alpha != 0.0f);
-}
-
 void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view_traits *traits)
 {
 	if (traits->generic_motion) {
@@ -508,66 +475,6 @@ void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view
 		g_signal_connect(controller, "motion", G_CALLBACK(hover_motion_cb), wrapper);
 		gtk_widget_add_controller(GTK_WIDGET(wrapper), controller);
 	}
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeInvalidate(JNIEnv *env, jclass class, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-
-	wrapper_widget_queue_draw(WRAPPER_WIDGET(gtk_widget_get_parent(widget)));
-}
-
-/* we kinda need per-widget css */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundDrawable(JNIEnv *env, jobject this, jlong widget_ptr, jlong paintable_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GdkPaintable *paintable = GDK_PAINTABLE(_PTR(paintable_ptr));
-	wrapper_widget_set_background(WRAPPER_WIDGET(gtk_widget_get_parent(widget)), paintable);
-	GtkStyleContext *style_context = gtk_widget_get_style_context(widget);
-
-	GtkCssProvider *old_provider = g_object_get_data(G_OBJECT(widget), "background_style_provider");
-	if (old_provider)
-		gtk_style_context_remove_provider(style_context, GTK_STYLE_PROVIDER(old_provider));
-
-	GtkCssProvider *css_provider = gtk_css_provider_new();
-
-	char *css_string = g_markup_printf_escaped("* { background-image: none; background-color: #00000000; }");
-	gtk_css_provider_load_from_string(css_provider, css_string);
-	g_free(css_string);
-
-	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
-	if (paintable)
-		widget_set_needs_allocation(widget);
-}
-#pragma GCC diagnostic pop
-
-JNIEXPORT jboolean JNICALL Java_android_view_View_native_1getGlobalVisibleRect(JNIEnv *env, jobject this, jlong widget_ptr, jobject rect)
-{
-	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr)));
-	graphene_point_t point_in = {0, 0};
-	graphene_point_t point_out;
-	double off_x;
-	double off_y;
-	gboolean ret;
-	GtkWidget *window = GTK_WIDGET(gtk_widget_get_native(widget));
-	if (!window)
-		return false;
-	gtk_native_get_surface_transform(GTK_NATIVE(window), &off_x, &off_y);
-	ret = gtk_widget_compute_point(widget, window, &point_in, &point_out);
-	if (!ret)
-		return false;
-	_SET_INT_FIELD(rect, "left", point_out.x + off_x);
-	_SET_INT_FIELD(rect, "top", point_out.y + off_y);
-	point_in = (graphene_point_t){Java_android_view_View_getWidth(env, this), Java_android_view_View_getHeight(env, this)};
-	ret = gtk_widget_compute_point(widget, window, &point_in, &point_out);
-	if (!ret)
-		return false;
-	_SET_INT_FIELD(rect, "right", point_out.x + off_x);
-	_SET_INT_FIELD(rect, "bottom", point_out.y + off_y);
-	return true;
 }
 
 static void on_long_click(GtkGestureLongPress *gesture, double x, double y, gpointer user_data)
@@ -608,11 +515,6 @@ JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnLongClickListener(JNIEn
 	g_object_set_data(G_OBJECT(widget), "on_long_click_listener", controller);
 }
 
-JNIEXPORT void JNICALL Java_android_view_View_native_1queueAllocate(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	atl_safe_gtk_widget_queue_allocate(GTK_WIDGET(_PTR(widget_ptr)));
-}
-
 JNIEXPORT void JNICALL Java_android_view_View_native_1drawBackground(JNIEnv *env, jobject this, jlong widget_ptr, jlong snapshot_ptr)
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr))));
@@ -626,37 +528,6 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1drawContent(JNIEnv *env, j
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr))));
 	GdkSnapshot *snapshot = GDK_SNAPSHOT(_PTR(snapshot_ptr));
 	gtk_widget_snapshot_child(&wrapper->parent_instance, wrapper->child, snapshot);
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetFullscreen(JNIEnv *env, jobject this, jlong widget_ptr, jboolean fullscreen)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GtkWindow *window = GTK_WINDOW(gtk_widget_get_native(widget));
-	if (fullscreen) {
-		if (gtk_window_is_maximized(window)) {
-			gtk_window_fullscreen(window);
-			// Android apps expect the fullscreen to happen immediately, so we need to mock the fullscreened window size
-			if (ATL_IS_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget))) {
-				AndroidLayout *layout = ATL_ANDROID_LAYOUT(gtk_widget_get_layout_manager(widget));
-				GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
-				GdkDisplay *display = gdk_surface_get_display(surface);
-				GdkMonitor *monitor = gdk_display_get_monitor_at_surface(display, surface);
-				GdkRectangle geometry;
-				gdk_monitor_get_geometry(monitor, &geometry);
-				// check if fullscreen is slightly larger than the window, if so, we can safely mock the new size
-				if (layout->real_width <= geometry.width && layout->real_width > geometry.width - 200 && layout->real_height <= geometry.height && layout->real_height > geometry.height - 200) {
-					layout->real_width = geometry.width;
-					layout->real_height = geometry.height;
-					_SET_INT_FIELD(this, "right", geometry.width);
-					_SET_INT_FIELD(this, "bottom", geometry.height);
-				}
-			}
-		} else {
-			printf("blocking fullscreen request, because window is not maximized\n");
-		}
-	} else {
-		gtk_window_unfullscreen(window);
-	}
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1addClass(JNIEnv *env, jobject this, jlong widget_ptr, jstring class_name_jstr)
@@ -726,33 +597,5 @@ JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsFocused(JNIEnv *env, j
 	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
 	GtkWidget *wrapper = gtk_widget_get_parent(widget);
 	return gtk_widget_has_focus(widget) || gtk_widget_has_focus(wrapper);
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_native_1keep_1screen_1on(JNIEnv *env, jobject this, jlong widget_ptr, jboolean enable)
-{
-	GtkApplication *application = GTK_APPLICATION(g_application_get_default());
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	guint cookie = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "keep-screen-on-cookie"));
-	if (cookie && !enable) {
-		gtk_application_uninhibit(application, cookie);
-		g_object_set_data(G_OBJECT(widget), "keep-screen-on-cookie", NULL);
-	} else if (!cookie && enable) {
-		GtkWindow *window = GTK_WINDOW(gtk_widget_get_native(widget));
-		GtkApplicationInhibitFlags flags = GTK_APPLICATION_INHIBIT_SUSPEND | GTK_APPLICATION_INHIBIT_IDLE;
-		cookie = gtk_application_inhibit(application, window, flags, "keep-screen-on");
-		g_object_set_data(G_OBJECT(widget), "keep-screen-on-cookie", GINT_TO_POINTER(cookie));
-	}
-}
-
-JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsAttachedToWindow(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	return currently_unmapping == widget || gtk_widget_get_root(widget);
-}
-
-JNIEXPORT jobject JNICALL Java_android_view_View_native_1get_1window(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	return g_object_get_data(G_OBJECT(gtk_widget_get_root(widget)), "jobject");
 }
 

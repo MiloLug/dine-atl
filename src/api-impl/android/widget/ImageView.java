@@ -45,7 +45,7 @@ public class ImageView extends View {
 			drawable.setCallback(this);
 			if (colorFilter != null)
 				drawable.setColorFilter(colorFilter);
-			native_setDrawable(widget, drawable.paintable);
+			native_setDrawable(widget, drawable.paintable, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
 		}
 		if (a.hasValue(com.android.internal.R.styleable.ImageView_scaleType))
 			setScaleType(scaletype_from_int[a.getInt(com.android.internal.R.styleable.ImageView_scaleType, 3 /*CENTER*/)]);
@@ -58,7 +58,7 @@ public class ImageView extends View {
 			return;
 		}
 		bitmap = BitmapFactory.decodeResource(this.getResources(), resid);
-		native_setDrawable(widget, bitmap != null ? bitmap.getTexture() : 0);
+		setNativeBitmap(bitmap);
 	}
 	public void setAdjustViewBounds(boolean adjustViewBounds) {}
 
@@ -87,13 +87,23 @@ public class ImageView extends View {
 		if (drawable != null) {
 			drawable.setCallback(this);
 		}
-		native_setDrawable(widget, drawable != null ? drawable.paintable : 0);
+		if (drawable != null)
+			native_setDrawable(widget, drawable.paintable, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+		else
+			native_setDrawable(widget, 0, -1, -1);
 	}
 
 	public void setImageMatrix(Matrix matrix) {}
 
 	public void setImageBitmap(Bitmap bitmap) {
-		native_setDrawable(widget, bitmap != null ? bitmap.getTexture() : 0);
+		setNativeBitmap(bitmap);
+	}
+
+	private void setNativeBitmap(Bitmap bitmap) {
+		if (bitmap != null)
+			native_setDrawable(widget, bitmap.getTexture(), bitmap.getWidth(), bitmap.getHeight());
+		else
+			native_setDrawable(widget, 0, -1, -1);
 	}
 
 	/**
@@ -209,6 +219,6 @@ public class ImageView extends View {
 
 	@Override
 	protected native long native_constructor(Context context, AttributeSet attrs);
-	protected native void native_setDrawable(long widget, long paintable);
+	protected native void native_setDrawable(long widget, long paintable, int width, int height);
 	protected native void native_setScaleType(long widget, int scale_type);
 }

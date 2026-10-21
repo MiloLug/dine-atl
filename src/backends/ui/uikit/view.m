@@ -30,6 +30,34 @@
 }
 @end
 
+@interface ATLProgress : UIView
+@property(nonatomic, readonly) UIProgressView *bar;
+@property(nonatomic, readonly) UIActivityIndicatorView *spinner;
+@end
+
+@implementation ATLProgress
+- (instancetype)init
+{
+	if ((self = [super initWithFrame:CGRectZero])) {
+		_bar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+		_spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+		_spinner.hidden = YES;
+		[self addSubview:_bar];
+		[self addSubview:_spinner];
+	}
+	return self;
+}
+
+- (void)layoutSubviews
+{
+	[super layoutSubviews];
+	CGRect bounds = self.bounds;
+	CGFloat height = [_bar sizeThatFits:bounds.size].height;
+	_bar.frame = CGRectMake(0, (bounds.size.height - height) / 2, bounds.size.width, height);
+	_spinner.center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+}
+@end
+
 static struct ui_window *app_window;
 static void *surface; // a retained UIView; blocks capture it when queued, the window's close clears it
 
@@ -106,13 +134,15 @@ void records_window_created(struct ui_window *window, void *surface_view)
 void records_view_created(struct ui_view *view)
 {
 	@autoreleasepool {
-		bool text = view->kind == NODE_TEXT;
+		enum node_kind kind = view->kind;
 		enqueue(^{
 			UIView *created;
-			if (text) {
+			if (kind == NODE_TEXT) {
 				ATLLabel *label = [ATLLabel new];
 				label.numberOfLines = 0;
 				created = label;
+			} else if (kind == NODE_PROGRESS) {
+				created = [ATLProgress new];
 			} else {
 				created = [UIView new];
 				created.clipsToBounds = YES; // ViewGroup's clipChildren
@@ -173,11 +203,12 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 		return;
 	void *target = surface;
 	@autoreleasepool {
+		bool visible = root->visibility == UI_VIEW_VISIBLE;
 		enqueue(^{
 			UIView *shown = native(root);
 			UIView *surface_view = (__bridge UIView *)target;
 			for (UIView *other in surface_view.subviews)
-				other.hidden = other != shown;
+				other.hidden = other != shown || !visible;
 			[surface_view bringSubviewToFront:shown];
 		});
 	}
@@ -204,7 +235,7 @@ void records_frame_changed(struct ui_window *window)
 		enqueue(^{
 			id surface_view = (__bridge id)target;
 			if ([surface_view conformsToProtocol:@protocol(ATLSurface)])
-				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light];
+				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light fullscreen:frame.fullscreen];
 		});
 	}
 }
@@ -244,6 +275,43 @@ void records_background_changed(struct ui_view *view, uint32_t argb)
 	@autoreleasepool {
 		enqueue(^{
 			native(view).backgroundColor = color(argb);
+		});
+	}
+}
+
+void records_progress_changed(struct ui_view *view)
+{
+	@autoreleasepool {
+		float fraction = view->fraction;
+		bool indeterminate = view->indeterminate;
+		enqueue(^{
+			ATLProgress *progress = (ATLProgress *)native(view);
+			progress.bar.progress = fraction;
+			progress.bar.hidden = indeterminate;
+			progress.spinner.hidden = !indeterminate;
+			if (indeterminate)
+				[progress.spinner startAnimating];
+			else
+				[progress.spinner stopAnimating];
+		});
+	}
+}
+
+void records_visibility_changed(struct ui_view *view)
+{
+	@autoreleasepool {
+		bool hidden = view->visibility != UI_VIEW_VISIBLE;
+		CGFloat alpha = view->alpha;
+		bool enabled = view->enabled;
+		void *target = surface;
+		enqueue(^{
+			UIView *changed = native(view);
+			UIView *surface_view = (__bridge UIView *)target;
+			// activity roots: only the front one (records_root_shown) shows
+			bool behind = surface_view && changed.superview == surface_view && changed != surface_view.subviews.lastObject;
+			changed.hidden = hidden || behind;
+			changed.alpha = alpha;
+			changed.userInteractionEnabled = enabled;
 		});
 	}
 }

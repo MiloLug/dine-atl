@@ -10,8 +10,9 @@ NS_ASSUME_NONNULL_BEGIN
 NS_SWIFT_UI_ACTOR
 @protocol ATLSurface <NSObject>
 /* The frame the shown activity asks of the host around the window (the status bar). color: nil
- * when the app leaves it to the host; light: dark text and icons on it. */
-- (void)atlFrameChanged:(nullable UIColor *)color light:(BOOL)light;
+ * when the app leaves it to the host; light: dark text and icons on it; fullscreen: the host hides
+ * its bars, the window keeps its size. */
+- (void)atlFrameChanged:(nullable UIColor *)color light:(BOOL)light fullscreen:(BOOL)fullscreen;
 @end
 
 NS_ASSUME_NONNULL_END

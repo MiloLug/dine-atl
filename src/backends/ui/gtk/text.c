@@ -95,3 +95,8 @@ void ui_text_set_style(struct ui_view *view, int style)
 	if (style & UI_TEXT_ITALIC)
 		gtk_widget_add_css_class(widget, "ATL-font-italic");
 }
+
+void ui_text_set_markup(struct ui_view *view, bool markup)
+{
+	gtk_label_set_use_markup(text_box_get_label(GTK_WIDGET(view)), markup);
+}

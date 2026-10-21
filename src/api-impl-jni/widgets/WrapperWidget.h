@@ -34,7 +34,6 @@ struct _WrapperWidgetClass {
 	GtkWidgetClass parent_class;
 };
 
-extern GtkWidget *currently_unmapping;
 
 GtkWidget *wrapper_widget_new(void);
 void wrapper_widget_set_child(WrapperWidget *parent, GtkWidget *child);

@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_view_View.h"
 #include "src/api-impl-jni/util.h"
@@ -26,17 +28,23 @@ void atl_view_traits_get(JNIEnv *env, jobject view, struct ui_view_traits *trait
 	traits->hovers = _METHOD(class, "dispatchHoverEvent", "(Landroid/view/MotionEvent;)Z") != handle_cache.view.dispatchHoverEvent;
 }
 
+char *atl_view_class_name(JNIEnv *env, jobject view)
+{
+	jclass class = _CLASS(view);
+	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
+	char *name = jstring_to_utf8(env, name_jstr);
+	(*env)->DeleteLocalRef(env, name_jstr);
+	(*env)->DeleteLocalRef(env, class);
+	return name;
+}
+
 JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
 {
 	struct ui_view_traits traits;
 	atl_view_traits_get(env, this, &traits);
-
-	jclass class = _CLASS(this);
-	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
-	const char *name = (*env)->GetStringUTFChars(env, name_jstr, NULL);
+	char *name = atl_view_class_name(env, this);
 	struct ui_view *view = ui_view_new((struct atl_ref *)_WEAK_REF(this), name, &traits);
-	(*env)->ReleaseStringUTFChars(env, name_jstr, name);
-
+	free(name);
 	return _INTPTR(view);
 }
 
@@ -80,6 +88,26 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1requestLayout(JNIEnv *env,
 JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundColor(JNIEnv *env, jobject this, jlong widget_ptr, jint color)
 {
 	ui_view_set_background_color(_PTR(widget_ptr), color);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundDrawable(JNIEnv *env, jobject this, jlong widget_ptr, jlong drawable_ptr)
+{
+	ui_view_set_background_drawable(_PTR(widget_ptr), _PTR(drawable_ptr));
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1setVisibility(JNIEnv *env, jobject this, jlong widget_ptr, jint visibility, jfloat alpha, jboolean enabled)
+{
+	ui_view_set_visibility(_PTR(widget_ptr), visibility, alpha, enabled);
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_nativeInvalidate(JNIEnv *env, jclass class, jlong widget_ptr)
+{
+	ui_view_invalidate(_PTR(widget_ptr));
+}
+
+JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved(JNIEnv *env, jobject this, jlong widget_ptr)
+{
+	ui_view_children_moved(_PTR(widget_ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1measure(JNIEnv *env, jobject this, jlong widget_ptr, jint width_spec, jint height_spec)

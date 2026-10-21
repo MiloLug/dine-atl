@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/ebassi/graphene.git
+revision = 1.10.8
+depth = 1
+
+[provide]
+graphene-1.0 = graphene_dep

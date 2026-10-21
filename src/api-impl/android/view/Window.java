@@ -60,7 +60,6 @@ public class Window {
 
 	public void set_native_window(long native_window) {
 		this.native_window = native_window;
-		set_jobject(native_window, this);
 	}
 
 	public void addFlags(int flags) {
@@ -189,6 +188,20 @@ public class Window {
 		return light_status_bar;
 	}
 
+	private int views_keeping_screen_on;
+	void viewKeepsScreenOn(boolean keeps) {
+		views_keeping_screen_on += keeps ? 1 : -1;
+		frameChanged();
+	}
+
+	private boolean view_fullscreen;
+	void setViewFullscreen(boolean fullscreen) {
+		if (view_fullscreen == fullscreen)
+			return;
+		view_fullscreen = fullscreen;
+		frameChanged();
+	}
+
 	private void styleBars() {
 		if (bars_styled)
 			return;
@@ -202,13 +215,17 @@ public class Window {
 			params.flags |= WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS & ~forced_flags;
 		if (!light_status_bar_forced)
 			light_status_bar = a.getBoolean(com.android.internal.R.styleable.Window_windowLightStatusBar, false);
+		if (a.getBoolean(com.android.internal.R.styleable.Window_windowFullscreen, false))
+			params.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN & ~forced_flags;
 		a.recycle();
 	}
 
 	// activity.c calls it by name (handle_cache) when the activity is shown
 	private void updateFrame() {
 		styleBars();
-		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar);
+		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
+		          view_fullscreen || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0);
+		set_keep_screen_on(views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
 	}
 
 	// before styleBars the activity's show publishes the frame
@@ -276,8 +293,8 @@ public class Window {
 	private native void set_title(long native_window, String title);
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
 	public native void set_layout(long native_window, int width, int height);
-	private static native void set_jobject(long ptr, Window obj);
 	private native void clear_background(long native_window);
-	private native void set_frame(boolean has_color, int color, boolean light);
+	private native void set_frame(boolean has_color, int color, boolean light, boolean fullscreen);
+	private native void set_keep_screen_on(boolean keep);
 	private native void set_screen_brightness(float brightness);
 }

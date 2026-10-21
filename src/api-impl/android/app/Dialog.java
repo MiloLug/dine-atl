@@ -161,6 +161,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 				showing = true;
 				canceled = false;
 				shown.add(Dialog.this);
+				getWindow().getDecorView().dispatchAttachedToWindow();
 				if (nativeTaskFront()) // else atlTaskMoved shows it
 					showNative();
 				if (onShowListener != null)
@@ -221,6 +222,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 				if (!showing) { // not shown again meanwhile
 					nativeClose(nativePtr); // even in the back: atlTaskMoved skips dismissed dialogs
 					shown.remove(Dialog.this);
+					getWindow().getDecorView().dispatchDetachedFromWindow();
 				}
 				if (onDismissListener != null)
 					onDismissListener.onDismiss(Dialog.this);

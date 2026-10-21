@@ -26,3 +26,9 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref(JNI
 {
 	loop_main_post(drawable_unref, _PTR(paintable_ptr));
 }
+
+JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidate(JNIEnv *env, jobject this, jlong paintable_ptr)
+{
+	if (paintable_ptr)
+		gfx_drawable_invalidate(_PTR(paintable_ptr));
+}

@@ -37,14 +37,6 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1layout
 
 /*
  * Class:     android_view_Window
- * Method:    set_jobject
- * Signature: (JLandroid/view/Window;)V
- */
-JNIEXPORT void JNICALL Java_android_view_Window_set_1jobject
-  (JNIEnv *, jclass, jlong, jobject);
-
-/*
- * Class:     android_view_Window
  * Method:    clear_background
  * Signature: (J)V
  */
@@ -54,10 +46,18 @@ JNIEXPORT void JNICALL Java_android_view_Window_clear_1background
 /*
  * Class:     android_view_Window
  * Method:    set_frame
- * Signature: (ZIZ)V
+ * Signature: (ZIZZ)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame
-  (JNIEnv *, jobject, jboolean, jint, jboolean);
+  (JNIEnv *, jobject, jboolean, jint, jboolean, jboolean);
+
+/*
+ * Class:     android_view_Window
+ * Method:    set_keep_screen_on
+ * Signature: (Z)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on
+  (JNIEnv *, jobject, jboolean);
 
 /*
  * Class:     android_view_Window

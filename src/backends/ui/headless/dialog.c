@@ -81,6 +81,7 @@ void ui_dialog_close(struct ui_window *dialog)
 
 void ui_dialog_free(struct ui_window *dialog)
 {
+	records_observations_orphan(dialog);
 	atl_ref_free(dialog->dialog->ref);
 	free(dialog->dialog);
 	free(dialog);

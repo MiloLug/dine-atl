@@ -36,6 +36,16 @@ public class Paint {
 		this.paint = native_clone(paint.paint);
 	}
 
+	@Override
+	protected void finalize() throws Throwable {
+		try {
+			if (paint != 0) // a constructor that threw
+				native_recycle(paint);
+		} finally {
+			super.finalize();
+		}
+	}
+
 	public void setColor(int color) {
 		native_set_color(paint, color);
 	}

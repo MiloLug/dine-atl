@@ -1,14 +1,56 @@
 #include <graphene.h>
+#include <math.h>
 #include <stdint.h>
 
-#include "../defines.h"
-#include "../util.h"
+#include "src/api-impl-jni/defines.h"
+#include "src/api-impl-jni/generated_headers/android_graphics_Matrix.h"
 
-#include "../generated_headers/android_graphics_Matrix.h"
+/* A Matrix is a graphene 4x4 in row-vector form: graphene_matrix_multiply(a, b) applies a, then
+ * b. Android's 3x3 (column vectors) sits in rows and columns 0, 1 and 3; z stays identity. */
+
+// Android's value order: MSCALE_X, MSKEW_X, MTRANS_X, MSKEW_Y, MSCALE_Y, MTRANS_Y, MPERSP_0-2
+static void set_values(graphene_matrix_t *matrix, const float v[9])
+{
+	float values4x4[4][4] = {
+		/* clang-format off */
+		{v[android_graphics_Matrix_MSCALE_X],  v[android_graphics_Matrix_MSKEW_Y], 0, v[android_graphics_Matrix_MPERSP_0]},
+		{ v[android_graphics_Matrix_MSKEW_X], v[android_graphics_Matrix_MSCALE_Y], 0, v[android_graphics_Matrix_MPERSP_1]},
+		{                                  0,                                   0, 1,                                   0},
+		{v[android_graphics_Matrix_MTRANS_X], v[android_graphics_Matrix_MTRANS_Y], 0, v[android_graphics_Matrix_MPERSP_2]},
+		/* clang-format on */
+	};
+	graphene_matrix_init_from_float(matrix, *values4x4);
+}
+
+static void set_sin_cos(graphene_matrix_t *matrix, float sin_v, float cos_v, float px, float py)
+{
+	set_values(matrix, (float[9]){
+	                       cos_v, -sin_v, sin_v * py + (1 - cos_v) * px,
+	                       sin_v, cos_v, -sin_v * px + (1 - cos_v) * py,
+	                       0, 0, 1});
+}
+
+static void set_skew(graphene_matrix_t *matrix, float kx, float ky, float px, float py)
+{
+	set_values(matrix, (float[9]){1, kx, -kx * py, ky, 1, -ky * px, 0, 0, 1});
+}
+
+// with the perspective divide, which graphene_matrix_transform_point leaves out
+static void map_point(const graphene_matrix_t *matrix, float x, float y, float *out_x, float *out_y)
+{
+	graphene_vec4_t point;
+	graphene_matrix_transform_vec4(matrix, graphene_vec4_init(&point, x, y, 0, 1), &point);
+	float w = graphene_vec4_get_w(&point);
+	*out_x = graphene_vec4_get_x(&point) / w;
+	*out_y = graphene_vec4_get_y(&point) / w;
+}
 
 JNIEXPORT jlong JNICALL Java_android_graphics_Matrix_native_1create(JNIEnv *env, jclass class, jlong src)
 {
-	return _INTPTR(graphene_matrix_init_identity(graphene_matrix_alloc()));
+	graphene_matrix_t *matrix = graphene_matrix_alloc();
+	if (src)
+		return _INTPTR(graphene_matrix_init_from_matrix(matrix, _PTR(src)));
+	return _INTPTR(graphene_matrix_init_identity(matrix));
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1getValues(JNIEnv *env, jclass class, jlong src, jfloatArray values_ref)
@@ -177,26 +219,17 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1setRectToRect(JN
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1mapPoints(JNIEnv *env, jclass class, jlong matrix_ptr, jfloatArray dst_ref, jint dst_idx, jfloatArray src_ref, jint src_idx, jint count, jboolean is_pts)
 {
 	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_matrix_t matrix_cpy;
-	if (!is_pts) {
-		// remove translation
-		graphene_matrix_init_from_matrix(&matrix_cpy, matrix);
-		graphene_point3d_t translation = GRAPHENE_POINT3D_INIT(
-		    -graphene_matrix_get_x_translation(matrix),
-		    -graphene_matrix_get_y_translation(matrix),
-		    -graphene_matrix_get_z_translation(matrix));
-		graphene_matrix_translate(&matrix_cpy, &translation);
-		matrix = &matrix_cpy;
-	}
+	// vectors, as Skia: the mapped point minus the mapped origin
+	float origin_x = 0, origin_y = 0;
+	if (!is_pts)
+		map_point(matrix, 0, 0, &origin_x, &origin_y);
 	jfloat *src = (*env)->GetFloatArrayElements(env, src_ref, NULL);
 	jfloat *dst = (*env)->GetFloatArrayElements(env, dst_ref, NULL);
-	graphene_point_t p;
-	graphene_point_t res;
 	for (int i = 0; i < count; i++) {
-		p = GRAPHENE_POINT_INIT(src[src_idx + i * 2], src[src_idx + i * 2 + 1]);
-		graphene_matrix_transform_point(matrix, &p, &res);
-		dst[dst_idx + i * 2] = res.x;
-		dst[dst_idx + i * 2 + 1] = res.y;
+		float x, y;
+		map_point(matrix, src[src_idx + i * 2], src[src_idx + i * 2 + 1], &x, &y);
+		dst[dst_idx + i * 2] = x - origin_x;
+		dst[dst_idx + i * 2 + 1] = y - origin_y;
 	}
 	(*env)->ReleaseFloatArrayElements(env, src_ref, src, 0);
 	(*env)->ReleaseFloatArrayElements(env, dst_ref, dst, 0);
@@ -275,18 +308,9 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1equals(JNIEnv *e
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setValues(JNIEnv *env, jclass class, jlong matrix_ptr, jfloatArray values_ref)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
 	jfloat *values = (*env)->GetFloatArrayElements(env, values_ref, NULL);
-	float values4x4[4][4] = {
-		/* clang-format off */
-		{values[android_graphics_Matrix_MSCALE_X],  values[android_graphics_Matrix_MSKEW_Y], 0, values[android_graphics_Matrix_MPERSP_0]},
-		{ values[android_graphics_Matrix_MSKEW_X], values[android_graphics_Matrix_MSCALE_Y], 0, values[android_graphics_Matrix_MPERSP_1]},
-		{                                       0,                                        0, 1,                                        0},
-		{values[android_graphics_Matrix_MTRANS_X], values[android_graphics_Matrix_MTRANS_Y], 0, values[android_graphics_Matrix_MPERSP_2]},
-		/* clang-format on */
-	};
-	graphene_matrix_init_from_float(matrix, *values4x4);
-	(*env)->ReleaseFloatArrayElements(env, values_ref, values, 0);
+	set_values(_PTR(matrix_ptr), values);
+	(*env)->ReleaseFloatArrayElements(env, values_ref, values, JNI_ABORT);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setRotate__JFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees, jfloat px, jfloat py)
@@ -299,8 +323,139 @@ JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setRotate__JFFF(JNIE
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setRotate__JF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_matrix_rotate_z(matrix, degrees);
+	float radians = DEG2RAD(degrees);
+	set_sin_cos(_PTR(matrix_ptr), sinf(radians), cosf(radians), 0, 0);
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setSinCos__JFFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat sin_v, jfloat cos_v, jfloat px, jfloat py)
+{
+	set_sin_cos(_PTR(matrix_ptr), sin_v, cos_v, px, py);
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setSinCos__JFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat sin_v, jfloat cos_v)
+{
+	set_sin_cos(_PTR(matrix_ptr), sin_v, cos_v, 0, 0);
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setSkew__JFFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky, jfloat px, jfloat py)
+{
+	set_skew(_PTR(matrix_ptr), kx, ky, px, py);
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setSkew__JFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky)
+{
+	set_skew(_PTR(matrix_ptr), kx, ky, 0, 0);
+}
+
+// a × b: b applies first
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1setConcat(JNIEnv *env, jclass class, jlong matrix_ptr, jlong a_ptr, jlong b_ptr)
+{
+	graphene_matrix_multiply(_PTR(b_ptr), _PTR(a_ptr), _PTR(matrix_ptr));
+	return true;
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preSkew__JFFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky, jfloat px, jfloat py)
+{
+	graphene_matrix_t skew;
+	set_skew(&skew, kx, ky, px, py);
+	graphene_matrix_multiply(&skew, _PTR(matrix_ptr), _PTR(matrix_ptr));
+	return true;
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preSkew__JFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky)
+{
+	return Java_android_graphics_Matrix_native_1preSkew__JFFFF(env, class, matrix_ptr, kx, ky, 0, 0);
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postSkew__JFFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky, jfloat px, jfloat py)
+{
+	graphene_matrix_t skew;
+	set_skew(&skew, kx, ky, px, py);
+	graphene_matrix_multiply(_PTR(matrix_ptr), &skew, _PTR(matrix_ptr));
+	return true;
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postSkew__JFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat kx, jfloat ky)
+{
+	return Java_android_graphics_Matrix_native_1postSkew__JFFFF(env, class, matrix_ptr, kx, ky, 0, 0);
+}
+
+/* Skia's Poly2Proc, Poly3Proc and Poly4Proc (SkMatrix.cpp, Android 10): the matrix that maps the
+ * unit square's corners to the points */
+static bool poly_map(const float *p, int count, graphene_matrix_t *matrix)
+{
+	float a1 = 0, a2 = 0;
+	if (count == 4) {
+		float x0 = p[4] - p[0], y0 = p[5] - p[1];
+		float x1 = p[4] - p[2], y1 = p[5] - p[3];
+		float x2 = p[4] - p[6], y2 = p[5] - p[7];
+		float denom;
+		if (x2 > 0 ? y2 > 0 ? x2 > y2 : x2 > -y2 : y2 > 0 ? -x2 > y2 : x2 < y2) {
+			denom = x1 * y2 / x2 - y1;
+			if (denom * denom == 0)
+				return false;
+			a1 = (((x0 - x1) * y2 / x2) - y0 + y1) / denom;
+		} else {
+			denom = x1 - y1 * x2 / y2;
+			if (denom * denom == 0)
+				return false;
+			a1 = (x0 - x1 - (y0 - y1) * x2 / y2) / denom;
+		}
+		if (x1 > 0 ? y1 > 0 ? x1 > y1 : x1 > -y1 : y1 > 0 ? -x1 > y1 : x1 < y1) {
+			denom = y2 - x2 * y1 / x1;
+			if (denom * denom == 0)
+				return false;
+			a2 = (y0 - y2 - (x0 - x2) * y1 / x1) / denom;
+		} else {
+			denom = y2 * x1 / y1 - x2;
+			if (denom * denom == 0)
+				return false;
+			a2 = ((y0 - y2) * x1 / y1 - x0 + x2) / denom;
+		}
+		set_values(matrix, (float[9]){
+		                       a2 * p[6] + p[6] - p[0], a1 * p[2] + p[2] - p[0], p[0],
+		                       a2 * p[7] + p[7] - p[1], a1 * p[3] + p[3] - p[1], p[1],
+		                       a2, a1, 1});
+	} else if (count == 3) {
+		set_values(matrix, (float[9]){p[4] - p[0], p[2] - p[0], p[0], p[5] - p[1], p[3] - p[1], p[1], 0, 0, 1});
+	} else {
+		set_values(matrix, (float[9]){p[3] - p[1], p[2] - p[0], p[0], p[0] - p[2], p[3] - p[1], p[1], 0, 0, 1});
+	}
+	return true;
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1setPolyToPoly(JNIEnv *env, jclass class, jlong matrix_ptr, jfloatArray src_ref, jint src_idx, jfloatArray dst_ref, jint dst_idx, jint count)
+{
+	graphene_matrix_t *matrix = _PTR(matrix_ptr);
+	if (count < 0 || count > 4)
+		return false;
+	jfloat *src = (*env)->GetFloatArrayElements(env, src_ref, NULL);
+	jfloat *dst = (*env)->GetFloatArrayElements(env, dst_ref, NULL);
+	bool ok = true;
+	if (count == 0) {
+		graphene_matrix_init_identity(matrix);
+	} else if (count == 1) {
+		graphene_matrix_init_translate(matrix, &GRAPHENE_POINT3D_INIT(dst[dst_idx] - src[src_idx], dst[dst_idx + 1] - src[src_idx + 1], 0));
+	} else {
+		graphene_matrix_t src_map, src_inverse, dst_map;
+		ok = poly_map(&src[src_idx], count, &src_map) && graphene_matrix_inverse(&src_map, &src_inverse) && poly_map(&dst[dst_idx], count, &dst_map);
+		if (ok)
+			graphene_matrix_multiply(&src_inverse, &dst_map, matrix);
+	}
+	(*env)->ReleaseFloatArrayElements(env, src_ref, src, JNI_ABORT);
+	(*env)->ReleaseFloatArrayElements(env, dst_ref, dst, JNI_ABORT);
+	return ok;
+}
+
+// Skia: the geometric mean of the lengths of (radius, 0) and (0, radius) mapped as vectors
+JNIEXPORT jfloat JNICALL Java_android_graphics_Matrix_native_1mapRadius(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat radius)
+{
+	graphene_matrix_t *matrix = _PTR(matrix_ptr);
+	float ox, oy, ax, ay, bx, by;
+	map_point(matrix, 0, 0, &ox, &oy);
+	map_point(matrix, radius, 0, &ax, &ay);
+	map_point(matrix, 0, radius, &bx, &by);
+	return sqrtf(hypotf(ax - ox, ay - oy) * hypotf(bx - ox, by - oy));
 }
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1rectStaysRect(JNIEnv *env, jclass class, jlong matrix_ptr)

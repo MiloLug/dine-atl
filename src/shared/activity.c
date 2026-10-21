@@ -45,6 +45,19 @@ static struct ui_view *get_decor_view(JNIEnv *env, jobject activity)
 	return decor;
 }
 
+/* An activity's views are attached while its decor is in the app's window (Android: from the first
+ * traversal after onResume to after onDestroy). */
+static void set_decor_attached(JNIEnv *env, jobject activity, bool attached)
+{
+	jobject window_jobj = _GET_OBJ_FIELD(activity, "window", "Landroid/view/Window;");
+	jobject decor_view_jobj = _GET_OBJ_FIELD(window_jobj, "decorView", "Landroid/view/ViewGroup;");
+	(*env)->CallVoidMethod(env, decor_view_jobj, attached ? handle_cache.view.dispatchAttachedToWindow : handle_cache.view.dispatchDetachedFromWindow);
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, decor_view_jobj);
+	(*env)->DeleteLocalRef(env, window_jobj);
+}
+
 static void activity_close(JNIEnv *env, jobject activity)
 {
 	// a pending exception from native code, printed apart from what onDestroy throws
@@ -53,6 +66,7 @@ static void activity_close(JNIEnv *env, jobject activity)
 		(*env)->ExceptionDescribe(env);
 	}
 
+	set_decor_attached(env, activity, false);
 	ui_window_remove_activity(atl_window, get_decor_view(env, activity));
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onDestroy);
@@ -283,6 +297,7 @@ void activity_start(JNIEnv *env, jobject activity_object)
 	backlog_push(_REF(activity_object));
 
 	ui_window_add_activity(atl_window, get_decor_view(env, activity_object));
+	set_decor_attached(env, activity_object, true);
 
 	activity_update_current(env);
 }
@@ -357,4 +372,9 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_isTaskRoot(JNIEnv *env, job
 	jobject root_activity = backlog_len ? backlog[0] : NULL;
 	// NULL means that we are currently creating the root activity, so no other activity can exist yet
 	return root_activity == NULL || (*env)->IsSameObject(env, this, root_activity);
+}
+
+JNIEXPORT jboolean JNICALL Java_android_app_Activity_isInMultiWindowMode(JNIEnv *env, jobject this)
+{
+	return ui_window_is_multi_window(atl_window);
 }

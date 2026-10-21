@@ -52,6 +52,12 @@ void host_task_moved(bool front, bool by_host)
 		listener->task_moved(listener->context, front, by_host);
 }
 
+void host_keep_screen_on(bool on)
+{
+	if (listener && listener->keep_screen_on)
+		listener->keep_screen_on(listener->context, on);
+}
+
 static int exited(int status)
 {
 	if (listener && listener->exited)

@@ -6,8 +6,11 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.NinePatchDrawable;
 import android.graphics.drawable.StateListDrawable;
@@ -16,7 +19,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -121,6 +127,7 @@ public class MainActivity extends Activity {
 				content.requestLayout();
 				main.postDelayed(new Runnable() {
 					public void run() {
+						widgets();
 						Log.i(TAG, "views ui mode type " + (getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK));
 						Log.i(TAG, "views done");
 						finish();
@@ -128,6 +135,44 @@ public class MainActivity extends Activity {
 				}, 10);
 			}
 		}, 10);
+	}
+
+	// the inflate-time natives on every backend: attach, keep screen on, widgets, Matrix, Paint, fullscreen
+	private void widgets() {
+		LinearLayout row = new LinearLayout(this);
+		row.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			public void onViewAttachedToWindow(View v) {
+				Log.i(TAG, "views row attached " + v.isAttachedToWindow());
+			}
+			public void onViewDetachedFromWindow(View v) {
+				Log.i(TAG, "views row detached");
+			}
+		});
+		ImageView image = new ImageView(this);
+		image.setImageDrawable(new ColorDrawable(0xFF00FF00));
+		image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+		ProgressBar progress = new ProgressBar(this);
+		progress.setIndeterminate(true);
+		View keep = new View(this);
+		keep.setKeepScreenOn(true);
+		row.addView(image);
+		row.addView(progress);
+		row.addView(keep);
+		row.setBackground(new ColorDrawable(0xFF202020));
+		content.addView(row);
+		image.setVisibility(View.INVISIBLE);
+		progress.setAlpha(0.5f);
+		row.setTranslationX(4);
+		Matrix matrix = new Matrix();
+		matrix.setRotate(90);
+		float[] point = {1, 0};
+		matrix.mapPoints(point);
+		Paint paint = new Paint();
+		paint.setStrokeWidth(2);
+		Log.i(TAG, "views matrix " + Math.round(point[0]) + "," + Math.round(point[1]) + " paint " + paint.getStrokeWidth());
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+		content.removeView(row);
+		Log.i(TAG, "views widgets");
 	}
 
 	// out of the caller's frame, like build

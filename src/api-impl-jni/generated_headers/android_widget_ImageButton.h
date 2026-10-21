@@ -179,6 +179,8 @@ extern "C" {
 #define android_widget_ImageButton_SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION 512L
 #undef android_widget_ImageButton_SYSTEM_UI_FLAG_LAYOUT_STABLE
 #define android_widget_ImageButton_SYSTEM_UI_FLAG_LAYOUT_STABLE 256L
+#undef android_widget_ImageButton_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+#define android_widget_ImageButton_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR 8192L
 #undef android_widget_ImageButton_SYSTEM_UI_FLAG_LOW_PROFILE
 #define android_widget_ImageButton_SYSTEM_UI_FLAG_LOW_PROFILE 1L
 #undef android_widget_ImageButton_SYSTEM_UI_FLAG_VISIBLE
@@ -222,10 +224,10 @@ JNIEXPORT jlong JNICALL Java_android_widget_ImageButton_native_1constructor
 /*
  * Class:     android_widget_ImageButton
  * Method:    native_setDrawable
- * Signature: (JJ)V
+ * Signature: (JJII)V
  */
 JNIEXPORT void JNICALL Java_android_widget_ImageButton_native_1setDrawable
-  (JNIEnv *, jobject, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jint, jint);
 
 /*
  * Class:     android_widget_ImageButton

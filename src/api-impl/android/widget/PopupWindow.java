@@ -71,11 +71,20 @@ public class PopupWindow {
 	}
 
 	public void setContentView(View view) {
+		if (contentView != null)
+			contentView.dispatchDetachedFromWindow();
 		contentView = view;
 		if (contentView != null) {
 			contentView.setBackground(getBackground());
 		}
 		native_setContentView(popover, view == null ? 0 : view.widget);
+		if (contentView != null && isShowing())
+			contentView.dispatchAttachedToWindow();
+	}
+
+	private void attachContent() {
+		if (contentView != null)
+			contentView.dispatchAttachedToWindow();
 	}
 
 	public int getMaxAvailableHeight(View anchor, int yOffset) { return 500; }
@@ -92,6 +101,7 @@ public class PopupWindow {
 	public void setTouchInterceptor(View.OnTouchListener listener) {}
 
 	public void showAsDropDown(View anchor, int xoff, int yoff, int gravity) {
+		attachContent();
 		native_showAsDropDown(popover, anchor.widget, xoff, yoff, gravity);
 	}
 
@@ -108,15 +118,19 @@ public class PopupWindow {
 			Log.e("PopupWindow", "anchor is not attached to window");
 			return;
 		}
+		attachContent();
 		native_showAsDropDown(popover, anchor.widget, xoff, yoff, Gravity.NO_GRAVITY);
 	}
 
 	public void showAtLocation(View parent, int gravity, int x, int y) {
+		attachContent();
 		native_showAsDropDown(popover, parent.widget, x, y, gravity);
 	}
 
 	public void dismiss() {
 		native_dismiss(popover);
+		if (contentView != null)
+			contentView.dispatchDetachedFromWindow();
 	}
 
 	public void setAnimationStyle(int animationStyle) {}

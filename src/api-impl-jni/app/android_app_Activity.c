@@ -99,7 +99,3 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeFileChooser(JNIEnv *env, 
 	g_object_unref(dialog);
 }
 
-JNIEXPORT jboolean JNICALL Java_android_app_Activity_isInMultiWindowMode(JNIEnv *env, jobject this)
-{
-	return !gtk_window_is_maximized(window);
-}

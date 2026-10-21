@@ -1,11 +1,11 @@
 package dev.dine.framework.basics;
 
 import android.content.Intent;
-import android.test.InstrumentationTestCase;
 import android.widget.TextView;
 
-@SuppressWarnings("deprecation") // android.test is what ATL's runner runs
-public class WindowTest extends InstrumentationTestCase {
+// android.test is what ATL's runner runs; javac 8 warns on a deprecated import despite the annotation
+@SuppressWarnings("deprecation")
+public class WindowTest extends android.test.InstrumentationTestCase {
 	public void testContentViewOnMainThread() {
 		Intent intent = new Intent(getInstrumentation().getTargetContext(), WindowActivity.class);
 		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(intent);

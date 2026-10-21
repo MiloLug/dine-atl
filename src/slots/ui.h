@@ -11,6 +11,7 @@
 struct ui_window; // the app's surface holding the activities' root views, or a Dialog's window
 struct ui_view;   // a view node; View.widget holds it
 struct atl_ref;   // a weak reference to a Java object, for upcalls
+struct gfx_drawable;
 
 struct ui_display {
 	int width, height; // px
@@ -44,7 +45,6 @@ struct ui_layout_params {
  * platform view the app's views go in (uikit: a UIView, retained), or NULL. */
 struct ui_window *ui_window_new(void *surface);
 void ui_window_set_title(struct ui_window *window, const char *title);
-void ui_window_set_java(struct ui_window *window, struct atl_ref *window_ref);
 void ui_window_clear_background(struct ui_window *window);
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_show_activity(struct ui_window *window, struct ui_view *root);
@@ -53,13 +53,27 @@ void ui_window_set_back_enabled(struct ui_window *window, bool enabled);
 void ui_window_close(struct ui_window *window);
 /* The window's current size, px. */
 void ui_window_get_size(struct ui_window *window, int *width, int *height);
+/* The window shares the screen with others (Activity.isInMultiWindowMode). */
+bool ui_window_is_multi_window(struct ui_window *window);
+/* A ViewTreeObserver with listeners: the window calls atl_upcall_global_layout (UI_OBSERVE_LAYOUT,
+ * after each layout pass) or atl_upcall_pre_draw (UI_OBSERVE_DRAW, before a frame) with the
+ * observer, which the observation owns, until ui_window_unobserve. An observation outlives its
+ * window: ui_window_unobserve may come after the window is freed. */
+enum ui_observe {
+	UI_OBSERVE_LAYOUT,
+	UI_OBSERVE_DRAW,
+};
+struct ui_observation;
+struct ui_observation *ui_window_observe(struct ui_window *window, struct atl_ref *observer, enum ui_observe what);
+void ui_window_unobserve(struct ui_window *window, struct ui_observation *observation);
 
 /* What the shown activity asks of the host's frame around the window (iOS: the status bar; gtk:
  * the header bar). */
 struct ui_frame {
-	bool has_color; // false: the app leaves the frame to the host, and the other fields mean nothing
-	uint32_t color; // ARGB
-	bool light;     // the frame is light: dark text and icons on it
+	bool has_color;  // false: the app leaves the frame to the host, and color and light mean nothing
+	uint32_t color;  // ARGB
+	bool light;      // the frame is light: dark text and icons on it
+	bool fullscreen; // FLAG_FULLSCREEN: the host hides its bars; the window keeps its size
 };
 void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame);
 #ifdef ATL_TEST_HOOKS
@@ -101,6 +115,16 @@ void ui_view_free(struct ui_view *view);
 void ui_view_set_layout_params(struct ui_view *view, const struct ui_layout_params *params);
 void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int bottom);
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb);
+/* NULL: none. The view holds a ref while the drawable is its background. */
+void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable);
+/* Android's View.VISIBLE, INVISIBLE or GONE; enabled false stops input */
+#define UI_VIEW_VISIBLE   0
+#define UI_VIEW_INVISIBLE 4
+#define UI_VIEW_GONE      8
+void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled);
+void ui_view_invalidate(struct ui_view *view);
+/* A child's translation changed: its frame moves. */
+void ui_view_children_moved(struct ui_view *view);
 void ui_view_request_layout(struct ui_view *view);
 /* Size for the MeasureSpecs, from the toolkit (views whose Java class doesn't measure itself). */
 void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int *width, int *height);
@@ -118,5 +142,18 @@ void ui_text_set_size(struct ui_view *view, float size); // px
 void ui_text_set_style(struct ui_view *view, int style);
 #define UI_TEXT_BOLD   1
 #define UI_TEXT_ITALIC 2
+/* The text holds Pango markup (ATL's Html.fromHtml keeps the tags). */
+void ui_text_set_markup(struct ui_view *view, bool markup);
+
+/* An ImageView: the toolkit measures it from the drawable's intrinsic size, px. */
+struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);
+/* NULL: none. The view holds a ref while it shows the drawable. */
+void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, int width, int height);
+void ui_image_set_scale_type(struct ui_view *view, int scale_type); // ImageView.ScaleType.nativeInt
+
+/* A ProgressBar: a bar for a fraction, or a spinner when indeterminate. */
+struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);
+void ui_progress_set_fraction(struct ui_view *view, float fraction);
+void ui_progress_set_indeterminate(struct ui_view *view, bool indeterminate);
 
 #endif

@@ -190,6 +190,7 @@ void ui_dialog_free(struct ui_window *window)
 {
 	@autoreleasepool {
 		ATLDialog *dialog = CFBridgingRelease(window->dialog->dialog);
+		records_observations_orphan(window);
 		free(window->dialog);
 		free(window);
 		dispatch_async(dispatch_get_main_queue(), ^{

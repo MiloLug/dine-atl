@@ -32,11 +32,17 @@ fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 grep -q "views done" "$log" || fail "no \"views done\" (exit status $rc)"
 grep -q "native_1destructor\|native_1removeView\|nativeDestroy\|native_1unref" "$log" && fail "a native is missing"
 grep -q "views ui mode type 1$" "$log" || fail "uiMode's type isn't UI_MODE_TYPE_NORMAL"
+grep -q "views row attached true$" "$log" || fail "the row wasn't attached with its parent"
+grep -q "views row detached$" "$log" || fail "the row wasn't detached on removal"
+grep -q "views matrix 0,1 paint 2.0$" "$log" || fail "Matrix or Paint state wrong"
+grep -q "views widgets$" "$log" || fail "the widgets step didn't finish"
 if ((headless)); then
   grep '^viewtree:' "$log" | diff -u "$here/views.viewtree" - || fail "view tree differs from views.viewtree"
   grep -q '^viewfreed: android.widget.LinearLayout$' "$log" || fail "x and y's column not freed"
   grep -q '^dialogfreed:$' "$log" || fail "the dialog's window not freed"
   grep -q '^drawablefreed: record$' "$log" || fail "the drawable not freed"
+  grep -q '^host: keep screen on 1$' "$log" && grep -q '^host: keep screen on 0$' "$log" || fail "keep screen on not sent and cleared"
+  grep -q '^window: frame .* fullscreen$' "$log" || fail "FLAG_FULLSCREEN didn't reach the frame"
   for text in x y d c; do
     grep -q "^viewfreed: android.widget.TextView \"$text\"$" "$log" || fail "\"$text\" not freed"
   done
