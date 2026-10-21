@@ -23,7 +23,10 @@ void atl_upcall_looper_loop(void)
 
 void atl_upcall_display_changed(const struct ui_display *display)
 {
-	atl_display_apply(get_jni_env(), NULL, display);
+	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 16); // backends call it from the base JNI frame
+	atl_display_apply(env, NULL, display);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 struct atl_ref *atl_ref_dup(struct atl_ref *ref)

@@ -20,9 +20,9 @@ static void on_network_changed(GNetworkMonitor *self, gboolean network_available
 	JNIEnv *env = get_jni_env();
 	jmethodID method;
 	if (network_available) {
-		method = _METHOD(_CLASS(callback), "onAvailable", "(Landroid/net/Network;)V");
+		method = _METHOD_OF(callback, "onAvailable", "(Landroid/net/Network;)V");
 	} else {
-		method = _METHOD(_CLASS(callback), "onLost", "(Landroid/net/Network;)V");
+		method = _METHOD_OF(callback, "onLost", "(Landroid/net/Network;)V");
 	}
 	(*env)->CallVoidMethod(env, callback, method, NULL);
 	if ((*env)->ExceptionCheck(env))

@@ -16,13 +16,14 @@ bool atl_dialog_scripted(const struct ui_alert *alert, int *which);
 void atl_test_window_ready(struct ui_window *window);
 /* A Dialog's window is being freed: with ATL_DUMP_VIEWTREE set, prints "dialogfreed:". */
 void atl_test_dialog_freed(void);
-/* gfx=record freed a Drawable's record: with ATL_DUMP_VIEWTREE set, prints "drawablefreed:". */
-void atl_test_drawable_freed(void);
+/* A Drawable's native object was freed: with ATL_DUMP_VIEWTREE set, prints
+ * "drawablefreed: <kind>". */
+void atl_test_drawable_freed(const char *kind);
 #else
 static inline bool atl_dialog_scripted(const struct ui_alert *alert, int *which) { return false; }
 static inline void atl_test_window_ready(struct ui_window *window) {}
 static inline void atl_test_dialog_freed(void) {}
-static inline void atl_test_drawable_freed(void) {}
+static inline void atl_test_drawable_freed(const char *kind) {}
 #endif
 
 #endif

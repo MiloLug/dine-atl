@@ -45,7 +45,7 @@ void gfx_drawable_unref(struct gfx_drawable *drawable)
 {
 	if (atomic_fetch_sub(&drawable->refs, 1) != 1)
 		return;
-	atl_test_drawable_freed();
+	atl_test_drawable_freed("record");
 	atl_ref_free(drawable->drawable_ref);
 	free(drawable);
 }

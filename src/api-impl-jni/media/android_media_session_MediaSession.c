@@ -16,7 +16,7 @@ static gboolean on_media_player_handle_action(MediaPlayer2Player *mpris_player, 
 {
 	if (callback) {
 		JNIEnv *env = get_jni_env();
-		(*env)->CallVoidMethod(env, callback, _METHOD(_CLASS(callback), method, "()V"));
+		(*env)->CallVoidMethod(env, callback, _METHOD_OF(callback, method, "()V"));
 	}
 	g_dbus_method_invocation_return_value(invocation, g_variant_new("()"));
 	return TRUE;
@@ -33,7 +33,7 @@ static gboolean on_media_player_handle_seek(MediaPlayer2Player *mpris_player, GD
 	if (callback) {
 		JNIEnv *env = get_jni_env();
 		last_position += offset_us / 1000;
-		(*env)->CallVoidMethod(env, callback, _METHOD(_CLASS(callback), "onSeekTo", "(J)V"), last_position + Java_android_os_SystemClock_elapsedRealtime(env, NULL));
+		(*env)->CallVoidMethod(env, callback, _METHOD_OF(callback, "onSeekTo", "(J)V"), last_position + Java_android_os_SystemClock_elapsedRealtime(env, NULL));
 	}
 	media_player2_player_complete_seek(mpris_player, invocation);
 	return TRUE;
@@ -43,7 +43,7 @@ static gboolean on_media_player_handle_set_position(MediaPlayer2Player *mpris_pl
 {
 	if (callback) {
 		JNIEnv *env = get_jni_env();
-		(*env)->CallVoidMethod(env, callback, _METHOD(_CLASS(callback), "onSeekTo", "(J)V"), pos_us / 1000);
+		(*env)->CallVoidMethod(env, callback, _METHOD_OF(callback, "onSeekTo", "(J)V"), pos_us / 1000);
 	}
 	media_player2_player_complete_set_position(mpris_player, invocation);
 	return TRUE;

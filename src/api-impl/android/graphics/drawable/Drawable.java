@@ -49,16 +49,22 @@ public class Drawable {
 		this.paintable = native_constructor();
 	}
 
+	// takes over the caller's ref, like adoptPaintable
 	public Drawable(long paintable) {
-		native_ref(paintable);
 		this.paintable = paintable;
 	}
 
+	// for a paintable owned elsewhere, such as a Bitmap's texture
 	protected void setPaintable(long paintable) {
-		if (this.paintable != 0)
-			native_unref(this.paintable);
 		if (paintable != 0)
 			native_ref(paintable);
+		adoptPaintable(paintable);
+	}
+
+	// for a paintable a native just made: takes over its ref
+	protected void adoptPaintable(long paintable) {
+		if (this.paintable != 0)
+			native_unref(this.paintable);
 		this.paintable = paintable;
 	}
 
@@ -351,7 +357,7 @@ public class Drawable {
 		if (path.endsWith(".9.png"))
 			return new NinePatchDrawable(path);
 		long paintable = native_paintable_from_path(path);
-		return new Drawable(paintable);
+		return paintable != 0 ? new Drawable(paintable) : null;
 	}
 
 	protected boolean onStateChange(int[] stateSet) {

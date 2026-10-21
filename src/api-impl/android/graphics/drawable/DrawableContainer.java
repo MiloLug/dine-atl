@@ -8,12 +8,9 @@ public class DrawableContainer extends Drawable {
 	private DrawableContainerState state;
 	private int curIndex = -1;
 
+	// Drawable() calls this override, so no constructor here
 	protected native long native_constructor();
 	protected native void native_selectChild(long container, long child);
-
-	public DrawableContainer() {
-		setPaintable(native_constructor());
-	}
 
 	public boolean selectDrawable(int idx) {
 		if (idx >= 0 && idx < state.childCount && idx != curIndex && state.drawables[idx] != null) {

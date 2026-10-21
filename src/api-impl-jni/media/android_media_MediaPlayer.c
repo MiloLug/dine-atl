@@ -26,7 +26,7 @@ static void on_ended(GtkMediaStream *media_stream, GParamSpec *pspec, jobject li
 {
 	JNIEnv *env = get_jni_env();
 
-	jmethodID onCompletion = _METHOD(_CLASS(listener), "onCompletion", "(Landroid/media/MediaPlayer;)V");
+	jmethodID onCompletion = _METHOD_OF(listener, "onCompletion", "(Landroid/media/MediaPlayer;)V");
 	(*env)->CallVoidMethod(env, listener, onCompletion, g_object_get_data(G_OBJECT(media_stream), "media_player"));
 }
 

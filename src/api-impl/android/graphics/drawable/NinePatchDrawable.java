@@ -8,11 +8,11 @@ public class NinePatchDrawable extends Drawable {
 
 	public NinePatchDrawable(Resources res, Bitmap bitmap, byte[] data, Rect padding, String name) {
 		if (bitmap != null && data != null)
-			setPaintable(nativeCreate(data, bitmap.getTexture()));
+			adoptPaintable(nativeCreate(data, bitmap.getTexture()));
 	}
 
 	NinePatchDrawable(String path) {
-		setPaintable(nativeCreate(path));
+		adoptPaintable(nativeCreate(path));
 	}
 
 	@Override

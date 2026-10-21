@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Runs the views APK (views/, built by the superproject's tests/harness/apk.py), which removes,
-# re-adds and collects views, a dialog and a drawable, then finishes. MALLOC_PERTURB_ fills freed
+# re-adds and collects views, a dialog and drawables, then finishes. MALLOC_PERTURB_ fills freed
 # memory, so a free that corrupts the heap likely crashes; only uikit walks the records after a
 # free (iOS atl-views).
-# --headless: no display, and the tree and the frees are checked too.
+# --headless: no display, and the tree and the view, dialog and drawable frees are checked. Without
+# it (gtk): the gsk drawables' frees, a nine-patch and a StateListDrawable among them.
 # Usage: run-views.sh [--headless] <build dir> <views.apk>
 set -euo pipefail
 
@@ -20,8 +21,8 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
 log="$work/log"
 
-env=(RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data" MALLOC_PERTURB_=85)
-((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}" ATL_DUMP_VIEWTREE=1)
+env=(RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data" MALLOC_PERTURB_=85 ATL_DUMP_VIEWTREE=1)
+((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}")
 rc=0
 (cd "$build" && env "${env[@]}" timeout 60 ./android-translation-layer "$apk" -l dev/dine/views/MainActivity \
   -X -Xint) >"$log" 2>&1 || rc=$?
@@ -35,9 +36,16 @@ if ((headless)); then
   grep '^viewtree:' "$log" | diff -u "$here/views.viewtree" - || fail "view tree differs from views.viewtree"
   grep -q '^viewfreed: android.widget.LinearLayout$' "$log" || fail "x and y's column not freed"
   grep -q '^dialogfreed:$' "$log" || fail "the dialog's window not freed"
-  grep -q '^drawablefreed:$' "$log" || fail "the drawable not freed"
+  grep -q '^drawablefreed: record$' "$log" || fail "the drawable not freed"
   for text in x y d c; do
     grep -q "^viewfreed: android.widget.TextView \"$text\"$" "$log" || fail "\"$text\" not freed"
+  done
+else
+  grep -q "views gsk drawables$" "$log" || fail "the gsk drawables step didn't run"
+  grep -q "views createFromPath missing: true$" "$log" || fail "createFromPath of a missing file isn't null"
+  # the container that holds the nine-patch must go first: a ContainerPaintable line alone doesn't show it
+  for kind in JavaPaintable NinePatchPaintable ContainerPaintable; do
+    grep -q "^drawablefreed: $kind$" "$log" || fail "no $kind freed"
   done
 fi
 [[ $rc == 0 ]] || fail "exit status $rc"

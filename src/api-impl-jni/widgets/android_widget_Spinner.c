@@ -52,7 +52,7 @@ static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item
 		printf("invalid index: %d >= %d\n", index, n_items);
 		exit(0);
 	}
-	jmethodID getView = _METHOD(_CLASS(model->adapter), "getDropDownView", "(ILandroid/view/View;Landroid/view/ViewGroup;)Landroid/view/View;");
+	jmethodID getView = _METHOD_OF(model->adapter, "getDropDownView", "(ILandroid/view/View;Landroid/view/ViewGroup;)Landroid/view/View;");
 	jobject view = (*env)->CallObjectMethod(env, model->adapter, getView, index, wrapper ? wrapper->jobj : NULL, model->jobject);
 	view = _REF(view);
 	GtkWidget *child = gtk_widget_get_parent(GTK_WIDGET(_PTR(_GET_LONG_FIELD(view, "widget"))));
@@ -87,7 +87,7 @@ JNIEXPORT void JNICALL Java_android_widget_Spinner_native_1setAdapter(JNIEnv *en
 		_UNREF(model->adapter);
 	model->adapter = adapter ? _REF(adapter) : NULL;
 	guint old_n_items = model->n_items;
-	model->n_items = adapter ? (*env)->CallIntMethod(env, adapter, _METHOD(_CLASS(adapter), "getCount", "()I")) : 0;
+	model->n_items = adapter ? (*env)->CallIntMethod(env, adapter, _METHOD_OF(adapter, "getCount", "()I")) : 0;
 	g_list_model_items_changed(G_LIST_MODEL(model), 0, old_n_items, model->n_items);
 }
 
@@ -99,7 +99,7 @@ static void on_selected_changed(GtkDropDown *dropdown, GParamSpec *pspec, jobjec
 	if (!selected)
 		return;
 	RangeListModel *model = RANGE_LIST_ITEM(selected)->model;
-	jmethodID onItemSelected = _METHOD(_CLASS(listener), "onItemSelected", "(Landroid/widget/AdapterView;Landroid/view/View;IJ)V");
+	jmethodID onItemSelected = _METHOD_OF(listener, "onItemSelected", "(Landroid/widget/AdapterView;Landroid/view/View;IJ)V");
 	(*env)->CallVoidMethod(env, listener, onItemSelected, model->jobject, NULL, index, (long)0);
 }
 

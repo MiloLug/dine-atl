@@ -69,7 +69,9 @@ void atl_test_dialog_freed(void)
 	print_freed("dialogfreed:");
 }
 
-void atl_test_drawable_freed(void)
+void atl_test_drawable_freed(const char *kind)
 {
-	print_freed("drawablefreed:");
+	char line[128];
+	snprintf(line, sizeof(line), "drawablefreed: %s", kind);
+	print_freed(line);
 }

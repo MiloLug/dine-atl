@@ -127,13 +127,11 @@ static void activity_focus(JNIEnv *env, jobject activity)
 // whether back does more than closing the last activity
 static bool back_has_target(JNIEnv *env)
 {
-	jclass current_activity_class = (*env)->GetObjectClass(env, activity_current);
-	jmethodID current_activity_on_back_pressed_method_id = (*env)->GetMethodID(env, current_activity_class, "onBackPressed", "()V");
+	jmethodID on_back_pressed = _METHOD_OF(activity_current, "onBackPressed", "()V");
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
-	(*env)->DeleteLocalRef(env, current_activity_class);
 
-	return backlog_len > 1 || handle_cache.activity.onBackPressed != current_activity_on_back_pressed_method_id;
+	return backlog_len > 1 || handle_cache.activity.onBackPressed != on_back_pressed;
 }
 
 static void activity_update_current(JNIEnv *env)

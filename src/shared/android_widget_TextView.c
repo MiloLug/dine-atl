@@ -20,7 +20,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_TextView_native_1constructor(JNIEnv 
 	atl_view_traits_get(env, this, &traits);
 
 	jclass class = _CLASS(this);
-	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD(_CLASS(class), "getName", "()Ljava/lang/String;"));
+	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
 	const char *name = (*env)->GetStringUTFChars(env, name_jstr, NULL);
 	struct ui_view *view = ui_text_new((struct atl_ref *)_WEAK_REF(this), name, &traits, text);
 	(*env)->ReleaseStringUTFChars(env, name_jstr, name);

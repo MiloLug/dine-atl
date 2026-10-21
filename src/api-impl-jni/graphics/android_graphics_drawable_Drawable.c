@@ -1,5 +1,7 @@
 #include <gdk/gdk.h>
 
+#include "src/shared/test_hooks.h"
+
 #include "../defines.h"
 #include "../util.h"
 #include "../generated_headers/android_graphics_drawable_Drawable.h"
@@ -63,20 +65,30 @@ static void java_paintable_paintable_init(GdkPaintableInterface *iface)
 	iface->get_intrinsic_width = java_paintable_get_intrinsic_width;
 }
 
+G_DEFINE_TYPE_WITH_CODE(JavaPaintable, java_paintable, G_TYPE_OBJECT,
+                        G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, java_paintable_paintable_init))
+
 static void java_paintable_dispose(GObject *object)
 {
 	JavaPaintable *java_paintable = JAVA_PAINTABLE(object);
 	JNIEnv *env = get_jni_env();
-	_WEAK_UNREF(java_paintable->drawable);
+	if (java_paintable->drawable)
+		_WEAK_UNREF(java_paintable->drawable);
+	java_paintable->drawable = NULL;
+	G_OBJECT_CLASS(java_paintable_parent_class)->dispose(object);
+}
+
+static void java_paintable_finalize(GObject *object)
+{
+	atl_test_drawable_freed(G_OBJECT_TYPE_NAME(object));
+	G_OBJECT_CLASS(java_paintable_parent_class)->finalize(object);
 }
 
 static void java_paintable_class_init(JavaPaintableClass *class)
 {
 	G_OBJECT_CLASS(class)->dispose = java_paintable_dispose;
+	G_OBJECT_CLASS(class)->finalize = java_paintable_finalize;
 }
-
-G_DEFINE_TYPE_WITH_CODE(JavaPaintable, java_paintable, G_TYPE_OBJECT,
-                        G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, java_paintable_paintable_init))
 
 GdkPaintable *java_paintable_new(jweak drawable)
 {

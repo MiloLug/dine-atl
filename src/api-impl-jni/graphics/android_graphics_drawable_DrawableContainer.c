@@ -1,5 +1,7 @@
 #include <gdk/gdk.h>
 
+#include "src/shared/test_hooks.h"
+
 #include "../defines.h"
 #include "../generated_headers/android_graphics_drawable_DrawableContainer.h"
 
@@ -55,12 +57,26 @@ static void container_paintable_paintable_init(GdkPaintableInterface *iface)
 	iface->get_intrinsic_height = container_paintable_get_intrinsic_height;
 }
 
-static void container_paintable_class_init(ContainerPaintableClass *class)
-{
-}
-
 G_DEFINE_TYPE_WITH_CODE(ContainerPaintable, container_paintable, G_TYPE_OBJECT,
                         G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, container_paintable_paintable_init))
+
+static void container_paintable_dispose(GObject *object)
+{
+	g_clear_object(&CONTAINER_PAINTABLE(object)->child);
+	G_OBJECT_CLASS(container_paintable_parent_class)->dispose(object);
+}
+
+static void container_paintable_finalize(GObject *object)
+{
+	atl_test_drawable_freed(G_OBJECT_TYPE_NAME(object));
+	G_OBJECT_CLASS(container_paintable_parent_class)->finalize(object);
+}
+
+static void container_paintable_class_init(ContainerPaintableClass *class)
+{
+	G_OBJECT_CLASS(class)->dispose = container_paintable_dispose;
+	G_OBJECT_CLASS(class)->finalize = container_paintable_finalize;
+}
 
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_DrawableContainer_native_1constructor(JNIEnv *env, jobject this)
 {
@@ -70,7 +86,7 @@ JNIEXPORT jlong JNICALL Java_android_graphics_drawable_DrawableContainer_native_
 JNIEXPORT void JNICALL Java_android_graphics_drawable_DrawableContainer_native_1selectChild(JNIEnv *env, jobject this, jlong ptr, jlong child_ptr)
 {
 	ContainerPaintable *container = CONTAINER_PAINTABLE(_PTR(ptr));
-	container->child = GDK_PAINTABLE(_PTR(child_ptr));
+	g_set_object(&container->child, GDK_PAINTABLE(_PTR(child_ptr)));
 	gdk_paintable_invalidate_contents(GDK_PAINTABLE(container));
 	gdk_paintable_invalidate_size(GDK_PAINTABLE(container));
 }

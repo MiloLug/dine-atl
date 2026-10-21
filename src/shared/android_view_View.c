@@ -32,7 +32,7 @@ JNIEXPORT jlong JNICALL Java_android_view_View_native_1constructor(JNIEnv *env, 
 	atl_view_traits_get(env, this, &traits);
 
 	jclass class = _CLASS(this);
-	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD(_CLASS(class), "getName", "()Ljava/lang/String;"));
+	jstring name_jstr = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
 	const char *name = (*env)->GetStringUTFChars(env, name_jstr, NULL);
 	struct ui_view *view = ui_view_new((struct atl_ref *)_WEAK_REF(this), name, &traits);
 	(*env)->ReleaseStringUTFChars(env, name_jstr, name);

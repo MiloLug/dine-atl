@@ -34,6 +34,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 	WrapperWidget *self = WRAPPER_WIDGET(object);
 
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8); // GTK calls it from the base JNI frame
 
 	jobject jobj = self->jobj;
 	jclass class = _CLASS(jobj);
@@ -62,7 +63,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 		}
 
 		case ATL_CLASS_NAME: {
-			jstring class_name_jstring = (*env)->CallObjectMethod(env, class, _METHOD(_CLASS(class), "getName", "()Ljava/lang/String;"));
+			jstring class_name_jstring = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
 			if ((*env)->ExceptionCheck(env))
 				(*env)->ExceptionDescribe(env);
 
@@ -89,6 +90,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
 			break;
 	}
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 static void wrapper_widget_init(WrapperWidget *wrapper_widget)
@@ -182,6 +184,7 @@ void wrapper_widget_allocate(GtkWidget *widget, int width, int height, int basel
 
 /* this is used to avoid queing layout changes in the middle of snapshotting */
 int snapshot_in_progress = 0;
+static jfieldID canvas_snapshot_field;
 static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 {
 	snapshot_in_progress++;
@@ -192,7 +195,7 @@ static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 	}
 	if (wrapper->draw_method) {
 		JNIEnv *env = get_jni_env();
-		_SET_LONG_FIELD(wrapper->canvas, "snapshot", _INTPTR(snapshot));
+		(*env)->SetLongField(env, wrapper->canvas, canvas_snapshot_field, _INTPTR(snapshot));
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->draw_method, wrapper->canvas);
 		if ((*env)->ExceptionCheck(env))
 			(*env)->ExceptionDescribe(env);
@@ -463,10 +466,11 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 	wrapper->jvm = jvm;
 	wrapper->jobj = jobj;
 	if (traits->draws) {
-		wrapper->draw_method = _METHOD(_CLASS(jobj), "draw", "(Landroid/graphics/Canvas;)V");
+		wrapper->draw_method = _METHOD_OF(jobj, "draw", "(Landroid/graphics/Canvas;)V");
 		jclass canvas_class = (*env)->FindClass(env, "android/atl/GskCanvas");
 		jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(J)V");
 		wrapper->canvas = _REF((*env)->NewObject(env, canvas_class, canvas_constructor, 0));
+		canvas_snapshot_field = _FIELD_ID(canvas_class, "snapshot", "J");
 		(*env)->DeleteLocalRef(env, canvas_class);
 	}
 
@@ -484,7 +488,7 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 	}
 
 	if (traits->scrolls) {
-		wrapper->computeScroll_method = _METHOD(_CLASS(jobj), "computeScroll", "()V");
+		wrapper->computeScroll_method = _METHOD_OF(jobj, "computeScroll", "()V");
 	}
 
 	if (traits->keys) {

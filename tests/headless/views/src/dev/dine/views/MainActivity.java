@@ -3,10 +3,14 @@ package dev.dine.views;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.NinePatchDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,8 +18,11 @@ import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
-/* Drops views, a dialog and a drawable and has them collected: during onCreate, and after the first
+/* Drops views, a dialog and drawables and has them collected: during onCreate, and after the first
  * layout for a view that was laid out, with a layout pass after its free. Finishing stops the loop. */
 public class MainActivity extends Activity {
 	private static final String TAG = "views";
@@ -50,7 +57,32 @@ public class MainActivity extends Activity {
 				return PixelFormat.TRANSLUCENT;
 			}
 		};
+		gskDrawables();
 		return content;
+	}
+
+	// gtk only: on headless and uikit the first call throws, before any object with a native finalizer exists
+	private void gskDrawables() {
+		try {
+			Drawable missing = Drawable.createFromPath(new File(getFilesDir(), "missing.png").getPath());
+			Log.i(TAG, "views createFromPath missing: " + (missing == null));
+			Bitmap bitmap = Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888);
+			StateListDrawable states = new StateListDrawable();
+			states.addState(new int[0], new NinePatchDrawable(getResources(), bitmap, ninePatchChunk(), new Rect(), null));
+			Log.i(TAG, "views gsk drawables");
+		} catch (UnsatisfiedLinkError e) {
+		}
+	}
+
+	// Res_png_9patch, deserialized: ATL computes the offsets and reads native order; one colour per patch
+	private static byte[] ninePatchChunk() {
+		ByteBuffer chunk = ByteBuffer.allocate(32 + 4 * (2 + 2 + 9)).order(ByteOrder.nativeOrder());
+		chunk.put((byte)1).put((byte)2).put((byte)2).put((byte)9);
+		chunk.position(32);
+		chunk.putInt(1).putInt(2).putInt(1).putInt(2);
+		for (int i = 0; i < 9; i++)
+			chunk.putInt(1);
+		return chunk.array();
 	}
 
 	private LinearLayout column(String... texts) {

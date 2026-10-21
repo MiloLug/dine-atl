@@ -39,11 +39,11 @@ static void changed_cb(GtkEditable *self, jobject listener)
 	jclass spannable_string_builder = (*env)->FindClass(env, "android/text/SpannableStringBuilder");
 	jmethodID spannable_string_builder_constructor = _METHOD(spannable_string_builder, "<init>", "(Ljava/lang/CharSequence;)V");
 	jobject text_obj = (*env)->NewObject(env, spannable_string_builder, spannable_string_builder_constructor, _JSTRING(text));
-	jmethodID onTextChanged = _METHOD(_CLASS(listener), "onTextChanged", "(Ljava/lang/CharSequence;III)V");
+	jmethodID onTextChanged = _METHOD_OF(listener, "onTextChanged", "(Ljava/lang/CharSequence;III)V");
 	(*env)->CallVoidMethod(env, listener, onTextChanged, text_obj, 0, 0, strlen(text));
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
-	jmethodID listener_method = _METHOD(_CLASS(listener), "afterTextChanged", "(Landroid/text/Editable;)V");
+	jmethodID listener_method = _METHOD_OF(listener, "afterTextChanged", "(Landroid/text/Editable;)V");
 	(*env)->CallVoidMethod(env, listener, listener_method, text_obj);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
@@ -100,7 +100,7 @@ JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setOnEditorActionLis
 	struct changed_callback_data *callback_data = malloc(sizeof(struct changed_callback_data));
 	callback_data->this = _WEAK_REF(this);
 	callback_data->listener = _REF(listener);
-	callback_data->listener_method = _METHOD(_CLASS(listener), "onEditorAction", "(Landroid/widget/TextView;ILandroid/view/KeyEvent;)Z");
+	callback_data->listener_method = _METHOD_OF(listener, "onEditorAction", "(Landroid/widget/TextView;ILandroid/view/KeyEvent;)Z");
 
 	g_signal_handlers_disconnect_matched(gtk_text, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, on_activate, NULL);
 	g_signal_connect(gtk_text, "activate", G_CALLBACK(on_activate), callback_data);

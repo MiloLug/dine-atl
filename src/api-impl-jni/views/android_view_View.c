@@ -413,7 +413,7 @@ void _setOnTouchListener(JNIEnv *env, jobject this, GtkWidget *widget)
 	g_object_set_data(G_OBJECT(widget), "on_touch_listener", controller);
 
 	WrapperWidget *wrapper = WRAPPER_WIDGET(widget);
-	jmethodID onintercepttouchevent_method = _METHOD(_CLASS(this), "onInterceptTouchEvent", "(Landroid/view/MotionEvent;)Z");
+	jmethodID onintercepttouchevent_method = _METHOD_OF(this, "onInterceptTouchEvent", "(Landroid/view/MotionEvent;)Z");
 	if (onintercepttouchevent_method != handle_cache.view.onInterceptTouchEvent || wrapper->custom_dispatch_touch) {
 		GtkEventController *old_controller = g_object_get_data(G_OBJECT(widget), "on_intercept_touch_listener");
 		if (old_controller)

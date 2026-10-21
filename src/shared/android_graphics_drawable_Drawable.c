@@ -6,7 +6,7 @@
 
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1constructor(JNIEnv *env, jobject this)
 {
-	if (handle_cache.drawable.draw == _METHOD(_CLASS(this), "draw", "(Landroid/graphics/Canvas;)V"))
+	if (handle_cache.drawable.draw == _METHOD_OF(this, "draw", "(Landroid/graphics/Canvas;)V"))
 		return 0;
 	return _INTPTR(gfx_drawable_new((struct atl_ref *)_WEAK_REF(this)));
 }

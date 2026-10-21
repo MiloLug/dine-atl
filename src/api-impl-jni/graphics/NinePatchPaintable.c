@@ -1,6 +1,9 @@
 #include <arpa/inet.h>
 #include <graphene.h>
 #include <gtk/gtk.h>
+#include <stdlib.h>
+
+#include "src/shared/test_hooks.h"
 
 #include "NinePatchPaintable.h"
 
@@ -47,7 +50,7 @@ static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *s
 			if (j % 2) // odd sections are stretchable
 				patch_height *= strech_factor_height;
 			rect.size.height = patch_height;
-			if (!patch_height) // skip empty sections
+			if (!patch_height)
 				continue;
 			for (i = 0, rect.origin.x = 0; i < chunk->numXDivs + 1; i++, rect.origin.x += rect.size.width) {
 				int xdiv_start = i ? xDivs[i - 1] : 0;
@@ -57,7 +60,7 @@ static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *s
 				if (i % 2) // odd sections are stretchable
 					patch_width *= strech_factor_width;
 				rect.size.width = patch_width;
-				if (!patch_width) // skip empty sections
+				if (!patch_width)
 					continue;
 				if (*color == NO_COLOR) {
 					gtk_snapshot_push_clip(snapshot, &rect);
@@ -97,12 +100,27 @@ static void ninepatch_paintable_paintable_init(GdkPaintableInterface *iface)
 	iface->get_flags = ninepatch_paintable_get_flags;
 }
 
-static void ninepatch_paintable_class_init(NinePatchPaintableClass *class)
-{
-}
-
 G_DEFINE_TYPE_WITH_CODE(NinePatchPaintable, ninepatch_paintable, G_TYPE_OBJECT,
                         G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, ninepatch_paintable_paintable_init))
+
+static void ninepatch_paintable_dispose(GObject *object)
+{
+	g_clear_object(&NINEPATCH_PAINTABLE(object)->texture);
+	G_OBJECT_CLASS(ninepatch_paintable_parent_class)->dispose(object);
+}
+
+static void ninepatch_paintable_finalize(GObject *object)
+{
+	free(NINEPATCH_PAINTABLE(object)->chunk);
+	atl_test_drawable_freed(G_OBJECT_TYPE_NAME(object));
+	G_OBJECT_CLASS(ninepatch_paintable_parent_class)->finalize(object);
+}
+
+static void ninepatch_paintable_class_init(NinePatchPaintableClass *class)
+{
+	G_OBJECT_CLASS(class)->dispose = ninepatch_paintable_dispose;
+	G_OBJECT_CLASS(class)->finalize = ninepatch_paintable_finalize;
+}
 
 GdkPaintable *ninepatch_paintable_new(struct Res_png_9patch *chunk, uint32_t chunk_size, GdkTexture *texture)
 {
