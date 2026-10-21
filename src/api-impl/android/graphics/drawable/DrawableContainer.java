@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/drawable/DrawableContainer.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.graphics.drawable;
 
 import android.content.res.Resources;
@@ -85,6 +90,11 @@ public class DrawableContainer extends Drawable {
 		public int getChangingConfigurations() {
 			return owner.getChangingConfigurations();
 		}
+	}
+
+	@Override
+	public Drawable getCurrent() {
+		return curIndex != -1 ? state.drawables[curIndex] : null;
 	}
 
 	@Override

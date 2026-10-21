@@ -12,6 +12,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified for ATL; see doc/AOSP.md.
  */
 
 package android.view;
@@ -397,6 +399,13 @@ public final class MotionEvent extends InputEvent {
 	 * @see #setTainted
 	 */
 	public static final int FLAG_TAINTED = 0x80000000;
+
+	/**
+	 * Private flag indicating that this event was synthesized by the system and should be delivered
+	 * to the accessibility focused view first.
+	 * @hide
+	 */
+	public static final int FLAG_TARGET_ACCESSIBILITY_FOCUS = 0x40000000;
 
 	/**
 	 * Flag indicating the motion event intersected the top edge of the screen.
@@ -1372,7 +1381,11 @@ public final class MotionEvent extends InputEvent {
 
 	int source;
 	int action;
+	long downTime;
 	long eventTime;
+	int flags;
+	int metaState;
+	int buttonState;
 	int[] ids;
 	float[] coords;
 
@@ -1394,8 +1407,14 @@ public final class MotionEvent extends InputEvent {
 	}
 
 	public MotionEvent(int source, int action, long eventTime, int[] ids, float[] coords) {
+		this(source, action, eventTime, eventTime, ids, coords);
+	}
+
+	// ATL's hosts: ids and, per pointer, x y raw_x raw_y
+	public MotionEvent(int source, int action, long downTime, long eventTime, int[] ids, float[] coords) {
 		this.source = source;
 		this.action = action;
+		this.downTime = downTime;
 		this.eventTime = eventTime;
 
 		this.ids = ids;
@@ -1471,7 +1490,11 @@ public final class MotionEvent extends InputEvent {
 
 		ev.source = source;
 		ev.action = action;
+		ev.downTime = downTime;
 		ev.eventTime = eventTime;
+		ev.flags = flags;
+		ev.metaState = metaState;
+		ev.buttonState = buttonState;
 		ev.ids = new int[pointerCount];
 		ev.coords = new float[pointerCount * 4];
 		for (int i = 0; i < pointerCount; i++) {
@@ -1582,10 +1605,15 @@ public final class MotionEvent extends InputEvent {
 			//                                 0, 0, xPrecision, yPrecision,
 			//                                 downTime * NS_PER_MS, eventTime * NS_PER_MS,
 			//                                 1, pp, pc);
+			ev.source = 0;
 			ev.action = action;
-			ev.ids = new int[] {1};
-			ev.coords = new float[] {x, y, 0, 0};
+			ev.ids = new int[] {0};
+			ev.coords = new float[] {x, y, x, y};
+			ev.downTime = downTime;
 			ev.eventTime = eventTime;
+			ev.flags = 0;
+			ev.metaState = metaState;
+			ev.buttonState = 0;
 			return ev;
 		}
 	}
@@ -1665,7 +1693,13 @@ public final class MotionEvent extends InputEvent {
 		ev.action = other.action;
 		ev.ids = other.ids.clone();
 		ev.coords = other.coords.clone();
+		ev.downTime = other.downTime;
 		ev.eventTime = other.eventTime;
+		ev.flags = other.flags;
+		ev.metaState = other.metaState;
+		ev.buttonState = other.buttonState;
+		ev.scroll_dx = other.scroll_dx;
+		ev.scroll_dy = other.scroll_dy;
 
 		return ev;
 	}
@@ -1798,7 +1832,20 @@ public final class MotionEvent extends InputEvent {
 	 * @hide
 	 */
 	public final boolean isTouchEvent() {
-		return nativeIsTouchEvent(mNativePtr);
+		if ((source & InputDevice.SOURCE_CLASS_POINTER) == 0)
+			return false;
+		switch (getActionMasked()) {
+			case ACTION_DOWN:
+			case ACTION_MOVE:
+			case ACTION_UP:
+			case ACTION_POINTER_DOWN:
+			case ACTION_POINTER_UP:
+			case ACTION_CANCEL:
+			case ACTION_OUTSIDE:
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	/**
@@ -1807,8 +1854,7 @@ public final class MotionEvent extends InputEvent {
 	 * @see #FLAG_WINDOW_IS_OBSCURED
 	 */
 	public final int getFlags() {
-		// return nativeGetFlags(mNativePtr);
-		return 0;
+		return flags;
 	}
 
 	/**
@@ -1826,7 +1872,7 @@ public final class MotionEvent extends InputEvent {
 	@Override
 	public final void setTainted(boolean tainted) {
 		final int flags = getFlags();
-		nativeSetFlags(mNativePtr, tainted ? flags | FLAG_TAINTED : flags & ~FLAG_TAINTED);
+		this.flags = tainted ? flags | FLAG_TAINTED : flags & ~FLAG_TAINTED;
 	}
 
 	/**
@@ -1834,8 +1880,7 @@ public final class MotionEvent extends InputEvent {
 	 * a stream of position events.
 	 */
 	public final long getDownTime() {
-		return getEventTime(); // FIXME?
-				       //		return nativeGetDownTimeNanos(mNativePtr) / NS_PER_MS;
+		return downTime;
 	}
 
 	/**
@@ -1845,7 +1890,7 @@ public final class MotionEvent extends InputEvent {
 	 * @hide
 	 */
 	public final void setDownTime(long downTime) {
-		nativeSetDownTimeNanos(mNativePtr, downTime * NS_PER_MS);
+		this.downTime = downTime;
 	}
 
 	/**
@@ -2035,7 +2080,11 @@ public final class MotionEvent extends InputEvent {
 	 * that pointer identifier.
 	 */
 	public final int findPointerIndex(int pointerId) {
-		return 0 /*nativeFindPointerIndex(mNativePtr, pointerId)*/;
+		for (int i = 0; i < ids.length; i++) {
+			if (ids[i] == pointerId)
+				return i;
+		}
+		return -1;
 	}
 
 	/**
@@ -2240,8 +2289,9 @@ public final class MotionEvent extends InputEvent {
 	 */
 	public final void getPointerProperties(int pointerIndex,
 	                                       PointerProperties outPointerProperties) {
-		// nativeGetPointerProperties(mNativePtr, pointerIndex, outPointerProperties);
 		outPointerProperties.clear();
+		outPointerProperties.id = ids[pointerIndex];
+		outPointerProperties.toolType = getToolType(pointerIndex);
 	}
 
 	/**
@@ -2255,8 +2305,7 @@ public final class MotionEvent extends InputEvent {
 	 * @see KeyEvent#getMetaState()
 	 */
 	public final int getMetaState() {
-		// return nativeGetMetaState(mNativePtr);
-		return 0;
+		return metaState;
 	}
 
 	/**
@@ -2785,10 +2834,10 @@ public final class MotionEvent extends InputEvent {
 	 */
 	public final void offsetLocation(float deltaX, float deltaY) {
 		if (deltaX != 0.0f || deltaY != 0.0f) {
-			// nativeOffsetLocation(mNativePtr, deltaX, deltaY);
-			/* FIXME: loop for all pointers? */
-			coords[0 + X_OFFSET] += deltaX;
-			coords[0 + Y_OFFSET] += deltaY;
+			for (int i = 0; i < ids.length; i++) {
+				coords[4 * i + X_OFFSET] += deltaX;
+				coords[4 * i + Y_OFFSET] += deltaY;
+			}
 		}
 	}
 
@@ -2815,7 +2864,14 @@ public final class MotionEvent extends InputEvent {
 			throw new IllegalArgumentException("matrix must not be null");
 		}
 
-		nativeTransform(mNativePtr, matrix);
+		float[] point = new float[2];
+		for (int i = 0; i < ids.length; i++) {
+			point[0] = coords[4 * i + X_OFFSET];
+			point[1] = coords[4 * i + Y_OFFSET];
+			matrix.mapPoints(point);
+			coords[4 * i + X_OFFSET] = point[0];
+			coords[4 * i + Y_OFFSET] = point[1];
+		}
 	}
 
 	/**
@@ -2980,16 +3036,24 @@ public final class MotionEvent extends InputEvent {
 		}
 	}
 
+	/** @hide */
+	public final boolean isTargetAccessibilityFocus() {
+		return (flags & FLAG_TARGET_ACCESSIBILITY_FOCUS) != 0;
+	}
+
+	/** @hide */
+	public final void setTargetAccessibilityFocus(boolean targetsFocus) {
+		flags = targetsFocus ? flags | FLAG_TARGET_ACCESSIBILITY_FOCUS : flags & ~FLAG_TARGET_ACCESSIBILITY_FOCUS;
+	}
+
 	/**
 	 * Gets an integer where each pointer id present in the event is marked as a bit.
 	 * @hide
 	 */
 	public final int getPointerIdBits() {
 		int idBits = 0;
-		final int pointerCount = nativeGetPointerCount(mNativePtr);
-		for (int i = 0; i < pointerCount; i++) {
-			idBits |= 1 << nativeGetPointerId(mNativePtr, i);
-		}
+		for (int id : ids)
+			idBits |= 1 << id;
 		return idBits;
 	}
 
@@ -2998,81 +3062,53 @@ public final class MotionEvent extends InputEvent {
 	 * @hide
 	 */
 	public final MotionEvent split(int idBits) {
-		MotionEvent ev = obtain();
-		synchronized (gSharedTempLock) {
-			final int oldPointerCount = nativeGetPointerCount(mNativePtr);
-			ensureSharedTempPointerCapacity(oldPointerCount);
-			final PointerProperties[] pp = gSharedTempPointerProperties;
-			final PointerCoords[] pc = gSharedTempPointerCoords;
-			final int[] map = gSharedTempPointerIndexMap;
-
-			final int oldAction = nativeGetAction(mNativePtr);
-			final int oldActionMasked = oldAction & ACTION_MASK;
-			final int oldActionPointerIndex = (oldAction & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
-			int newActionPointerIndex = -1;
-			int newPointerCount = 0;
-			int newIdBits = 0;
-			for (int i = 0; i < oldPointerCount; i++) {
-				nativeGetPointerProperties(mNativePtr, i, pp[newPointerCount]);
-				final int idBit = 1 << pp[newPointerCount].id;
-				if ((idBit & idBits) != 0) {
-					if (i == oldActionPointerIndex) {
-						newActionPointerIndex = newPointerCount;
-					}
-					map[newPointerCount] = i;
-					newPointerCount += 1;
-					newIdBits |= idBit;
-				}
-			}
-
-			if (newPointerCount == 0) {
-				throw new IllegalArgumentException("idBits did not match any ids in the event");
-			}
-
-			final int newAction;
-			if (oldActionMasked == ACTION_POINTER_DOWN || oldActionMasked == ACTION_POINTER_UP) {
-				if (newActionPointerIndex < 0) {
-					// An unrelated pointer changed.
-					newAction = ACTION_MOVE;
-				} else if (newPointerCount == 1) {
-					// The first/last pointer went down/up.
-					newAction = oldActionMasked == ACTION_POINTER_DOWN
-					              ? ACTION_DOWN
-					              : ACTION_UP;
-				} else {
-					// A secondary pointer went down/up.
-					newAction = oldActionMasked | (newActionPointerIndex << ACTION_POINTER_INDEX_SHIFT);
-				}
-			} else {
-				// Simple up/down/cancel/move or other motion action.
-				newAction = oldAction;
-			}
-
-			final int historySize = nativeGetHistorySize(mNativePtr);
-			for (int h = 0; h <= historySize; h++) {
-				final int historyPos = h == historySize ? HISTORY_CURRENT : h;
-
-				for (int i = 0; i < newPointerCount; i++) {
-					nativeGetPointerCoords(mNativePtr, map[i], historyPos, pc[i]);
-				}
-
-				final long eventTimeNanos = nativeGetEventTimeNanos(mNativePtr, historyPos);
-				if (h == 0) {
-					ev.mNativePtr = nativeInitialize(ev.mNativePtr,
-					                                 nativeGetDeviceId(mNativePtr), nativeGetSource(mNativePtr),
-					                                 newAction, nativeGetFlags(mNativePtr),
-					                                 nativeGetEdgeFlags(mNativePtr), nativeGetMetaState(mNativePtr),
-					                                 nativeGetButtonState(mNativePtr),
-					                                 nativeGetXOffset(mNativePtr), nativeGetYOffset(mNativePtr),
-					                                 nativeGetXPrecision(mNativePtr), nativeGetYPrecision(mNativePtr),
-					                                 nativeGetDownTimeNanos(mNativePtr), eventTimeNanos,
-					                                 newPointerCount, pp, pc);
-				} else {
-					nativeAddBatch(ev.mNativePtr, eventTimeNanos, pc, 0);
-				}
-			}
-			return ev;
+		final int oldActionMasked = action & ACTION_MASK;
+		final int oldActionPointerIndex = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
+		int newActionPointerIndex = -1;
+		int newPointerCount = 0;
+		for (int i = 0; i < ids.length; i++) {
+			if (((1 << ids[i]) & idBits) != 0)
+				newPointerCount++;
 		}
+		if (newPointerCount == 0) {
+			throw new IllegalArgumentException("idBits did not match any ids in the event");
+		}
+		int[] newIds = new int[newPointerCount];
+		float[] newCoords = new float[newPointerCount * 4];
+		for (int i = 0, j = 0; i < ids.length; i++) {
+			if (((1 << ids[i]) & idBits) == 0)
+				continue;
+			if (i == oldActionPointerIndex)
+				newActionPointerIndex = j;
+			newIds[j] = ids[i];
+			System.arraycopy(coords, 4 * i, newCoords, 4 * j, 4);
+			j++;
+		}
+
+		final int newAction;
+		if (oldActionMasked == ACTION_POINTER_DOWN || oldActionMasked == ACTION_POINTER_UP) {
+			if (newActionPointerIndex < 0) {
+				// An unrelated pointer changed.
+				newAction = ACTION_MOVE;
+			} else if (newPointerCount == 1) {
+				// The first/last pointer went down/up.
+				newAction = oldActionMasked == ACTION_POINTER_DOWN
+				              ? ACTION_DOWN
+				              : ACTION_UP;
+			} else {
+				// A secondary pointer went down/up.
+				newAction = oldActionMasked | (newActionPointerIndex << ACTION_POINTER_INDEX_SHIFT);
+			}
+		} else {
+			// Simple up/down/cancel/move or other motion action.
+			newAction = action;
+		}
+
+		MotionEvent ev = obtain(this);
+		ev.action = newAction;
+		ev.ids = newIds;
+		ev.coords = newCoords;
+		return ev;
 	}
 
 	@Override
@@ -3095,7 +3131,7 @@ public final class MotionEvent extends InputEvent {
 		msg.append(", pointerCount=").append(pointerCount);
 		msg.append(", historySize=").append(/*getHistorySize()*/ "FIXME");
 		msg.append(", eventTime=").append(getEventTime());
-		msg.append(", downTime=").append(/*getDownTime()*/ "FIXME");
+		msg.append(", downTime=").append(getDownTime());
 		msg.append(", deviceId=").append(getDeviceId());
 		msg.append(", source=0x").append(Integer.toHexString(getSource()));
 		msg.append(" }");

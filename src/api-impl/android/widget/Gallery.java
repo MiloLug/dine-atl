@@ -1183,7 +1183,7 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
 	}
 
 	protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
-		// super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+		super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
 
 		/*
 		 * The gallery shows focus by focusing the selected item. So, give

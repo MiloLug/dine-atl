@@ -1,7 +1,10 @@
 #include <gtk/gtk.h>
 
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
+#include "src/shared/input.h"
 #include "src/slots/ui.h"
+
+#include "gtk_ui.h"
 
 /* ImageView.ScaleType.nativeInt */
 #define SCALE_TYPE_FIT_XY        1
@@ -43,6 +46,75 @@ void ui_image_set_scale_type(struct ui_view *view, int scale_type)
 			gtk_picture_set_content_fit(picture, GTK_CONTENT_FIT_CONTAIN);
 			break;
 	}
+}
+
+/* A scroll node is a GtkScrolledWindow whose viewport holds the child's wrapper; GTK scrolls and
+ * reports. A request the range can't take yet (before allocation) waits for the range to grow. */
+struct scroll_request {
+	int x, y;
+	bool pending;
+};
+
+static void scroll_apply(GtkScrolledWindow *scrolled_window, struct scroll_request *request)
+{
+	GtkAdjustment *h = gtk_scrolled_window_get_hadjustment(scrolled_window);
+	GtkAdjustment *v = gtk_scrolled_window_get_vadjustment(scrolled_window);
+	gtk_adjustment_set_value(h, request->x);
+	gtk_adjustment_set_value(v, request->y);
+	request->pending = (int)gtk_adjustment_get_value(h) != request->x || (int)gtk_adjustment_get_value(v) != request->y;
+}
+
+static void on_scrolled(GtkAdjustment *adjustment, GtkScrolledWindow *scrolled_window)
+{
+	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(scrolled_window)));
+	atl_upcall_scrolled((struct atl_ref *)wrapper->jobj, gtk_adjustment_get_value(gtk_scrolled_window_get_hadjustment(scrolled_window)),
+	                    gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(scrolled_window)));
+}
+
+static void on_range_changed(GtkAdjustment *adjustment, GtkScrolledWindow *scrolled_window)
+{
+	struct scroll_request *request = g_object_get_data(G_OBJECT(scrolled_window), "atl-scroll-request");
+	if (request->pending)
+		scroll_apply(scrolled_window, request);
+}
+
+struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, bool horizontal)
+{
+	GtkWidget *wrapper = g_object_ref(wrapper_widget_new());
+	GtkWidget *scrolled_window = gtk_scrolled_window_new();
+	GtkWidget *viewport = gtk_viewport_new(NULL, NULL);
+	if (horizontal) {
+		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
+		gtk_scrollable_set_hscroll_policy(GTK_SCROLLABLE(viewport), GTK_SCROLL_NATURAL);
+	} else {
+		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+		gtk_scrollable_set_vscroll_policy(GTK_SCROLLABLE(viewport), GTK_SCROLL_NATURAL);
+	}
+	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), scrolled_window);
+	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), viewport);
+	wrapper_widget_setup(WRAPPER_WIDGET(wrapper), view_ref, traits);
+	gtk_widget_set_name(scrolled_window, class_name);
+	g_object_set_data_full(G_OBJECT(scrolled_window), "atl-scroll-request", g_new0(struct scroll_request, 1), g_free);
+	GtkAdjustment *adjustments[] = {gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(scrolled_window)),
+	                                gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scrolled_window))};
+	for (int i = 0; i < 2; i++) {
+		g_signal_connect(adjustments[i], "value-changed", G_CALLBACK(on_scrolled), scrolled_window);
+		g_signal_connect(adjustments[i], "changed", G_CALLBACK(on_range_changed), scrolled_window);
+	}
+	input_take_native(gtk_scrolled_window_get_hscrollbar(GTK_SCROLLED_WINDOW(scrolled_window)));
+	input_take_native(gtk_scrolled_window_get_vscrollbar(GTK_SCROLLED_WINDOW(scrolled_window)));
+	return (struct ui_view *)scrolled_window;
+}
+
+// GTK animates nothing here; views other than scroll nodes keep the computeScroll shift
+void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated)
+{
+	if (!GTK_IS_SCROLLED_WINDOW(view))
+		return;
+	struct scroll_request *request = g_object_get_data(G_OBJECT(view), "atl-scroll-request");
+	request->x = x;
+	request->y = y;
+	scroll_apply(GTK_SCROLLED_WINDOW(view), request);
 }
 
 struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)

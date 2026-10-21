@@ -20,8 +20,9 @@ struct gfx_paint {
 };
 
 struct gfx_drawable {
-	struct atl_ref *drawable_ref;
+	struct atl_ref *drawable_ref; // NULL for a container
 	atomic_int refs;
+	struct gfx_drawable *selected; // a container's child, held
 };
 
 struct gfx_paint *gfx_paint_new(void)
@@ -145,8 +146,26 @@ void gfx_drawable_unref(struct gfx_drawable *drawable)
 	if (atomic_fetch_sub(&drawable->refs, 1) != 1)
 		return;
 	atl_test_drawable_freed("record");
-	atl_ref_free(drawable->drawable_ref);
+	if (drawable->selected)
+		gfx_drawable_unref(drawable->selected);
+	if (drawable->drawable_ref)
+		atl_ref_free(drawable->drawable_ref);
 	free(drawable);
 }
 
 void gfx_drawable_invalidate(struct gfx_drawable *drawable) {}
+
+struct gfx_drawable *gfx_container_new(void)
+{
+	return gfx_drawable_new(NULL);
+}
+
+// the selection is kept for M5's drawing
+void gfx_container_select(struct gfx_drawable *container, struct gfx_drawable *child)
+{
+	if (child)
+		gfx_drawable_ref(child);
+	if (container->selected)
+		gfx_drawable_unref(container->selected);
+	container->selected = child;
+}

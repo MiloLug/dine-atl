@@ -21,10 +21,7 @@ public class WindowManagerImpl implements WindowManager, ViewManager {
 		}
 
 		@Override
-		public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'requestDisallowInterceptTouchEvent'");
-		}
+		public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {}
 
 		@Override
 		public boolean onStartNestedScroll(View child, View target, int nestedScrollAxes) {
@@ -78,6 +75,26 @@ public class WindowManagerImpl implements WindowManager, ViewManager {
 		public void requestLayout() {
 			// TODO Auto-generated method stub
 			throw new UnsupportedOperationException("Unimplemented method 'requestLayout'");
+		}
+
+		// the window's root: focus stays in its view tree
+		@Override
+		public void requestChildFocus(View child, View focused) {}
+
+		@Override
+		public void clearChildFocus(View child) {}
+
+		@Override
+		public View focusSearch(View v, int direction) {
+			return null;
+		}
+
+		@Override
+		public void focusableViewAvailable(View v) {}
+
+		@Override
+		public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
+			return false;
 		}
 	}
 

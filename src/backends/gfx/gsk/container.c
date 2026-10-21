@@ -1,9 +1,9 @@
 #include <gdk/gdk.h>
 
 #include "src/shared/test_hooks.h"
+#include "src/slots/gfx.h"
 
-#include "../defines.h"
-#include "../generated_headers/android_graphics_drawable_DrawableContainer.h"
+/* A container's paintable shows the selected child's. */
 
 struct _ContainerPaintable {
 	GObject parent_instance;
@@ -78,15 +78,16 @@ static void container_paintable_class_init(ContainerPaintableClass *class)
 	G_OBJECT_CLASS(class)->finalize = container_paintable_finalize;
 }
 
-JNIEXPORT jlong JNICALL Java_android_graphics_drawable_DrawableContainer_native_1constructor(JNIEnv *env, jobject this)
+struct gfx_drawable *gfx_container_new(void)
 {
-	return _INTPTR(g_object_new(container_paintable_get_type(), NULL));
+	return (struct gfx_drawable *)g_object_new(container_paintable_get_type(), NULL);
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_drawable_DrawableContainer_native_1selectChild(JNIEnv *env, jobject this, jlong ptr, jlong child_ptr)
+void gfx_container_select(struct gfx_drawable *drawable, struct gfx_drawable *child)
 {
-	ContainerPaintable *container = CONTAINER_PAINTABLE(_PTR(ptr));
-	g_set_object(&container->child, GDK_PAINTABLE(_PTR(child_ptr)));
+	ContainerPaintable *container = CONTAINER_PAINTABLE(drawable);
+	GdkPaintable *paintable = (GdkPaintable *)child; // NULL: none
+	g_set_object(&container->child, paintable);
 	gdk_paintable_invalidate_contents(GDK_PAINTABLE(container));
 	gdk_paintable_invalidate_size(GDK_PAINTABLE(container));
 }

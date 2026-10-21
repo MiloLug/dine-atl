@@ -1,12 +1,15 @@
 #import <UIKit/UIKit.h>
 
+#include <pthread.h>
 #include <stdlib.h>
 
+#include "src/shared/input.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 #include "../records/records.h"
+#import "input.h"
 #import "surface.h"
 
 /* A UIView per view record, an ATLLabel per text record, in the surface the host gave; the shown
@@ -14,11 +17,69 @@
  * reach UIKit's thread in order, one batch per layout pass. Text measurement waits for UIKit's thread:
  * deadlock-free only while main never waits for the Android thread. */
 
+// each node view hands the touches UIKit gives it to input.m
+#define FORWARD_TOUCHES                                                            \
+	-(void)touchesBegan : (NSSet<UITouch *> *)touches withEvent : (UIEvent *)event \
+	{                                                                              \
+		input_touches(touches, event, UITouchPhaseBegan);                          \
+	}                                                                              \
+	-(void)touchesMoved : (NSSet<UITouch *> *)touches withEvent : (UIEvent *)event \
+	{                                                                              \
+		input_touches(touches, event, UITouchPhaseMoved);                          \
+	}                                                                              \
+	-(void)touchesEnded : (NSSet<UITouch *> *)touches withEvent : (UIEvent *)event \
+	{                                                                              \
+		input_touches(touches, event, UITouchPhaseEnded);                          \
+	}                                                                              \
+	-(void)touchesCancelled : (NSSet<UITouch *> *)touches withEvent : (UIEvent *)event \
+	{                                                                              \
+		input_touches(touches, event, UITouchPhaseCancelled);                      \
+	}
+
+// an activity's root is the first responder while shown: the hardware keyboard's presses
+@interface ATLView : UIView
+@property(nonatomic) BOOL activityRoot;
+@end
+
+@implementation ATLView
+FORWARD_TOUCHES
+
+- (BOOL)canBecomeFirstResponder
+{
+	return _activityRoot;
+}
+
+// shown before Dine put the surface in a window
+- (void)didMoveToWindow
+{
+	[super didMoveToWindow];
+	if (_activityRoot && !self.hidden && self.window)
+		[self becomeFirstResponder];
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
+{
+	input_presses(presses, true);
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
+{
+	input_presses(presses, false);
+}
+
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
+{
+	input_presses(presses, false);
+}
+@end
+
 @interface ATLLabel : UILabel
 @property(nonatomic) UIEdgeInsets padding;
 @end
 
 @implementation ATLLabel
+FORWARD_TOUCHES
+
 // at the top left of the padded bounds, TextView's default gravity; UILabel centers vertically
 - (void)drawTextInRect:(CGRect)rect
 {
@@ -36,6 +97,8 @@
 @end
 
 @implementation ATLProgress
+FORWARD_TOUCHES
+
 - (instancetype)init
 {
 	if ((self = [super initWithFrame:CGRectZero])) {
@@ -55,6 +118,81 @@
 	CGFloat height = [_bar sizeThatFits:bounds.size].height;
 	_bar.frame = CGRectMake(0, (bounds.size.height - height) / 2, bounds.size.width, height);
 	_spinner.center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+}
+@end
+
+// the offset UIKit reached, for the Android thread
+struct scroll_report {
+	struct ui_view *view;
+	int x, y; // px
+	bool posted;
+};
+
+static pthread_mutex_t report_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// a record's ref is NULL from ui_view_free; its last free waits behind the reports in the queue
+static void deliver_report(void *data)
+{
+	struct scroll_report *report = data;
+	pthread_mutex_lock(&report_lock);
+	int x = report->x, y = report->y;
+	report->posted = false;
+	pthread_mutex_unlock(&report_lock);
+	struct ui_view *view = report->view;
+	if (!view->ref)
+		return;
+	view->scroll_x = x;
+	view->scroll_y = y;
+	atl_upcall_scrolled(view->ref, x, y);
+}
+
+/* the toolkit's offset is the truth: each one UIKit reaches goes to Java, the newest while one waits.
+ * The user's bounce past an end stays UIKit's (AOSP overflings 6 dp at most); Java's own requests go
+ * back unclamped, since a scrollTo made in a layout pass reaches UIKit before its contentSize. */
+@interface ATLScrollView : UIScrollView <UIScrollViewDelegate>
+@property(nonatomic, readonly) struct scroll_report *report;
+@end
+
+@implementation ATLScrollView
+FORWARD_TOUCHES
+
+- (instancetype)initWithRecord:(struct ui_view *)view horizontal:(bool)horizontal
+{
+	if ((self = [super initWithFrame:CGRectZero])) {
+		_report = calloc(1, sizeof(*_report));
+		_report->view = view;
+		self.delegate = self;
+		self.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever; // the safe area is the host's
+		self.multipleTouchEnabled = YES;
+		self.showsHorizontalScrollIndicator = horizontal;
+		self.showsVerticalScrollIndicator = !horizontal;
+		self.alwaysBounceHorizontal = horizontal;
+		self.alwaysBounceVertical = !horizontal;
+	}
+	return self;
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+	CGFloat s = atl_window_get()->density_dpi / 160.;
+	CGPoint offset = self.contentOffset;
+	if (self.isDragging || self.isDecelerating) {
+		CGSize size = self.bounds.size;
+		CGSize content = self.contentSize;
+		offset.x = MAX(0, MIN(offset.x, content.width - size.width));
+		offset.y = MAX(0, MIN(offset.y, content.height - size.height));
+	}
+	pthread_mutex_lock(&report_lock);
+	_report->x = lround(offset.x * s);
+	_report->y = lround(offset.y * s);
+	bool post = !_report->posted;
+	_report->posted = true;
+	pthread_mutex_unlock(&report_lock);
+	if (post && !loop_main_post(deliver_report, _report)) {
+		pthread_mutex_lock(&report_lock);
+		_report->posted = false;
+		pthread_mutex_unlock(&report_lock);
+	}
 }
 @end
 
@@ -135,6 +273,7 @@ void records_view_created(struct ui_view *view)
 {
 	@autoreleasepool {
 		enum node_kind kind = view->kind;
+		bool horizontal = view->horizontal;
 		enqueue(^{
 			UIView *created;
 			if (kind == NODE_TEXT) {
@@ -143,10 +282,13 @@ void records_view_created(struct ui_view *view)
 				created = label;
 			} else if (kind == NODE_PROGRESS) {
 				created = [ATLProgress new];
+			} else if (kind == NODE_SCROLL) {
+				created = [[ATLScrollView alloc] initWithRecord:view horizontal:horizontal];
 			} else {
-				created = [UIView new];
+				created = [ATLView new];
 				created.clipsToBounds = YES; // ViewGroup's clipChildren
 			}
+			created.multipleTouchEnabled = YES;
 			view->native = (void *)CFBridgingRetain(created);
 		});
 	}
@@ -172,14 +314,29 @@ void records_child_removed(struct ui_view *parent, struct ui_view *child)
 	}
 }
 
-// after every block queued before it, so no block reads the record once it is freed
+static void free_record(void *data)
+{
+	struct ui_view *view = data;
+	free(view->native); // a scroll node's report, else NULL
+	free(view);
+}
+
+// after every block queued before it, so no block reads the record once it is freed; then back on
+// the Android thread, after the scroll reports UIKit posted before
 void records_view_freed(struct ui_view *view)
 {
 	@autoreleasepool {
 		enqueue(^{
 			UIView *freed = CFBridgingRelease(view->native);
+			struct scroll_report *report = NULL;
+			if ([freed isKindOfClass:[ATLScrollView class]]) {
+				((ATLScrollView *)freed).delegate = nil;
+				report = ((ATLScrollView *)freed).report;
+			}
 			[freed removeFromSuperview];
-			free(view);
+			view->native = report;
+			if (!loop_main_post(free_record, view))
+				free_record(view);
 		});
 	}
 }
@@ -191,8 +348,10 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 	void *target = surface;
 	@autoreleasepool {
 		enqueue(^{
-			native(root).hidden = YES;
-			[(__bridge UIView *)target addSubview:native(root)];
+			ATLView *added = (ATLView *)native(root);
+			added.hidden = YES;
+			added.activityRoot = YES;
+			[(__bridge UIView *)target addSubview:added];
 		});
 	}
 }
@@ -210,6 +369,7 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 			for (UIView *other in surface_view.subviews)
 				other.hidden = other != shown || !visible;
 			[surface_view bringSubviewToFront:shown];
+			[shown becomeFirstResponder];
 		});
 	}
 }
@@ -369,7 +529,8 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 
 struct frame {
 	struct ui_view *view;
-	CGRect rect; // pt
+	CGRect rect;    // pt
+	CGSize content; // a scroll node's: its child's size
 };
 
 static size_t count_views(struct ui_view *view)
@@ -382,7 +543,15 @@ static size_t count_views(struct ui_view *view)
 
 static void collect_frames(struct ui_view *view, CGFloat s, struct frame **next)
 {
-	*(*next)++ = (struct frame){view, CGRectMake(view->left / s, view->top / s, (view->right - view->left) / s, (view->bottom - view->top) / s)};
+	CGSize content = CGSizeZero;
+	if (view->kind == NODE_SCROLL && view->n_children) {
+		// Android's extent: the child's size and the node's padding (margins don't count), along its axis
+		struct ui_view *child = view->children[0];
+		int width = view->horizontal ? view->padding_left + child->right - child->left + view->padding_right : view->right - view->left;
+		int height = view->horizontal ? view->bottom - view->top : view->padding_top + child->bottom - child->top + view->padding_bottom;
+		content = CGSizeMake(width / s, height / s);
+	}
+	*(*next)++ = (struct frame){view, CGRectMake(view->left / s, view->top / s, (view->right - view->left) / s, (view->bottom - view->top) / s), content};
 	for (size_t i = 0; i < view->n_children; i++)
 		collect_frames(view->children[i], s, next);
 }
@@ -395,11 +564,35 @@ void records_layout_done(struct ui_window *window)
 			struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
 			collect_frames(window->shown, scale(), &next);
 			enqueue(^{
-				for (size_t i = 0; i < count; i++)
-					native(frames[i].view).frame = frames[i].rect;
+				for (size_t i = 0; i < count; i++) {
+					UIView *framed = native(frames[i].view);
+					framed.frame = frames[i].rect;
+					if (frames[i].view->kind == NODE_SCROLL)
+						((UIScrollView *)framed).contentSize = frames[i].content;
+				}
 				free(frames);
 			});
 		}
 		flush();
+	}
+}
+
+// a scroll node's UIScrollView animates and reports; another view's bounds shift its subviews
+void records_scroll_changed(struct ui_view *view, bool animated)
+{
+	@autoreleasepool {
+		CGFloat s = scale();
+		CGPoint offset = CGPointMake(view->scroll_x / s, view->scroll_y / s);
+		bool scroll_node = view->kind == NODE_SCROLL;
+		enqueue(^{
+			UIView *scrolled = native(view);
+			if (scroll_node) {
+				[(UIScrollView *)scrolled setContentOffset:offset animated:animated];
+			} else {
+				CGRect bounds = scrolled.bounds;
+				bounds.origin = offset;
+				scrolled.bounds = bounds;
+			}
+		});
 	}
 }

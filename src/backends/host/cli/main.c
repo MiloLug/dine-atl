@@ -8,6 +8,7 @@
 #include "src/api-impl-jni/app/android_app_Activity.h"
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/handle_cache.h"
+#include "src/backends/ui/headless/input.h"
 #include "src/shared/host_linux.h"
 #include "src/shared/nav.h"
 #include "src/shared/startup.h"
@@ -28,7 +29,38 @@ static bool parse_insets(const char *line, struct atl_window_insets *insets)
 	              &e[2]->left, &e[2]->top, &e[2]->right, &e[2]->bottom) == 12;
 }
 
-// -c: system navigation from stdin, one command per line; the loop slot has no fd watch
+// "touch down|move|up|cancel <id> <x> <y>", px in the window
+static bool parse_touch(const char *line)
+{
+	static const char *const kinds[] = {[HEADLESS_TOUCH_DOWN] = "down", [HEADLESS_TOUCH_MOVE] = "move", [HEADLESS_TOUCH_UP] = "up", [HEADLESS_TOUCH_CANCEL] = "cancel"};
+	char kind[8];
+	int id;
+	float x, y;
+	if (sscanf(line, "touch %7s %d %f %f", kind, &id, &x, &y) != 4)
+		return false;
+	for (size_t i = 0; i < sizeof(kinds) / sizeof(*kinds); i++) {
+		if (!strcmp(kind, kinds[i])) {
+			headless_touch(i, id, x, y);
+			return true;
+		}
+	}
+	return false;
+}
+
+// "key down|up <keycode> [<meta> [<unicode>]]": KeyEvent's code and META_* flags, decimal
+static bool parse_key(const char *line)
+{
+	char action[8];
+	int code, meta = 0, unicode = 0;
+	if (sscanf(line, "key %7s %d %d %d", action, &code, &meta, &unicode) < 2)
+		return false;
+	if (strcmp(action, "down") && strcmp(action, "up"))
+		return false;
+	headless_key(!strcmp(action, "down"), code, meta, unicode);
+	return true;
+}
+
+// -c: system navigation and input from stdin, one command per line; the loop slot has no fd watch
 static void *read_commands(void *data)
 {
 	char *line = NULL;
@@ -44,8 +76,10 @@ static void *read_commands(void *data)
 			atl_nav_front();
 		else if (parse_insets(line, &insets))
 			atl_nav_set_insets(&insets);
-		else
-			fprintf(stderr, "commands: back, home, front, insets <12 dp>; not \"%s\"\n", line);
+		else if (!parse_touch(line) && !parse_key(line))
+			fprintf(stderr, "commands: back, home, front, insets <12 dp>, touch down|move|up|cancel <id> <x> <y>, "
+			                "key down|up <code> [<meta> [<unicode>]]; not \"%s\"\n",
+			        line);
 	}
 	free(line);
 	return NULL;

@@ -13,6 +13,8 @@ extern "C" {
 #define android_widget_Spinner_NOT_FOCUSABLE 0L
 #undef android_widget_Spinner_FOCUSABLE
 #define android_widget_Spinner_FOCUSABLE 1L
+#undef android_widget_Spinner_FOCUSABLE_AUTO
+#define android_widget_Spinner_FOCUSABLE_AUTO 16L
 #undef android_widget_Spinner_FOCUSABLE_MASK
 #define android_widget_Spinner_FOCUSABLE_MASK 1L
 #undef android_widget_Spinner_FITS_SYSTEM_WINDOWS
@@ -179,6 +181,8 @@ extern "C" {
 #define android_widget_Spinner_SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION 512L
 #undef android_widget_Spinner_SYSTEM_UI_FLAG_LAYOUT_STABLE
 #define android_widget_Spinner_SYSTEM_UI_FLAG_LAYOUT_STABLE 256L
+#undef android_widget_Spinner_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+#define android_widget_Spinner_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR 8192L
 #undef android_widget_Spinner_SYSTEM_UI_FLAG_LOW_PROFILE
 #define android_widget_Spinner_SYSTEM_UI_FLAG_LOW_PROFILE 1L
 #undef android_widget_Spinner_SYSTEM_UI_FLAG_VISIBLE

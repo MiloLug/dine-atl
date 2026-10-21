@@ -11,6 +11,7 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "input.h"
 #include "nav.h"
 #include "startup.h"
 #include "test_hooks.h"
@@ -221,14 +222,22 @@ static void task_move(bool front, bool by_host)
 	host_task_moved(front, by_host);
 }
 
+// the BACK key through the key chain: a shown dialog, the focused views, the activity
 static void nav_back(void *data)
 {
 	JNIEnv *env = get_jni_env();
 	if (!activity_current)
 		return;
-	(*env)->CallVoidMethod(env, activity_current, handle_cache.activity.onBackPressed);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	(*env)->PushLocalFrame(env, 4);
+	jobject window = _GET_OBJ_FIELD(activity_current, "window", "Landroid/view/Window;");
+	jobject decor = _GET_OBJ_FIELD(window, "decorView", "Landroid/view/ViewGroup;");
+	struct atl_key key = {.action = ATL_KEY_DOWN, .code = ATL_KEYCODE_BACK, .down_time = atl_uptime_ms()};
+	key.time = key.down_time;
+	atl_upcall_key((struct atl_ref *)decor, &key);
+	key.action = ATL_KEY_UP;
+	key.time = atl_uptime_ms();
+	atl_upcall_key((struct atl_ref *)decor, &key);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 static void nav_home(void *data)

@@ -2,6 +2,7 @@
 
 #include "../util.h"
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_CheckBox.h"
 #include "jni.h"
@@ -12,6 +13,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_CheckBox_native_1constructor(JNIEnv 
 	GtkWidget *button = gtk_check_button_new();
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), button);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
+	input_take_native(button);
 	return _INTPTR(button);
 }
 

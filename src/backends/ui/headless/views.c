@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/shared/input.h"
+
 #include "../records/records.h"
+#include "input.h"
 
 /* No toolkit: the records are all there is. Fixed text metrics keep dumps exact. */
 
@@ -24,10 +27,17 @@ void records_progress_changed(struct ui_view *view) {}
 void records_text_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
 void records_layout_done(struct ui_window *window) {}
+
+// no toolkit animates or clamps: the offset is reached at once
+void records_scroll_changed(struct ui_view *view, bool animated)
+{
+	atl_upcall_scrolled(view->ref, view->scroll_x, view->scroll_y);
+}
 void records_window_closed(struct ui_window *window) {}
 
 void records_view_freed(struct ui_view *view)
 {
+	headless_input_view_freed(view);
 	free(view);
 }
 

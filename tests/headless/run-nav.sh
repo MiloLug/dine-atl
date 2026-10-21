@@ -2,7 +2,7 @@
 # Drives the nav APK (nav/, built by the superproject's tests/harness/apk.py) through the cli host's
 # -c commands in the headless build: Back finishes B, Back on the task root A moves the task to the
 # back, front and home move it again. A's list, shown while the task is in the back, appears only on
-# front and closes and comes back with the task. The window's frame follows the shown activity: A's
+# front and closes and comes back with the task; Back cancels it. The window's frame follows the shown activity: A's
 # theme color; none for B, which clears the theme's flag, until B draws its own. Each show logs the
 # insets the content gets; B's exclusion rect reaches the host once the insets give the right edge a
 # gesture strip, and A, which has none, clears it. Each command's
@@ -81,6 +81,8 @@ send home
 expect "dialog: close" "nav: A onPause" "nav: A onStop" "host: task back host"
 send front
 expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
+send back # the shown list takes it: cancel, then the close
+expect "nav: list canceled" "dialog: close"
 
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true

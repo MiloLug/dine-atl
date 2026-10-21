@@ -4,6 +4,7 @@
 #include "../util.h"
 
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_EditText.h"
 
@@ -14,6 +15,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_EditText_native_1constructor(JNIEnv 
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), gtk_text);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
 	wrapper_widget_register_invalidation_listener(WRAPPER_WIDGET(wrapper));
+	input_take_native(gtk_text);
 	return _INTPTR(gtk_text);
 }
 

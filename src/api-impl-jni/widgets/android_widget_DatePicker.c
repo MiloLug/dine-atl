@@ -4,6 +4,7 @@
 #include "../util.h"
 
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_Button.h"
 
@@ -15,6 +16,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_DatePicker_native_1constructor(JNIEn
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), calendar);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
 
+	input_take_native(calendar);
 	return _INTPTR(calendar);
 }
 

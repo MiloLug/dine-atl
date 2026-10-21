@@ -3,28 +3,41 @@ package android.view;
 import android.content.Context;
 
 /**
- * default values are mainly based on AOSPs defaults. Does not account for scaling yet.
+ * default values are mainly based on AOSPs defaults; the scaled ones are dp, scaled like AOSP's.
  */
 public class ViewConfiguration {
+	private final float density;
+
+	private ViewConfiguration(Context context) {
+		density = context != null ? context.getResources().getDisplayMetrics().density : 1;
+	}
 
 	public static ViewConfiguration get(Context context) {
-		return new ViewConfiguration();
+		return new ViewConfiguration(context);
+	}
+
+	private int scaled(int dp) {
+		return (int)(density * dp + 0.5f);
 	}
 
 	public int getScaledTouchSlop() {
-		return 8;
+		return scaled(8);
 	}
 
 	public int getScaledMaximumFlingVelocity() {
-		return 8000;
+		return scaled(8000);
 	}
 
 	public int getScaledMinimumFlingVelocity() {
-		return 50;
+		return scaled(50);
 	}
 
 	public static int getTapTimeout() {
 		return 100;
+	}
+
+	public static int getPressedStateDuration() {
+		return 64;
 	}
 
 	public static int getLongPressTimeout() {
@@ -32,7 +45,7 @@ public class ViewConfiguration {
 	}
 
 	public int getScaledPagingTouchSlop() {
-		return 16;
+		return scaled(16);
 	}
 
 	public boolean hasPermanentMenuKey() {
@@ -44,15 +57,19 @@ public class ViewConfiguration {
 	}
 
 	public int getScaledDoubleTapSlop() {
-		return 100;
+		return scaled(100);
 	}
 
 	public static float getScrollFriction() {
 		return 0.015f;
 	}
 
+	public int getScaledEdgeSlop() {
+		return scaled(12);
+	}
+
 	public int getScaledWindowTouchSlop() {
-		return 8;
+		return scaled(8);
 	}
 
 	public float getScaledHorizontalScrollFactor() {

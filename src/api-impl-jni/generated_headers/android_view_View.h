@@ -13,6 +13,8 @@ extern "C" {
 #define android_view_View_NOT_FOCUSABLE 0L
 #undef android_view_View_FOCUSABLE
 #define android_view_View_FOCUSABLE 1L
+#undef android_view_View_FOCUSABLE_AUTO
+#define android_view_View_FOCUSABLE_AUTO 16L
 #undef android_view_View_FOCUSABLE_MASK
 #define android_view_View_FOCUSABLE_MASK 1L
 #undef android_view_View_FITS_SYSTEM_WINDOWS
@@ -215,22 +217,6 @@ extern "C" {
 #define android_view_View_TEXT_DIRECTION_RTL 4L
 /*
  * Class:     android_view_View
- * Method:    nativeSetOnTouchListener
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnTouchListener
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
- * Method:    nativeSetOnClickListener
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnClickListener
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
  * Method:    native_constructor
  * Signature: (Landroid/content/Context;Landroid/util/AttributeSet;)J
  */
@@ -343,11 +329,19 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1drawContent
 
 /*
  * Class:     android_view_View
- * Method:    nativeRequestFocus
- * Signature: (JI)V
+ * Method:    native_setFocused
+ * Signature: (JZ)V
  */
-JNIEXPORT void JNICALL Java_android_view_View_nativeRequestFocus
-  (JNIEnv *, jobject, jlong, jint);
+JNIEXPORT void JNICALL Java_android_view_View_native_1setFocused
+  (JNIEnv *, jobject, jlong, jboolean);
+
+/*
+ * Class:     android_view_View
+ * Method:    native_scrollTo
+ * Signature: (JIIZ)V
+ */
+JNIEXPORT void JNICALL Java_android_view_View_native_1scrollTo
+  (JNIEnv *, jobject, jlong, jint, jint, jboolean);
 
 /*
  * Class:     android_view_View
@@ -380,22 +374,6 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setVisibility
  */
 JNIEXPORT void JNICALL Java_android_view_View_native_1setPadding
   (JNIEnv *, jobject, jlong, jint, jint, jint, jint);
-
-/*
- * Class:     android_view_View
- * Method:    nativeSetOnLongClickListener
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnLongClickListener
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
- * Method:    nativeIsFocused
- * Signature: (J)Z
- */
-JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsFocused
-  (JNIEnv *, jclass, jlong);
 
 /*
  * Class:     android_view_View

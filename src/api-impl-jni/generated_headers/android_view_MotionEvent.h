@@ -65,6 +65,8 @@ extern "C" {
 #define android_view_MotionEvent_FLAG_WINDOW_IS_OBSCURED 1L
 #undef android_view_MotionEvent_FLAG_TAINTED
 #define android_view_MotionEvent_FLAG_TAINTED -2147483648L
+#undef android_view_MotionEvent_FLAG_TARGET_ACCESSIBILITY_FOCUS
+#define android_view_MotionEvent_FLAG_TARGET_ACCESSIBILITY_FOCUS 1073741824L
 #undef android_view_MotionEvent_EDGE_TOP
 #define android_view_MotionEvent_EDGE_TOP 1L
 #undef android_view_MotionEvent_EDGE_BOTTOM

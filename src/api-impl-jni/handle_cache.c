@@ -37,7 +37,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.paint.getColor = _METHOD(handle_cache.paint.class, "getColor", "()I");
 
 	handle_cache.motion_event.class = _REF((*env)->FindClass(env, "android/view/MotionEvent"));
-	handle_cache.motion_event.constructor = _METHOD(handle_cache.motion_event.class, "<init>", "(IIJ[I[F)V");
+	handle_cache.motion_event.constructor = _METHOD(handle_cache.motion_event.class, "<init>", "(IIJJ[I[F)V");
 	handle_cache.motion_event.constructor_single = _METHOD(handle_cache.motion_event.class, "<init>", "(IIJFFFF)V");
 	handle_cache.motion_event.constructor_scroll = _METHOD(handle_cache.motion_event.class, "<init>", "(IIJFFFFFF)V");
 
@@ -76,25 +76,20 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.view.getScrollX = _METHOD(handle_cache.view.class, "getScrollX", "()I");
 	handle_cache.view.getScrollY = _METHOD(handle_cache.view.class, "getScrollY", "()I");
 	handle_cache.view.performClick = _METHOD(handle_cache.view.class, "performClick", "()Z");
-	handle_cache.view.onTouchEvent = _METHOD(handle_cache.view.class, "onTouchEvent", "(Landroid/view/MotionEvent;)Z");
-	handle_cache.view.onTouchEventInternal = _METHOD(handle_cache.view.class, "onTouchEventInternal", "(Landroid/view/MotionEvent;Z)Z");
-	handle_cache.view.dispatchTouchEvent = _METHOD(handle_cache.view.class, "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z");
-	handle_cache.view.onInterceptTouchEvent = _METHOD(handle_cache.view.class, "onInterceptTouchEvent", "(Landroid/view/MotionEvent;)Z");
 	handle_cache.view.layoutInternal = _METHOD(handle_cache.view.class, "layoutInternal", "(II)V");
 	handle_cache.view.measure = _METHOD(handle_cache.view.class, "measure", "(II)V");
-	handle_cache.view.performLongClick = _METHOD(handle_cache.view.class, "performLongClick", "(FF)Z");
 	handle_cache.view.getId = _METHOD(handle_cache.view.class, "getId", "()I");
 	handle_cache.view.getIdName = _METHOD(handle_cache.view.class, "getIdName", "()Ljava/lang/String;");
 	handle_cache.view.getAllSuperClasses = _METHOD(handle_cache.view.class, "getAllSuperClasses", "()Ljava/lang/String;");
-	handle_cache.view.dispatchKeyEvent = _METHOD(handle_cache.view.class, "dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z");
-	handle_cache.view.onKeyDown = _METHOD(handle_cache.view.class, "onKeyDown", "(ILandroid/view/KeyEvent;)Z");
+	handle_cache.view.atlScrolled = _METHOD(handle_cache.view.class, "atlScrolled", "(II)V");
 	handle_cache.view.dispatchAttachedToWindow = _METHOD(handle_cache.view.class, "dispatchAttachedToWindow", "()V");
 	handle_cache.view.dispatchDetachedFromWindow = _METHOD(handle_cache.view.class, "dispatchDetachedFromWindow", "()V");
 	handle_cache.view.dispatchHoverEvent = _METHOD(handle_cache.view.class, "dispatchHoverEvent", "(Landroid/view/MotionEvent;)Z");
 	handle_cache.view.propagateInvalidation = _METHOD(handle_cache.view.class, "propagateInvalidation", "()V");
 
-	handle_cache.view_group.class = _REF((*env)->FindClass(env, "android/view/ViewGroup"));
-	handle_cache.view_group.dispatchTouchEvent = _METHOD(handle_cache.view_group.class, "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z");
+	handle_cache.atl_input.class = _REF((*env)->FindClass(env, "android/view/ATLInput"));
+	handle_cache.atl_input.touch = _STATIC_METHOD(handle_cache.atl_input.class, "touch", "(Landroid/view/View;Landroid/view/MotionEvent;)Z");
+	handle_cache.atl_input.key = _STATIC_METHOD(handle_cache.atl_input.class, "key", "(Landroid/view/View;Landroid/view/KeyEvent;)Z");
 
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
 	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)V");
@@ -128,6 +123,7 @@ void set_up_handle_cache(JNIEnv *env)
 
 	handle_cache.key_event.class = _REF((*env)->FindClass(env, "android/view/KeyEvent"));
 	handle_cache.key_event.constructor = _METHOD(handle_cache.key_event.class, "<init>", "(JJIIII)V");
+	handle_cache.key_event.constructor_full = _METHOD(handle_cache.key_event.class, "<init>", "(JJIIIIIIII)V");
 
 	handle_cache.drawable.class = _REF((*env)->FindClass(env, "android/graphics/drawable/Drawable"));
 	handle_cache.drawable.draw = _METHOD(handle_cache.drawable.class, "draw", "(Landroid/graphics/Canvas;)V");

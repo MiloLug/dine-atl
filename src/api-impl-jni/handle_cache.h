@@ -75,18 +75,12 @@ struct handle_cache {
 		jmethodID getScrollX;
 		jmethodID getScrollY;
 		jmethodID performClick;
-		jmethodID onTouchEvent;
-		jmethodID onTouchEventInternal;
-		jmethodID dispatchTouchEvent;
-		jmethodID onInterceptTouchEvent;
 		jmethodID layoutInternal;
 		jmethodID measure;
-		jmethodID performLongClick;
 		jmethodID getId;
 		jmethodID getIdName;
 		jmethodID getAllSuperClasses;
-		jmethodID dispatchKeyEvent;
-		jmethodID onKeyDown;
+		jmethodID atlScrolled;
 		jmethodID dispatchAttachedToWindow;
 		jmethodID dispatchDetachedFromWindow;
 		jmethodID dispatchHoverEvent;
@@ -94,8 +88,9 @@ struct handle_cache {
 	} view;
 	struct {
 		jclass class;
-		jmethodID dispatchTouchEvent;
-	} view_group;
+		jmethodID touch;
+		jmethodID key;
+	} atl_input;
 	struct {
 		jclass class;
 		jmethodID atlDialogResult;
@@ -131,6 +126,7 @@ struct handle_cache {
 	struct {
 		jclass class;
 		jmethodID constructor;
+		jmethodID constructor_full;
 	} key_event;
 	struct {
 		jclass class;

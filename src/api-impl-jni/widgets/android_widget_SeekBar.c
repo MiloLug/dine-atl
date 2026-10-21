@@ -5,6 +5,7 @@
 #include "../util.h"
 
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_SeekBar.h"
 #include "jni.h"
@@ -17,6 +18,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_SeekBar_native_1constructor(JNIEnv *
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), scale);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
 	gtk_widget_set_name(scale, "SeekBar");
+	input_take_native(scale);
 	return _INTPTR(scale);
 }
 

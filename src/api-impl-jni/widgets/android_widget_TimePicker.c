@@ -4,6 +4,7 @@
 #include "../util.h"
 
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_Button.h"
 
@@ -66,6 +67,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_TimePicker_native_1constructor(JNIEn
 	_SET_LONG_FIELD(this, "minute_spin_widget", _INTPTR(minutes_spin_btn));
 	_SET_LONG_FIELD(this, "btn_widget", _INTPTR(button));
 
+	input_take_native(vbox);
 	return _INTPTR(vbox);
 }
 

@@ -4,8 +4,11 @@
 #include "../util.h"
 
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_ImageButton.h"
+
+static void clicked_cb(GtkWidget *button, gpointer user_data);
 
 JNIEXPORT jlong JNICALL Java_android_widget_ImageButton_native_1constructor(JNIEnv *env, jobject this, jobject context, jobject attrs)
 {
@@ -15,6 +18,8 @@ JNIEXPORT jlong JNICALL Java_android_widget_ImageButton_native_1constructor(JNIE
 	gtk_button_set_child(GTK_BUTTON(button), image);
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), button);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
+	g_signal_connect(button, "clicked", G_CALLBACK(clicked_cb), NULL);
+	input_take_native(button);
 
 	return _INTPTR(button);
 }
@@ -29,16 +34,6 @@ static void clicked_cb(GtkWidget *button, gpointer user_data)
 
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
-}
-
-JNIEXPORT void JNICALL Java_android_widget_ImageButton_nativeSetOnClickListener(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *button = GTK_WIDGET(_PTR(widget_ptr));
-	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(button));
-	wrapper_widget_consume_touch_events(wrapper); // Android button consumes touch events
-	g_signal_handlers_disconnect_matched(button, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, clicked_cb, NULL);
-
-	g_signal_connect(button, "clicked", G_CALLBACK(clicked_cb), NULL);
 }
 
 JNIEXPORT void JNICALL Java_android_widget_ImageButton_native_1setDrawable(JNIEnv *env, jobject this, jlong widget_ptr, jlong paintable_ptr, jint width, jint height)

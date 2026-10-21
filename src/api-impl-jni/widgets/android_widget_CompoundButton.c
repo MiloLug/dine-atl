@@ -2,6 +2,7 @@
 
 #include "../util.h"
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_CompoundButton.h"
 #include "jni.h"
@@ -17,6 +18,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_CompoundButton_native_1constructor(J
 	gtk_box_append(GTK_BOX(box), gtk_switch_new());
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), box);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
+	input_take_native(box);
 	return _INTPTR(box);
 }
 

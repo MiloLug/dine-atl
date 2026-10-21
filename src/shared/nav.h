@@ -10,7 +10,8 @@ extern "C" {
 /* System navigation for the host, from any thread. Each posts to the Android main thread and is
  * false when ATL isn't running. */
 
-/* Back: the current activity's onBackPressed. Nothing while the task is in the back. */
+/* Back: the BACK key, for the shown dialog, then the focused views and the current activity
+ * (onBackPressed). Nothing while the task is in the back. */
 bool atl_nav_back(void);
 /* Home: the task to the back (onPause, onStop). Nothing while it is in the back. */
 bool atl_nav_home(void);

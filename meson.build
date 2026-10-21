@@ -33,6 +33,9 @@ desktop = ui_backend == 'gtk'
 if (host_backend == 'gtk') != desktop or (gfx_backend == 'gsk') != desktop or (desktop and loop_backend != 'glib')
   error('host=gtk, ui=gtk, gfx=gsk and loop=glib go together')
 endif
+if host_backend == 'cli' and ui_backend != 'headless'
+  error('host=cli takes its -c input lines to ui=headless')
+endif
 if (loop_backend == 'cfrunloop') != apple
   error('loop=cfrunloop is the loop for Apple targets, and only for them')
 endif
@@ -90,13 +93,16 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_graphics_Matrix.c',
 	'src/shared/android_graphics_Paint.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
+	'src/shared/android_graphics_drawable_DrawableContainer.c',
 	'src/shared/android_view_View.c',
 	'src/shared/android_view_ViewGroup.c',
 	'src/shared/android_view_ViewTreeObserver.c',
 	'src/shared/android_view_Window.c',
 	'src/shared/android_widget_ImageView.c',
 	'src/shared/android_widget_ProgressBar.c',
+	'src/shared/android_widget_ScrollView.c',
 	'src/shared/android_widget_TextView.c',
+	'src/shared/input.c',
 	'src/shared/insets.c',
 	'src/shared/startup.c',
 	'src/shared/upcall.c',
@@ -210,7 +216,6 @@ if desktop
     'src/api-impl-jni/graphics/android_graphics_Region.c',
     'src/api-impl-jni/graphics/android_view_RenderNode.c',
     'src/api-impl-jni/graphics/android_graphics_drawable_Drawable.c',
-    'src/api-impl-jni/graphics/android_graphics_drawable_DrawableContainer.c',
     'src/api-impl-jni/graphics/android_graphics_drawable_NinePatchDrawable.c',
     'src/api-impl-jni/location/android_location_LocationManager.c',
     'src/api-impl-jni/media/android_media_MediaCodec.c',
@@ -238,7 +243,6 @@ if desktop
     'src/api-impl-jni/widgets/android_widget_PopupMenu.c',
     'src/api-impl-jni/widgets/android_widget_PopupWindow.c',
     'src/api-impl-jni/widgets/android_widget_RadioButton.c',
-    'src/api-impl-jni/widgets/android_widget_ScrollView.c',
     'src/api-impl-jni/widgets/android_widget_Spinner.c',
     'src/api-impl-jni/widgets/android_widget_SeekBar.c',
     'src/api-impl-jni/widgets/android_widget_TextView.c',
@@ -282,14 +286,15 @@ endif
 
 records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/ui/records/dump.c'] : [])
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/views.c'])
+  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/views.c'])
 elif ui_backend == 'uikit'
-  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/view.m'])
+  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/view.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
                                    'src/backends/ui/gtk/dialog.c',
                                    'src/backends/ui/gtk/display.c',
+                                   'src/backends/ui/gtk/input.c',
                                    'src/backends/ui/gtk/text.c',
                                    'src/backends/ui/gtk/view.c',
                                    'src/backends/ui/gtk/widgets.c',
@@ -301,7 +306,7 @@ endif
 if gfx_backend == 'record'
   backend_libs += static_library('atl_gfx_record', 'src/backends/gfx/record/paint.c')
 else
-  backend_libs += static_library('atl_gfx_gsk', 'src/backends/gfx/gsk/paint.c',
+  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/container.c', 'src/backends/gfx/gsk/paint.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

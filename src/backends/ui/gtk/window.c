@@ -32,6 +32,7 @@ void ui_window_clear_background(struct ui_window *window)
 
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root)
 {
+	input_attach_window(GTK_WINDOW(window));
 	gtk_stack_add_child(window_stack(window), view_wrapper(root));
 }
 

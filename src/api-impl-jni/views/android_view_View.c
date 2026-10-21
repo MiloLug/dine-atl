@@ -8,6 +8,7 @@
 
 #include "../views/AndroidLayout.h"
 #include "../widgets/WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 #include "src/slots/ui.h"
 
 #include "../generated_headers/android_view_MotionEvent.h"
@@ -30,122 +31,30 @@ enum {
 };
 #undef JAVA_ENUM_CLASS
 
-#define SOURCE_TOUCHSCREEN   0x1002
 #define SOURCE_CLASS_POINTER 0x2
 
-#define MAX_POINTERS         50
-
-struct pointer {
-	int id;
-	int index;
-	float coord_x;
-	float coord_y;
-	float raw_x;
-	float raw_y;
-};
-
-GPtrArray *pointer_indices = NULL;
-
-gpointer canceled_event = NULL;
-WrapperWidget *cancel_triggerer = NULL;
-int canceled_action = 0;
-
-static struct pointer pointers[MAX_POINTERS] = {};
-
-extern GdkEvent *synthetic_propagation_failed;
-
-G_DECLARE_FINAL_TYPE(JavaWidget, java_widget, JAVA, WIDGET, GtkWidget)
-
-bool view_dispatch_motionevent(JNIEnv *env, WrapperWidget *wrapper, GtkPropagationPhase phase, jobject motion_event, gpointer event, int action)
-{
-	int ret;
-
-	jobject this = wrapper->jobj;
-	bool is_synthetic = event == motion_event;
-
-	if (cancel_triggerer == wrapper) { // cancel done
-		canceled_event = NULL;
-		cancel_triggerer = NULL;
-		if (is_synthetic)
-			_SET_INT_FIELD(motion_event, "action", canceled_action);
-	}
-
-	if (wrapper->custom_dispatch_touch) {
-		if (synthetic_propagation_failed != event) { // New event. Try to handle again.
-			synthetic_propagation_failed = NULL;
-			ret = (*env)->CallBooleanMethod(env, this, handle_cache.view.dispatchTouchEvent, motion_event);
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
-		}
-		if (synthetic_propagation_failed) {
-			// The app tried to synthetically propagate the event to a GTK widget, but that is not possible in GTK4,
-			// so just treat it as unhandled and let GTK propagate it the normal way.
-			synthetic_propagation_failed = event;
-			ret = false;
-		}
-	} else if (phase == GTK_PHASE_CAPTURE && _GET_BOOL_FIELD(this, "disallowIntercept")) {
-		if (action == ACTION_UP || action == ACTION_CANCEL)
-			_SET_BOOL_FIELD(this, "disallowIntercept", false);
-		ret = false;
-	} else if (phase == GTK_PHASE_CAPTURE && !wrapper->intercepting_touch) {
-		wrapper->intercepting_touch = (*env)->CallBooleanMethod(env, this, handle_cache.view.onInterceptTouchEvent, motion_event);
-		if (wrapper->intercepting_touch) {
-			// store the event that was canceled and let it propagate to the child widgets
-			canceled_event = event;
-			cancel_triggerer = wrapper;
-			if (is_synthetic) {
-				canceled_action = _GET_INT_FIELD(motion_event, "action");
-				_SET_INT_FIELD(motion_event, "action", ACTION_CANCEL);
-			}
-		}
-		ret = false;
-	} else {
-		ret = (*env)->CallBooleanMethod(env, this, handle_cache.view.onTouchEventInternal, motion_event, (jboolean)is_synthetic);
-	}
-
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-
-	if (action == ACTION_UP || action == ACTION_CANCEL)
-		wrapper->intercepting_touch = false;
-
-	if (action == ACTION_CANCEL)
-		ret = false;
-
-	return ret;
-}
-
-static bool call_ontouch_callback(WrapperWidget *wrapper, int action, struct pointer pointers[MAX_POINTERS], GPtrArray *pointer_indices, GtkPropagationPhase phase, guint32 timestamp, GdkEvent *event)
-{
-	bool ret;
-	JNIEnv *env = get_jni_env();
-
-	int num_pointers = pointer_indices->len;
-	jintArray ids = (*env)->NewIntArray(env, num_pointers);
-	jfloatArray coords = (*env)->NewFloatArray(env, num_pointers * 4);
-	for (int i = 0; i < num_pointers; i++) {
-		struct pointer *pointer = (struct pointer *)g_ptr_array_index(pointer_indices, i);
-		(*env)->SetIntArrayRegion(env, ids, i, 1, &pointer->id);
-		/* put in all four float values starting at coord_x */
-		(*env)->SetFloatArrayRegion(env, coords, 4 * i, 4, &pointer->coord_x);
-	}
-
-	jobject motion_event = (*env)->NewObject(env, handle_cache.motion_event.class, handle_cache.motion_event.constructor, SOURCE_TOUCHSCREEN, action, timestamp, ids, coords);
-
-	ret = view_dispatch_motionevent(env, wrapper, phase, motion_event, event, action);
-
-	(*env)->DeleteLocalRef(env, motion_event);
-
-	return ret;
-}
+// wrappers whose hover exit waits for the pointers to go up (composeUI apps don't want it while one is down)
+static GSList *hover_exits_pending;
 
 static void call_hover_callback(jobject this, int action, float x, float y, float raw_x, float raw_y)
 {
 	JNIEnv *env = get_jni_env();
-	jobject motion_event = (*env)->NewObject(env, handle_cache.motion_event.class, handle_cache.motion_event.constructor_single, SOURCE_CLASS_POINTER, action, 0, x, y, x, y);
+	jobject motion_event = (*env)->NewObject(env, handle_cache.motion_event.class, handle_cache.motion_event.constructor_single, SOURCE_CLASS_POINTER, action, 0, x, y, raw_x, raw_y);
 	(*env)->CallBooleanMethod(env, this, handle_cache.view.dispatchHoverEvent, motion_event);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, motion_event); // GTK calls back in the base JNI frame
+}
+
+void view_flush_hover_exits(void)
+{
+	for (GSList *l = hover_exits_pending; l; l = l->next) {
+		WrapperWidget *wrapper = l->data;
+		wrapper->hover_exit_pending = FALSE;
+		call_hover_callback(wrapper->jobj, ACTION_HOVER_EXIT, 0, 0, 0, 0);
+		g_object_unref(wrapper);
+	}
+	g_clear_pointer(&hover_exits_pending, g_slist_free);
 }
 
 static void transform_coords_to_widget_relative(GtkWidget *widget, double *x, double *y)
@@ -163,150 +72,6 @@ static void transform_coords_to_widget_relative(GtkWidget *widget, double *x, do
 
 	*x = p.x;
 	*y = p.y;
-}
-
-void remove_pointer_fast(GPtrArray *pointer_indices, struct pointer *pointer)
-{
-	g_ptr_array_remove_index_fast(pointer_indices, pointer->index);
-	if (pointer->index != pointer_indices->len) {
-		/* update the index field of the pointer that was moved in to fill the empty space */
-		struct pointer *replacement_pointer = (struct pointer *)g_ptr_array_index(pointer_indices, pointer->index);
-		replacement_pointer->index = pointer->index;
-	}
-	/* mark as empty, other fields don't matter */
-	pointer->id = 0;
-}
-
-static bool action_up_already_handled = false;
-
-// TODO: find a way to reconcile this with libandroid/input.c?
-static gboolean on_pointer_event(GtkEventControllerLegacy *event_controller, GdkEvent *event, gpointer user_data)
-{
-	double x;
-	double y;
-
-	if ((gdk_event_get_event_type(event) == GDK_TOUCH_END || gdk_event_get_event_type(event) == GDK_BUTTON_RELEASE) && action_up_already_handled) {
-		action_up_already_handled = false;
-		return true;
-	}
-
-	uintptr_t id = (uintptr_t)gdk_event_get_event_sequence(event);
-	if (id > MAX_POINTERS - 1) // sequence id is a real pointer for drag and drop events
-		return false;
-
-	/* FIXME: this will clash with touchscreen */
-	if (id == 0)
-		id = 1;
-
-	int pointer_index;
-
-	if (pointers[id].id) {
-		pointer_index = pointers[id].index;
-	} else {
-		/* index of a hypothetical next appended element */
-		pointer_index = pointer_indices->len;
-	}
-
-	int action;
-	GdkEventType event_type = gdk_event_get_event_type(event);
-	switch (event_type) {
-		case GDK_BUTTON_PRESS:
-		case GDK_TOUCH_BEGIN:
-			action = pointer_index > 0 ? (ACTION_POINTER_DOWN | (pointer_index << 8)) : ACTION_DOWN;
-			break;
-		case GDK_BUTTON_RELEASE:
-		case GDK_TOUCH_END:
-			action = pointer_index > 0 ? (ACTION_POINTER_UP | (pointer_index << 8)) : ACTION_UP;
-			break;
-		case GDK_MOTION_NOTIFY:
-			if (!(gdk_event_get_modifier_state(event) & GDK_BUTTON1_MASK))
-				return false;
-		case GDK_TOUCH_UPDATE:
-			action = ACTION_MOVE;
-			break;
-		default: // not a touch or mouse event, nothing to do here
-			return false;
-	}
-
-	GtkWidget *widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(event_controller));
-	WrapperWidget *wrapper = WRAPPER_WIDGET(widget);
-	GtkPropagationPhase phase = gtk_event_controller_get_propagation_phase(GTK_EVENT_CONTROLLER(event_controller));
-	guint32 timestamp = gdk_event_get_time(event);
-
-	if (id >= MAX_POINTERS) {
-		fprintf(stderr, "exiting - event sequence %w64d larger than %d, did Gtk implementation change?", id, MAX_POINTERS);
-		exit(1);
-	}
-
-	double raw_x;
-	double raw_y;
-	gdk_event_get_position(event, &raw_x, &raw_y);
-	x = raw_x, y = raw_y;
-	transform_coords_to_widget_relative(widget, &x, &y);
-
-	if (!pointers[id].id) {
-		/* if this is a new sequence, add a slot for it */
-		g_ptr_array_add(pointer_indices, &pointers[id]);
-		/* we appended a single element, so it must be at pointer_index */
-		pointers[id].index = pointer_index;
-		pointers[id].id = id;
-	}
-
-	pointers[id].coord_x = x;
-	pointers[id].coord_y = y;
-	pointers[id].raw_x = raw_x;
-	pointers[id].raw_y = raw_y;
-
-	if (event == canceled_event && cancel_triggerer != wrapper) {
-		action = ACTION_CANCEL;
-	}
-
-	gboolean ret = call_ontouch_callback(wrapper, action, pointers, pointer_indices, phase, timestamp, event);
-	if (event_type == GDK_BUTTON_RELEASE || event_type == GDK_TOUCH_END) {
-		remove_pointer_fast(pointer_indices, &pointers[id]);
-	}
-	if (pointer_indices->len == 0 && wrapper->hover_exit_pending) {
-		wrapper->hover_exit_pending = FALSE;
-		call_hover_callback(wrapper->jobj, ACTION_HOVER_EXIT, x, y, raw_x, raw_y);
-	}
-	return ret;
-}
-
-static gboolean on_event(GtkEventControllerLegacy *event_controller, GdkEvent *event, gpointer user_data)
-{
-	GdkEventType event_type = gdk_event_get_event_type(event);
-	switch (event_type) {
-		case GDK_BUTTON_PRESS:
-		case GDK_TOUCH_BEGIN:
-		case GDK_BUTTON_RELEASE:
-		case GDK_TOUCH_END:
-		case GDK_MOTION_NOTIFY:
-		case GDK_TOUCH_UPDATE:
-			return on_pointer_event(event_controller, event, user_data);
-		default: // not a touch or mouse event, nothing to do here
-			return false;
-	}
-}
-
-static void on_click(GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data)
-{
-	JNIEnv *env = get_jni_env();
-	GtkWidget *widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
-	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(widget));
-
-	jboolean handled = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.view.performClick);
-
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-
-	if (handled) {
-		gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
-		// claiming fails if there is no last event, set a flag in that case
-		GdkEvent *event = gtk_gesture_get_last_event(GTK_GESTURE(gesture), gtk_gesture_get_last_updated_sequence(GTK_GESTURE(gesture)));
-		if (!event) {
-			action_up_already_handled = true;
-		}
-	}
 }
 
 #define MAGIC_SCROLL_FACTOR 32
@@ -357,6 +122,7 @@ static gboolean scroll_cb(GtkEventControllerScroll *controller, gdouble dx, gdou
 	gboolean ret = (*env)->CallBooleanMethod(env, this, handle_cache.view.dispatchGenericMotionEvent, motion_event);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
+	(*env)->DeleteLocalRef(env, motion_event);
 
 	// HACK: replay last hover event to work around scrolling issues in composeUI apps
 	if (wrapper->hover_x && wrapper->hover_y)
@@ -379,10 +145,12 @@ static void hover_enter_cb(GtkEventControllerMotion *controller, double x, doubl
 
 static void hover_leave_cb(GtkEventControllerMotion *controller, WrapperWidget *wrapper)
 {
-	if (pointer_indices->len) // composeUI apps don't like ACTION_HOVER_EXIT events while a pointer is down
-		wrapper->hover_exit_pending = TRUE;
-	else
+	if (input_pointers_up()) {
 		call_hover_callback(wrapper->jobj, ACTION_HOVER_EXIT, 0, 0, 0, 0);
+	} else if (!wrapper->hover_exit_pending) {
+		wrapper->hover_exit_pending = TRUE;
+		hover_exits_pending = g_slist_prepend(hover_exits_pending, g_object_ref(wrapper));
+	}
 }
 
 static void hover_motion_cb(GtkEventControllerMotion *controller, double x, double y, WrapperWidget *wrapper)
@@ -394,67 +162,6 @@ static void hover_motion_cb(GtkEventControllerMotion *controller, double x, doub
 	wrapper->hover_x = x;
 	wrapper->hover_y = y;
 	call_hover_callback(wrapper->jobj, ACTION_HOVER_MOVE, x, y, raw_x, raw_y);
-}
-
-void _setOnTouchListener(JNIEnv *env, jobject this, GtkWidget *widget)
-{
-	GtkEventController *old_controller = g_object_get_data(G_OBJECT(widget), "on_touch_listener");
-	if (old_controller)
-		return;
-
-	if (!pointer_indices)
-		pointer_indices = g_ptr_array_new_full(20, NULL);
-
-	GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_event_controller_legacy_new());
-	gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_BUBBLE);
-
-	g_signal_connect(controller, "event", G_CALLBACK(on_event), NULL);
-	gtk_widget_add_controller(widget, controller);
-	g_object_set_data(G_OBJECT(widget), "on_touch_listener", controller);
-
-	WrapperWidget *wrapper = WRAPPER_WIDGET(widget);
-	jmethodID onintercepttouchevent_method = _METHOD_OF(this, "onInterceptTouchEvent", "(Landroid/view/MotionEvent;)Z");
-	if (onintercepttouchevent_method != handle_cache.view.onInterceptTouchEvent || wrapper->custom_dispatch_touch) {
-		GtkEventController *old_controller = g_object_get_data(G_OBJECT(widget), "on_intercept_touch_listener");
-		if (old_controller)
-			gtk_widget_remove_controller(widget, old_controller);
-
-		GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_event_controller_legacy_new());
-		gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
-
-		g_signal_connect(controller, "event", G_CALLBACK(on_event), NULL);
-		gtk_widget_add_controller(widget, controller);
-		g_object_set_data(G_OBJECT(widget), "on_intercept_touch_listener", controller);
-	}
-
-	if (!wrapper->needs_allocation && (wrapper->real_width || wrapper->real_height))
-		gtk_widget_size_allocate(GTK_WIDGET(wrapper), &(GtkAllocation){.x = 0, .y = 0, .width = wrapper->real_width, .height = wrapper->real_height}, 0);
-
-	wrapper->needs_allocation = true;
-	gtk_widget_set_overflow(GTK_WIDGET(wrapper), GTK_OVERFLOW_HIDDEN);
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnTouchListener(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(_PTR(widget_ptr)));
-
-	_setOnTouchListener(env, this, widget);
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnClickListener(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-
-	GtkEventController *old_controller = g_object_get_data(G_OBJECT(widget), "on_click_listener");
-	if (old_controller)
-		return;
-
-	GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_gesture_click_new());
-
-	g_signal_connect(controller, "released", G_CALLBACK(on_click), NULL); // the release completes the click, I guess?
-	gtk_widget_add_controller(widget, controller);
-	g_object_set_data(G_OBJECT(widget), "on_click_listener", controller);
-	widget_set_needs_allocation(widget);
 }
 
 #pragma GCC diagnostic push
@@ -475,44 +182,6 @@ void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view
 		g_signal_connect(controller, "motion", G_CALLBACK(hover_motion_cb), wrapper);
 		gtk_widget_add_controller(GTK_WIDGET(wrapper), controller);
 	}
-}
-
-static void on_long_click(GtkGestureLongPress *gesture, double x, double y, gpointer user_data)
-{
-	JNIEnv *env = get_jni_env();
-	GtkWidget *widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
-	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(widget));
-
-	bool ret = (*env)->CallBooleanMethod(env, wrapper->jobj, handle_cache.view.performLongClick, x, y);
-
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
-
-	if (ret)
-		gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
-}
-
-static void on_long_click_update(GtkGesture *gesture, GdkEventSequence *sequence, gpointer user_data)
-{
-	GdkEvent *event = gtk_gesture_get_last_event(gesture, sequence);
-	if (event == canceled_event) {
-		gtk_event_controller_reset(GTK_EVENT_CONTROLLER(gesture));
-	}
-}
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeSetOnLongClickListener(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GtkEventController *old_controller = g_object_get_data(G_OBJECT(widget), "on_long_click_listener");
-	if (old_controller)
-		return;
-
-	GtkEventController *controller = GTK_EVENT_CONTROLLER(gtk_gesture_long_press_new());
-
-	g_signal_connect(controller, "pressed", G_CALLBACK(on_long_click), NULL);
-	g_signal_connect(controller, "update", G_CALLBACK(on_long_click_update), NULL);
-	gtk_widget_add_controller(widget, controller);
-	g_object_set_data(G_OBJECT(widget), "on_long_click_listener", controller);
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1drawBackground(JNIEnv *env, jobject this, jlong widget_ptr, jlong snapshot_ptr)
@@ -581,21 +250,3 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1removeClasses(JNIEnv *env,
 		(*env)->ReleaseStringUTFChars(env, class_name_jstr, class_name);
 	}
 }
-
-JNIEXPORT void JNICALL Java_android_view_View_nativeRequestFocus(JNIEnv *env, jobject this, jlong widget_ptr, jint direction)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GtkWidget *wrapper = gtk_widget_get_parent(widget);
-	if (gtk_widget_get_focusable(widget))
-		gtk_widget_grab_focus(widget);
-	else
-		gtk_widget_grab_focus(wrapper);
-}
-
-JNIEXPORT jboolean JNICALL Java_android_view_View_nativeIsFocused(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	GtkWidget *widget = GTK_WIDGET(_PTR(widget_ptr));
-	GtkWidget *wrapper = gtk_widget_get_parent(widget);
-	return gtk_widget_has_focus(widget) || gtk_widget_has_focus(wrapper);
-}
-

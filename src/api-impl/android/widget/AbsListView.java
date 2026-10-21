@@ -1485,7 +1485,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
 	}
 
 	protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
-		// super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+		super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
 		if (gainFocus && mSelectedPosition < 0 && !isInTouchMode()) {
 			if (!isAttachedToWindow() && mAdapter != null) {
 				// Data may have changed while we were detached and it's valid

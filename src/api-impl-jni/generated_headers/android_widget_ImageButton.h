@@ -13,6 +13,8 @@ extern "C" {
 #define android_widget_ImageButton_NOT_FOCUSABLE 0L
 #undef android_widget_ImageButton_FOCUSABLE
 #define android_widget_ImageButton_FOCUSABLE 1L
+#undef android_widget_ImageButton_FOCUSABLE_AUTO
+#define android_widget_ImageButton_FOCUSABLE_AUTO 16L
 #undef android_widget_ImageButton_FOCUSABLE_MASK
 #define android_widget_ImageButton_FOCUSABLE_MASK 1L
 #undef android_widget_ImageButton_FITS_SYSTEM_WINDOWS
@@ -228,14 +230,6 @@ JNIEXPORT jlong JNICALL Java_android_widget_ImageButton_native_1constructor
  */
 JNIEXPORT void JNICALL Java_android_widget_ImageButton_native_1setDrawable
   (JNIEnv *, jobject, jlong, jlong, jint, jint);
-
-/*
- * Class:     android_widget_ImageButton
- * Method:    nativeSetOnClickListener
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_widget_ImageButton_nativeSetOnClickListener
-  (JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus
 }

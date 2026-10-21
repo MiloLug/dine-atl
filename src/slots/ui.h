@@ -23,14 +23,10 @@ void ui_display_get(struct ui_display *display);
 
 /* Which View methods the view's class overrides; shared code decides once per view. */
 struct ui_view_traits {
-	bool draws;            // onDraw, draw or dispatchDraw
-	bool clicks;           // performClick
-	bool touches;          // onTouchEvent, or dispatches_touch
-	bool dispatches_touch; // dispatchTouchEvent other than View's and ViewGroup's
-	bool scrolls;          // computeScroll
-	bool keys;             // dispatchKeyEvent or onKeyDown
-	bool generic_motion;   // onGenericMotionEvent or dispatchGenericMotionEvent
-	bool hovers;           // dispatchHoverEvent
+	bool draws;          // onDraw, draw or dispatchDraw
+	bool scrolls;        // computeScroll
+	bool generic_motion; // onGenericMotionEvent or dispatchGenericMotionEvent
+	bool hovers;         // dispatchHoverEvent
 };
 
 /* ViewGroup.LayoutParams and its margin and gravity subclasses, flattened. */
@@ -131,6 +127,11 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 /* The frame from View.layout, relative to the parent. A ui_view_new view then lays out its
  * children through atl_upcall_view_layout. */
 void ui_view_layout(struct ui_view *view, int left, int top, int right, int bottom, float translation_x, float translation_y);
+/* View.scrollTo, px. A scroll node's toolkit moves its content, animated if asked, and reports every
+ * offset it reaches through atl_upcall_scrolled; elsewhere the backend shifts the children or not. */
+void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated);
+/* Java's focus came or went: a toolkit widget that edits text takes the toolkit's focus with it. */
+void ui_view_set_focused(struct ui_view *view, bool focused);
 
 /* A TextView: the toolkit measures and draws the text. */
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text);
@@ -150,6 +151,9 @@ struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, c
 /* NULL: none. The view holds a ref while it shows the drawable. */
 void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, int width, int height);
 void ui_image_set_scale_type(struct ui_view *view, int scale_type); // ImageView.ScaleType.nativeInt
+
+/* A ScrollView or HorizontalScrollView: the toolkit scrolls its one child along the axis. */
+struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, bool horizontal);
 
 /* A ProgressBar: a bar for a fraction, or a spinner when indeterminate. */
 struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);

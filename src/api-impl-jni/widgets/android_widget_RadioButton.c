@@ -2,6 +2,7 @@
 
 #include "../util.h"
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_widget_RadioButton.h"
 #include "jni.h"
@@ -14,6 +15,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_RadioButton_native_1constructor(JNIE
 	gtk_check_button_set_group(GTK_CHECK_BUTTON(button), GTK_CHECK_BUTTON(gtk_check_button_new()));
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), button);
 	wrapper_widget_set_jobject(WRAPPER_WIDGET(wrapper), env, this);
+	input_take_native(button);
 	return _INTPTR(button);
 }
 

@@ -1,6 +1,7 @@
 package android.widget;
 
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.text.Editable;
 import android.text.SpannableStringBuilder;
@@ -10,14 +11,28 @@ import android.util.AttributeSet;
 public class EditText extends TextView {
 	public EditText(Context context) {
 		super(context);
+		setFocusableInTouchMode(true);
 	}
 
 	public EditText(Context context, AttributeSet attrs) {
 		super(context, attrs);
+		focusableByDefault(context, attrs, 0, 0);
 	}
 
 	public EditText(Context context, AttributeSet attrs, int defStyle, int defStyleRes) {
 		super(context, attrs, defStyle, defStyleRes);
+		focusableByDefault(context, attrs, defStyle, defStyleRes);
+	}
+
+	/* Android's editTextStyle sets focusable and focusableInTouchMode, each overridden by the app's own
+	 * attribute; ATL's EditText doesn't take that style */
+	private void focusableByDefault(Context context, AttributeSet attrs, int defStyle, int defStyleRes) {
+		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.View, defStyle, defStyleRes);
+		if (!a.hasValue(com.android.internal.R.styleable.View_focusableInTouchMode))
+			setFocusableInTouchMode(true);
+		else if (!a.hasValue(com.android.internal.R.styleable.View_focusable))
+			setFocusable(FOCUSABLE);
+		a.recycle();
 	}
 
 	@Override

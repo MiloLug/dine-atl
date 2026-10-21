@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/app/Activity.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.app;
 
 import android.app.ActionBar;
@@ -24,6 +29,7 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -38,7 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Activity extends ContextThemeWrapper implements Window.Callback, LayoutInflater.Factory2 {
+public class Activity extends ContextThemeWrapper implements Window.Callback, KeyEvent.Callback, LayoutInflater.Factory2 {
 	private final static String TAG = "Activity";
 
 	public static final int RESULT_CANCELED = 0;
@@ -610,7 +616,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 	}
 
 	public View getCurrentFocus() {
-		return null;
+		return window != null ? window.getCurrentFocus() : null;
 	}
 
 	public void setProgressBarIndeterminateVisibility(boolean indeterminate) {}
@@ -645,9 +651,56 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, La
 		finish();
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: dispatchKeyEvent to onUserInteraction */
 	public boolean dispatchKeyEvent(KeyEvent event) {
+		onUserInteraction();
+		Window win = getWindow();
+		if (win.superDispatchKeyEvent(event)) {
+			return true;
+		}
+		View decor = win.getDecorView();
+		return event.dispatch(this, decor != null ? decor.getKeyDispatcherState() : null, this);
+	}
+
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_BACK) {
+			event.startTracking();
+			return true;
+		}
 		return false;
 	}
+
+	public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+		return false;
+	}
+
+	public boolean onKeyUp(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_BACK && event.isTracking() && !event.isCanceled()) {
+			onBackPressed();
+			return true;
+		}
+		return false;
+	}
+
+	public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		return false;
+	}
+
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+			onUserInteraction();
+		}
+		if (getWindow().superDispatchTouchEvent(ev)) {
+			return true;
+		}
+		return onTouchEvent(ev);
+	}
+
+	public boolean onTouchEvent(MotionEvent event) {
+		return false;
+	}
+
+	public void onUserInteraction() {}
 
 	public void requestPermissions(String[] permissions, int requestCode) {
 		Slog.w(TAG, "requestPermissions(" + Arrays.toString(permissions) + "): not handled");

@@ -2,6 +2,7 @@
 #include <time.h>
 
 #include "generated_headers/android_os_SystemClock.h"
+#include "src/shared/input.h"
 
 // elapsedRealtime counts deep sleep, uptimeMillis doesn't; Darwin's CLOCK_MONOTONIC counts sleep
 #ifdef __APPLE__
@@ -20,11 +21,16 @@ JNIEXPORT jlong JNICALL Java_android_os_SystemClock_elapsedRealtime(JNIEnv *env,
 	return ret;
 }
 
-JNIEXPORT jlong JNICALL Java_android_os_SystemClock_uptimeMillis(JNIEnv *env, jclass this)
+int64_t atl_uptime_ms(void)
 {
 	struct timespec now;
 	clock_gettime(CLOCK_UPTIME, &now);
 	return now.tv_sec * 1000 + lround(now.tv_nsec / 1e6);
+}
+
+JNIEXPORT jlong JNICALL Java_android_os_SystemClock_uptimeMillis(JNIEnv *env, jclass this)
+{
+	return atl_uptime_ms();
 }
 
 JNIEXPORT jlong JNICALL Java_android_os_SystemClock_elapsedRealtimeNanos(JNIEnv *env, jclass this)

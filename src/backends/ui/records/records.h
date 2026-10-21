@@ -12,6 +12,8 @@
  * sources don't get that define. */
 
 struct atl_ref;
+struct atl_touch;
+struct atl_key;
 struct ui_dialog_state;
 
 enum node_kind {
@@ -19,6 +21,7 @@ enum node_kind {
 	NODE_TEXT, // ui_text_new: measured by the backend
 	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5
 	NODE_PROGRESS, // ui_progress_new
+	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
 };
 
 struct ui_view {
@@ -42,6 +45,8 @@ struct ui_view {
 	int scale_type;
 	float fraction; // NODE_PROGRESS
 	bool indeterminate;
+	int scroll_x, scroll_y; // px, View.scrollTo's or the toolkit's
+	bool horizontal;        // NODE_SCROLL's axis
 	void *native;    // the backend's object; uikit: a UIView, touched only on UIKit's thread
 };
 
@@ -88,6 +93,14 @@ void records_observations_orphan(struct ui_window *window);
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
 /* A layout pass ended; the shown root's frames are current. */
 void records_layout_done(struct ui_window *window);
+/* View.scrollTo moved scroll_x and scroll_y (animated: smoothScrollTo). The backend reports the
+ * offsets its toolkit reaches with atl_upcall_scrolled. */
+void records_scroll_changed(struct ui_view *view, bool animated);
+
+/* The app's window, on the Android main thread: input goes to its shown activity. */
+struct ui_window *records_app_window(void);
+void records_touch(const struct atl_touch *touch);
+void records_key(const struct atl_key *key);
 
 #ifdef ATL_TEST_HOOKS
 /* With ATL_DUMP_VIEWTREE set, prints a "viewfreed: " line with the view's class and text. */

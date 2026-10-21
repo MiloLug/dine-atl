@@ -6,6 +6,8 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "gtk_ui.h"
+
 /* A dialog is a GtkWindow over the app window. Java decides when it closes: close-request and a
  * tap outside become cancel results. ATL_DIALOG_ANSWERS answers alerts through their widgets. */
 
@@ -43,6 +45,7 @@ struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *deco
 
 	gtk_window_set_child(GTK_WINDOW(dialog), state->decor);
 	g_signal_connect(dialog, "close-request", G_CALLBACK(on_close_request), state);
+	input_attach_window(GTK_WINDOW(dialog));
 	return (struct ui_window *)dialog;
 }
 

@@ -13,6 +13,8 @@ extern "C" {
 #define android_widget_ScrollView_NOT_FOCUSABLE 0L
 #undef android_widget_ScrollView_FOCUSABLE
 #define android_widget_ScrollView_FOCUSABLE 1L
+#undef android_widget_ScrollView_FOCUSABLE_AUTO
+#define android_widget_ScrollView_FOCUSABLE_AUTO 16L
 #undef android_widget_ScrollView_FOCUSABLE_MASK
 #define android_widget_ScrollView_FOCUSABLE_MASK 1L
 #undef android_widget_ScrollView_FITS_SYSTEM_WINDOWS
@@ -252,22 +254,6 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_android_widget_ScrollView_native_1constructor
   (JNIEnv *, jobject, jobject, jobject);
-
-/*
- * Class:     android_widget_ScrollView
- * Method:    native_addView
- * Signature: (JJILandroid/view/ViewGroup/LayoutParams;)V
- */
-JNIEXPORT void JNICALL Java_android_widget_ScrollView_native_1addView
-  (JNIEnv *, jobject, jlong, jlong, jint, jobject);
-
-/*
- * Class:     android_widget_ScrollView
- * Method:    native_removeView
- * Signature: (JJ)V
- */
-JNIEXPORT void JNICALL Java_android_widget_ScrollView_native_1removeView
-  (JNIEnv *, jobject, jlong, jlong);
 
 #ifdef __cplusplus
 }

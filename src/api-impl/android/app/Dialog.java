@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/app/Dialog.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.app;
 
 import android.R;
@@ -9,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -20,7 +26,7 @@ import android.view.WindowManager.LayoutParams;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-public class Dialog implements Window.Callback, DialogInterface {
+public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterface {
 	// atlDialogResult's cancel, UI_DIALOG_CANCEL in the ui slot
 	static final int RESULT_CANCEL = Integer.MIN_VALUE;
 	// the ui backend holds dialogs weakly, and apps often drop the shown one; in show order
@@ -46,6 +52,7 @@ public class Dialog implements Window.Callback, DialogInterface {
 	private OnDismissListener onDismissListener;
 	private OnShowListener onShowListener;
 	private OnCancelListener onCancelListener;
+	private OnKeyListener onKeyListener;
 
 	public Dialog(Context context, int themeResId) {
 		this.context = context;
@@ -196,6 +203,16 @@ public class Dialog implements Window.Callback, DialogInterface {
 		return showing && !hidden && nativeTaskFront();
 	}
 
+	// ATLInput: keys for the app's window go to the dialog shown last, while it's drawn
+	public static Dialog atlTopDrawn() {
+		Dialog top = null;
+		for (Dialog dialog : shown) {
+			if (dialog.drawn())
+				top = dialog;
+		}
+		return top;
+	}
+
 	// from the ui backend: a button, an item or RESULT_CANCEL
 	void atlDialogResult(int which) {
 		if (drawn() && which == RESULT_CANCEL && cancelable)
@@ -304,13 +321,66 @@ public class Dialog implements Window.Callback, DialogInterface {
 
 	public void setDismissMessage(Message msg) {}
 
+	/* Copyright (C) 2006 The Android Open Source Project: dispatchTouchEvent to onBackPressed */
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		if (window.superDispatchTouchEvent(ev)) {
+			return true;
+		}
+		return onTouchEvent(ev);
+	}
+
 	public boolean onTouchEvent(MotionEvent event) {
 		return false;
 	}
 
-	public void setOnKeyListener(OnKeyListener onKeyListener) {}
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		if ((onKeyListener != null) && (onKeyListener.onKey(this, event.getKeyCode(), event))) {
+			return true;
+		}
+		if (window.superDispatchKeyEvent(event)) {
+			return true;
+		}
+		return event.dispatch(this, window.getDecorView().getKeyDispatcherState(), this);
+	}
+
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+			event.startTracking();
+			return true;
+		}
+
+		return false;
+	}
+
+	public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+		return false;
+	}
+
+	public boolean onKeyUp(int keyCode, KeyEvent event) {
+		if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE)
+		    && event.isTracking()
+		    && !event.isCanceled()) {
+			onBackPressed();
+			return true;
+		}
+		return false;
+	}
+
+	public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		return false;
+	}
+
+	public void onBackPressed() {
+		if (cancelable) {
+			cancel();
+		}
+	}
+
+	public void setOnKeyListener(OnKeyListener onKeyListener) {
+		this.onKeyListener = onKeyListener;
+	}
 
 	public View getCurrentFocus() {
-		return null;
+		return window != null ? window.getCurrentFocus() : null;
 	}
 }

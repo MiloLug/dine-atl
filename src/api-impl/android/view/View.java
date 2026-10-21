@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/view/View.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.view;
 
 import android.R;
@@ -20,6 +25,7 @@ import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.Insets;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Binder;
@@ -44,12 +50,16 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.translation.ViewTranslationCallback;
 import java.lang.CharSequence;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +70,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 class WindowId {}
 
-public class View implements Drawable.Callback {
+public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	// --- constants from android source
 
@@ -101,13 +111,15 @@ public class View implements Drawable.Callback {
 	 * This view does not want keystrokes. Use with TAKES_FOCUS_MASK when
 	 * calling setFlags.
 	 */
-	private static final int NOT_FOCUSABLE = 0x00000000;
+	public static final int NOT_FOCUSABLE = 0x00000000;
 
 	/**
 	 * This view wants keystrokes. Use with TAKES_FOCUS_MASK when calling
 	 * setFlags.
 	 */
-	private static final int FOCUSABLE = 0x00000001;
+	public static final int FOCUSABLE = 0x00000001;
+
+	public static final int FOCUSABLE_AUTO = 0x00000010;
 
 	/**
 	 * Mask for use with setFlags indicating bits used for focus.
@@ -734,8 +746,12 @@ public class View implements Drawable.Callback {
 	}
 
 	public interface OnFocusChangeListener {
-		// TODO
+		void onFocusChange(View v, boolean hasFocus);
 	}
+
+	/** @hide */
+	@Retention(RetentionPolicy.SOURCE)
+	public @interface FocusDirection {}
 
 	public interface OnCreateContextMenuListener {
 		/**
@@ -961,7 +977,6 @@ public class View implements Drawable.Callback {
 	private int oldWidth;
 	private int oldHeight;
 	protected boolean haveCustomMeasure = true;
-	public boolean disallowIntercept = false;
 
 	private int visibility = View.VISIBLE;
 	private float alpha = 1.0f;
@@ -979,7 +994,19 @@ public class View implements Drawable.Callback {
 	protected int paddingBottom = 0;
 
 	private boolean atl_enabled = true;
-	private boolean atl_focusable = true;
+	// AOSP's view flags this port reads
+	private boolean clickable;
+	private boolean longClickable;
+	private int focusable = FOCUSABLE_AUTO;
+	private boolean focusableInTouchMode;
+	private boolean focused;
+	private boolean keyboardNavigationCluster;
+	int nextFocusLeftId = NO_ID;
+	int nextFocusRightId = NO_ID;
+	int nextFocusUpId = NO_ID;
+	int nextFocusDownId = NO_ID;
+	int nextFocusForwardId = NO_ID;
+	int nextClusterForwardId = NO_ID;
 
 	private Handler handler;
 
@@ -1058,8 +1085,26 @@ public class View implements Drawable.Callback {
 			}
 		}
 		if (a.hasValue(com.android.internal.R.styleable.View_focusable)) {
-			atl_focusable = a.getBoolean(com.android.internal.R.styleable.View_focusable, true);
+			TypedValue value = a.peekValue(com.android.internal.R.styleable.View_focusable);
+			if (value.type == TypedValue.TYPE_INT_BOOLEAN)
+				focusable = value.data == 0 ? NOT_FOCUSABLE : FOCUSABLE;
+			else
+				focusable = value.data;
 		}
+		if (a.getBoolean(com.android.internal.R.styleable.View_focusableInTouchMode, false)) {
+			focusableInTouchMode = true;
+			focusable = FOCUSABLE;
+		}
+		clickable = a.getBoolean(com.android.internal.R.styleable.View_clickable, false);
+		longClickable = a.getBoolean(com.android.internal.R.styleable.View_longClickable, false);
+		keepScreenOn = a.getBoolean(com.android.internal.R.styleable.View_keepScreenOn, false);
+		keyboardNavigationCluster = a.getBoolean(com.android.internal.R.styleable.View_keyboardNavigationCluster, false);
+		nextFocusLeftId = a.getResourceId(com.android.internal.R.styleable.View_nextFocusLeft, NO_ID);
+		nextFocusRightId = a.getResourceId(com.android.internal.R.styleable.View_nextFocusRight, NO_ID);
+		nextFocusUpId = a.getResourceId(com.android.internal.R.styleable.View_nextFocusUp, NO_ID);
+		nextFocusDownId = a.getResourceId(com.android.internal.R.styleable.View_nextFocusDown, NO_ID);
+		nextFocusForwardId = a.getResourceId(com.android.internal.R.styleable.View_nextFocusForward, NO_ID);
+		nextClusterForwardId = a.getResourceId(com.android.internal.R.styleable.View_nextClusterForward, NO_ID);
 		fitsSystemWindows = a.getBoolean(com.android.internal.R.styleable.View_fitsSystemWindows, false);
 		if (a.hasValue(com.android.internal.R.styleable.View_visibility)) {
 			visibility = VISIBILITY_FLAGS[a.getInt(com.android.internal.R.styleable.View_visibility, 0)];
@@ -1131,12 +1176,30 @@ public class View implements Drawable.Callback {
 		onCreateDrawableState(0);
 	}
 
+	// AOSP's states this port keeps: enabled, pressed, focused, window focused
 	protected int[] onCreateDrawableState(int extraSpace) {
-		return new int[0];
+		int[] state = new int[4 + extraSpace];
+		int n = 0;
+		if (atl_enabled)
+			state[n++] = R.attr.state_enabled;
+		if (pressed)
+			state[n++] = R.attr.state_pressed;
+		if (focused)
+			state[n++] = R.attr.state_focused;
+		if (hasWindowFocus())
+			state[n++] = R.attr.state_window_focused;
+		return Arrays.copyOf(state, n + extraSpace);
 	}
 
-	protected static int[] mergeDrawableStates(int[] curState, int[] newState) {
-		return new int[0];
+	/* Copyright (C) 2006 The Android Open Source Project */
+	protected static int[] mergeDrawableStates(int[] baseState, int[] additionalState) {
+		final int N = baseState.length;
+		int i = N - 1;
+		while (i >= 0 && baseState[i] == 0) {
+			i--;
+		}
+		System.arraycopy(additionalState, 0, baseState, i + 1, additionalState.length);
+		return baseState;
 	}
 
 	public View findViewById(int id) {
@@ -1220,38 +1283,280 @@ public class View implements Drawable.Callback {
 
 	private OnTouchListener on_touch_listener = null;
 
-	public boolean onTouchEventInternal(MotionEvent event, boolean handle_gestures) {
-		boolean handled = false;
-		if (on_touch_listener != null)
-			handled = on_touch_listener.onTouch(this, event);
-
-		if (!handled)
-			handled = onTouchEvent(event);
-
-		if (handle_gestures && !handled && event.getAction() == MotionEvent.ACTION_UP)
-			handled = performClick();
-
-		return handled;
+	/* Copyright (C) 2006 The Android Open Source Project: dispatchTouchEvent to UnsetPressedState */
+	public boolean dispatchTouchEvent(MotionEvent event) {
+		if (event.isTargetAccessibilityFocus()) {
+			if (!isAccessibilityFocused())
+				return false;
+			event.setTargetAccessibilityFocus(false);
+		}
+		boolean result = false;
+		if (on_touch_listener != null && atl_enabled && on_touch_listener.onTouch(this, event))
+			result = true;
+		if (!result && onTouchEvent(event))
+			result = true;
+		return result;
 	}
 
 	public boolean onTouchEvent(MotionEvent event) {
+		final float x = event.getX();
+		final float y = event.getY();
+		final int action = event.getAction();
+
+		final boolean clickable = this.clickable || longClickable;
+
+		if (!atl_enabled) {
+			if (action == MotionEvent.ACTION_UP && pressed) {
+				setPressed(false);
+			}
+			// A disabled view that is clickable still consumes the touch
+			// events, it just doesn't respond to them.
+			return clickable;
+		}
+
+		if (!clickable)
+			return false;
+
+		switch (action) {
+			case MotionEvent.ACTION_UP:
+				boolean prepressed = this.prepressed;
+				if (pressed || prepressed) {
+					// take focus if we don't have it already and we should in
+					// touch mode.
+					boolean focusTaken = false;
+					if (isFocusable() && isFocusableInTouchMode() && !isFocused()) {
+						focusTaken = requestFocus();
+					}
+
+					if (prepressed) {
+						// The button is being released before we actually
+						// showed it as pressed.  Make it show the pressed
+						// state now (before scheduling the click) to ensure
+						// the user sees it.
+						setPressed(true);
+					}
+
+					if (!hasPerformedLongPress && !ignoreNextUpEvent) {
+						// This is a tap, so remove the longpress check
+						removeLongPressCallback();
+
+						// Only perform take click actions if we were in the pressed state
+						if (!focusTaken) {
+							// Use a Runnable and post this rather than calling
+							// performClick directly. This lets other visual state
+							// of the view update before click actions start.
+							if (performClick == null) {
+								performClick = new PerformClick();
+							}
+							if (!post(performClick)) {
+								performClickInternal();
+							}
+						}
+					}
+
+					if (unsetPressedState == null) {
+						unsetPressedState = new UnsetPressedState();
+					}
+
+					if (prepressed) {
+						postDelayed(unsetPressedState, ViewConfiguration.getPressedStateDuration());
+					} else if (!post(unsetPressedState)) {
+						// If the post failed, unpress right now
+						unsetPressedState.run();
+					}
+
+					removeTapCallback();
+				}
+				ignoreNextUpEvent = false;
+				break;
+
+			case MotionEvent.ACTION_DOWN:
+				hasPerformedLongPress = false;
+
+				// For views inside a scrolling container, delay the pressed feedback for
+				// a short period in case this is a scroll.
+				if (isInScrollingContainer()) {
+					this.prepressed = true;
+					if (pendingCheckForTap == null) {
+						pendingCheckForTap = new CheckForTap();
+					}
+					pendingCheckForTap.x = event.getX();
+					pendingCheckForTap.y = event.getY();
+					postDelayed(pendingCheckForTap, ViewConfiguration.getTapTimeout());
+				} else {
+					// Not inside a scrolling container, so show the feedback right away
+					setPressed(true);
+					checkForLongClick(ViewConfiguration.getLongPressTimeout(), x, y);
+				}
+				break;
+
+			case MotionEvent.ACTION_CANCEL:
+				setPressed(false);
+				removeTapCallback();
+				removeLongPressCallback();
+				hasPerformedLongPress = false;
+				ignoreNextUpEvent = false;
+				break;
+
+			case MotionEvent.ACTION_MOVE:
+				// Be lenient about moving outside of buttons
+				if (!pointInView(x, y, ViewConfiguration.get(context).getScaledTouchSlop())) {
+					// Outside button
+					// Remove any future long press/tap checks
+					removeTapCallback();
+					removeLongPressCallback();
+					if (pressed) {
+						setPressed(false);
+					}
+				}
+				break;
+		}
+
+		return true;
+	}
+
+	public boolean isInScrollingContainer() {
+		ViewParent p = getParent();
+		while (p != null && p instanceof ViewGroup) {
+			if (((ViewGroup)p).shouldDelayChildPressedState()) {
+				return true;
+			}
+			p = p.getParent();
+		}
 		return false;
 	}
 
+	public boolean pointInView(float localX, float localY, float slop) {
+		return localX >= -slop && localY >= -slop && localX < ((right - left) + slop) && localY < ((bottom - top) + slop);
+	}
+
+	final boolean pointInView(float localX, float localY) {
+		return pointInView(localX, localY, 0);
+	}
+
+	protected boolean canReceivePointerEvents() {
+		return visibility == VISIBLE || getAnimation() != null;
+	}
+
+	private boolean prepressed;
+	private boolean hasPerformedLongPress;
+	private boolean ignoreNextUpEvent;
+	private CheckForLongPress pendingCheckForLongPress;
+	private CheckForTap pendingCheckForTap;
+	private PerformClick performClick;
+	private UnsetPressedState unsetPressedState;
+
+	private void checkForLongClick(long delay, float x, float y) {
+		if (longClickable) {
+			hasPerformedLongPress = false;
+
+			if (pendingCheckForLongPress == null) {
+				pendingCheckForLongPress = new CheckForLongPress();
+			}
+			pendingCheckForLongPress.x = x;
+			pendingCheckForLongPress.y = y;
+			pendingCheckForLongPress.originalPressedState = isPressed();
+			postDelayed(pendingCheckForLongPress, delay);
+		}
+	}
+
+	private void removeLongPressCallback() {
+		if (pendingCheckForLongPress != null) {
+			removeCallbacks(pendingCheckForLongPress);
+		}
+	}
+
+	private void removeTapCallback() {
+		if (pendingCheckForTap != null) {
+			prepressed = false;
+			removeCallbacks(pendingCheckForTap);
+		}
+	}
+
+	private void removePerformClickCallback() {
+		if (performClick != null) {
+			removeCallbacks(performClick);
+		}
+	}
+
+	private void removeUnsetPressCallback() {
+		if (pressed && unsetPressedState != null) {
+			setPressed(false);
+			removeCallbacks(unsetPressedState);
+		}
+	}
+
+	public void cancelLongPress() {
+		removeLongPressCallback();
+
+		/*
+		 * The prepressed state handled by the tap callback is a display
+		 * construct, but the tap callback will post a long press callback
+		 * less its own timeout. Remove it here.
+		 */
+		removeTapCallback();
+	}
+
+	private final class CheckForLongPress implements Runnable {
+		float x;
+		float y;
+		boolean originalPressedState;
+
+		@Override
+		public void run() {
+			if (originalPressedState == isPressed() && parent != null) {
+				if (performLongClick(x, y)) {
+					hasPerformedLongPress = true;
+				}
+			}
+		}
+	}
+
+	private final class CheckForTap implements Runnable {
+		public float x;
+		public float y;
+
+		@Override
+		public void run() {
+			prepressed = false;
+			setPressed(true);
+			final long delay = ViewConfiguration.getLongPressTimeout() - ViewConfiguration.getTapTimeout();
+			checkForLongClick(delay, x, y);
+		}
+	}
+
+	private final class PerformClick implements Runnable {
+		@Override
+		public void run() {
+			performClickInternal();
+		}
+	}
+
+	private final class UnsetPressedState implements Runnable {
+		@Override
+		public void run() {
+			setPressed(false);
+		}
+	}
+
+	private boolean performClickInternal() {
+		return performClick();
+	}
+
 	public void setOnTouchListener(OnTouchListener l) {
-		nativeSetOnTouchListener(widget);
 		on_touch_listener = l;
 	}
-	protected native void nativeSetOnTouchListener(long widget);
 	private OnClickListener on_click_listener = null;
 	public void setOnClickListener(OnClickListener l) {
-		nativeSetOnClickListener(widget);
+		if (!clickable)
+			setClickable(true);
 		on_click_listener = l;
 	}
-	protected native void nativeSetOnClickListener(long widget);
 
 	private OnScrollChangeListener on_scroll_change_listener = null;
-	public void setOnScrollChangeListener(OnScrollChangeListener l) {}
+	public void setOnScrollChangeListener(OnScrollChangeListener l) {
+		on_scroll_change_listener = l;
+	}
 
 	public /*native*/ void setOnSystemUiVisibilityChangeListener(OnSystemUiVisibilityChangeListener l) {}
 	public final int getWidth() {
@@ -1292,31 +1597,349 @@ public class View implements Drawable.Callback {
 		this.id = id;
 	}
 
-	public void setOnKeyListener(OnKeyListener l) {}
+	private OnKeyListener on_key_listener;
+	public void setOnKeyListener(OnKeyListener l) {
+		on_key_listener = l;
+	}
 
 	public void setFocusable(boolean focusable) {
-		atl_focusable = focusable;
+		setFocusable(focusable ? FOCUSABLE : NOT_FOCUSABLE);
 	}
-	public void setFocusable(int focusable) {}
-	public void setFocusableInTouchMode(boolean focusableInTouchMode) {}
+	public void setFocusable(int focusable) {
+		if (focusable == NOT_FOCUSABLE)
+			focusableInTouchMode = false;
+		this.focusable = focusable;
+		if (!isFocusable())
+			clearFocus();
+	}
+	public int getFocusable() {
+		return focusable;
+	}
+	public void setFocusableInTouchMode(boolean focusableInTouchMode) {
+		// Focusable in touch mode should always be set before the focusable flag
+		// otherwise, setting the focusable flag will trigger a focusableViewAvailable()
+		// which, in touch mode, will not successfully request focus on this view
+		// because the focusable in touch mode flag is not set
+		this.focusableInTouchMode = focusableInTouchMode;
+		if (focusableInTouchMode)
+			focusable = FOCUSABLE;
+	}
+	public final boolean isFocusableInTouchMode() {
+		return focusableInTouchMode;
+	}
 	public final boolean requestFocus() {
 		return requestFocus(View.FOCUS_DOWN);
 	}
 	public final boolean requestFocus(int direction) {
 		return requestFocus(direction, null);
 	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: requestFocus to getKeyDispatcherState */
 	public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
-		if (atl_enabled && atl_focusable && visibility == VISIBLE) {
-			nativeRequestFocus(widget, direction);
-			return true;
+		return requestFocusNoSearch(direction, previouslyFocusedRect);
+	}
+
+	private boolean requestFocusNoSearch(int direction, Rect previouslyFocusedRect) {
+		// need to be focusable
+		if (!canTakeFocus()) {
+			return false;
+		}
+
+		// need to be focusable in touch mode if in touch mode
+		if (isInTouchMode() && !focusableInTouchMode) {
+			return false;
+		}
+
+		// need to not have any parents blocking us
+		if (hasAncestorThatBlocksDescendantFocus()) {
+			return false;
+		}
+
+		handleFocusGainInternal(direction, previouslyFocusedRect);
+		return true;
+	}
+
+	private boolean canTakeFocus() {
+		return visibility == VISIBLE && isFocusable() && atl_enabled;
+	}
+
+	private boolean hasAncestorThatBlocksDescendantFocus() {
+		ViewParent ancestor = parent;
+		while (ancestor instanceof ViewGroup) {
+			final ViewGroup vgAncestor = (ViewGroup)ancestor;
+			if (vgAncestor.getDescendantFocusability() == ViewGroup.FOCUS_BLOCK_DESCENDANTS) {
+				return true;
+			} else {
+				ancestor = vgAncestor.getParent();
+			}
 		}
 		return false;
 	}
+
 	public final boolean requestFocusFromTouch() {
-		// TODO: if (isInTouchMode()) leave touch mode
+		// Leave touch mode if we need to
+		if (isInTouchMode())
+			ATLInput.ensureTouchMode(false, getRootView());
 		return requestFocus(View.FOCUS_DOWN);
 	}
-	private native void nativeRequestFocus(long widget, int direction);
+
+	void handleFocusGainInternal(int direction, Rect previouslyFocusedRect) {
+		if (!focused) {
+			focused = true;
+
+			View oldFocus = getRootView().findFocus();
+
+			if (parent != null) {
+				parent.requestChildFocus(this, this);
+			}
+			if (attachedWindow != null && attachedWindow.view_tree_observer != null)
+				attachedWindow.view_tree_observer.dispatchOnGlobalFocusChange(oldFocus, this);
+
+			native_setFocused(widget, true);
+			onFocusChanged(true, direction, previouslyFocusedRect);
+			refreshDrawableState();
+		}
+	}
+
+	public void clearFocus() {
+		final boolean refocus = sAlwaysAssignFocus() || !isInTouchMode();
+		clearFocusInternal(null, true, refocus);
+	}
+
+	// apps before P get the first focusable focused again after a clearFocus
+	private boolean sAlwaysAssignFocus() {
+		return context.getApplicationInfo().targetSdkVersion < 28;
+	}
+
+	void clearFocusInternal(View focused, boolean propagate, boolean refocus) {
+		if (this.focused) {
+			this.focused = false;
+
+			if (propagate && parent != null) {
+				parent.clearChildFocus(this);
+			}
+
+			native_setFocused(widget, false);
+			onFocusChanged(false, 0, null);
+			refreshDrawableState();
+
+			if (propagate && refocus)
+				rootViewRequestFocus();
+		}
+	}
+
+	boolean rootViewRequestFocus() {
+		final View root = getRootView();
+		return root != null && root.requestFocus();
+	}
+
+	void unFocus(View focused) {
+		clearFocusInternal(focused, false, false);
+	}
+
+	protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
+		if (!gainFocus && isPressed())
+			setPressed(false);
+		if (on_focus_change_listener != null)
+			on_focus_change_listener.onFocusChange(this, gainFocus);
+		KeyEvent.DispatcherState state = getKeyDispatcherState();
+		if (state != null)
+			state.reset(this);
+	}
+
+	public boolean isFocused() {
+		return focused;
+	}
+
+	public boolean hasFocus() {
+		return focused;
+	}
+
+	public View findFocus() {
+		return focused ? this : null;
+	}
+
+	public boolean hasFocusable() {
+		return visibility == VISIBLE && atl_enabled && isFocusable();
+	}
+
+	public View focusSearch(int direction) {
+		if (parent != null) {
+			return parent.focusSearch(this, direction);
+		} else {
+			return null;
+		}
+	}
+
+	public boolean restoreDefaultFocus() {
+		return requestFocus(View.FOCUS_DOWN);
+	}
+
+	public ArrayList<View> getFocusables(int direction) {
+		ArrayList<View> result = new ArrayList<View>(24);
+		addFocusables(result, direction);
+		return result;
+	}
+
+	public void addFocusables(ArrayList<View> views, int direction) {
+		addFocusables(views, direction, isInTouchMode() ? FOCUSABLES_TOUCH_MODE : FOCUSABLES_ALL);
+	}
+
+	public void addFocusables(ArrayList<View> views, int direction, int focusableMode) {
+		if (views == null) {
+			return;
+		}
+		if (!canTakeFocus()) {
+			return;
+		}
+		if ((focusableMode & FOCUSABLES_TOUCH_MODE) == FOCUSABLES_TOUCH_MODE && !isFocusableInTouchMode()) {
+			return;
+		}
+		views.add(this);
+	}
+
+	public ArrayList<View> getTouchables() {
+		ArrayList<View> result = new ArrayList<View>();
+		addTouchables(result);
+		return result;
+	}
+
+	public void addTouchables(ArrayList<View> views) {
+		if ((clickable || longClickable) && atl_enabled) {
+			views.add(this);
+		}
+	}
+
+	public void addKeyboardNavigationClusters(Collection<View> views, int direction) {
+		if (!isKeyboardNavigationCluster()) {
+			return;
+		}
+		if (!hasFocusable()) {
+			return;
+		}
+		views.add(this);
+	}
+
+	View findUserSetNextFocus(View root, int direction) {
+		switch (direction) {
+			case FOCUS_LEFT:
+				return nextFocusLeftId == View.NO_ID ? null : root.findViewById(nextFocusLeftId);
+			case FOCUS_RIGHT:
+				return nextFocusRightId == View.NO_ID ? null : root.findViewById(nextFocusRightId);
+			case FOCUS_UP:
+				return nextFocusUpId == View.NO_ID ? null : root.findViewById(nextFocusUpId);
+			case FOCUS_DOWN:
+				return nextFocusDownId == View.NO_ID ? null : root.findViewById(nextFocusDownId);
+			case FOCUS_FORWARD:
+				return nextFocusForwardId == View.NO_ID ? null : root.findViewById(nextFocusForwardId);
+			case FOCUS_BACKWARD: {
+				if (id == View.NO_ID)
+					return null;
+				return root.findViewWithNextFocusForward(id);
+			}
+		}
+		return null;
+	}
+
+	// the view whose nextFocusForwardId is the given id
+	View findViewWithNextFocusForward(int forwardId) {
+		return nextFocusForwardId == forwardId ? this : null;
+	}
+
+	View findUserSetNextKeyboardNavigationCluster(View root, int direction) {
+		if (nextClusterForwardId != View.NO_ID && direction == FOCUS_FORWARD)
+			return root.findViewById(nextClusterForwardId);
+		return null;
+	}
+
+	public int getNextFocusForwardId() {
+		return nextFocusForwardId;
+	}
+
+	public void setNextFocusForwardId(int nextFocusForwardId) {
+		this.nextFocusForwardId = nextFocusForwardId;
+	}
+
+	public int getNextClusterForwardId() {
+		return nextClusterForwardId;
+	}
+
+	public void setNextClusterForwardId(int nextClusterForwardId) {
+		this.nextClusterForwardId = nextClusterForwardId;
+	}
+
+	public final boolean isLayoutRtl() {
+		return false;
+	}
+
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		// Give any attached key listener a first crack at the event.
+		if (on_key_listener != null && atl_enabled && on_key_listener.onKey(this, event.getKeyCode(), event)) {
+			return true;
+		}
+		return event.dispatch(this, getKeyDispatcherState(), this);
+	}
+
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+		if (KeyEvent.isConfirmKey(keyCode)) {
+			if (!atl_enabled) {
+				return true;
+			}
+
+			if (event.getRepeatCount() == 0) {
+				// Long clickable items don't necessarily have to be clickable.
+				if (clickable || longClickable) {
+					// For the purposes of menu anchoring and drawable hotspots,
+					// key events are considered to be at the center of the view.
+					final float x = getWidth() / 2f;
+					final float y = getHeight() / 2f;
+					if (clickable) {
+						setPressed(true);
+					}
+					checkForLongClick(ViewConfiguration.getLongPressTimeout(), x, y);
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+		return false;
+	}
+
+	public boolean onKeyUp(int keyCode, KeyEvent event) {
+		if (KeyEvent.isConfirmKey(keyCode)) {
+			if (!atl_enabled) {
+				return true;
+			}
+			if (clickable && isPressed()) {
+				setPressed(false);
+
+				if (!hasPerformedLongPress) {
+					// This is a tap, so remove the longpress check
+					removeLongPressCallback();
+					if (!event.isCanceled()) {
+						return performClickInternal();
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		return false;
+	}
+
+	public KeyEvent.DispatcherState getKeyDispatcherState() {
+		Window window = attachedWindow != null ? attachedWindow : getRootView().decor_window;
+		return window != null ? window.key_dispatcher_state : null;
+	}
+
+	protected native void native_setFocused(long widget, boolean focused);
+	protected native void native_scrollTo(long widget, int x, int y, boolean animated);
 
 	public void setSystemUiVisibility(int visibility) {
 		if (decor_window != null)
@@ -1342,13 +1965,14 @@ public class View implements Drawable.Callback {
 	}
 
 	public void setPressed(boolean pressed) {
-		Slog.w(TAG, "calling setPressed on " + this + " with value: " + pressed);
-		if (this.pressed != pressed) {
-			this.pressed = pressed;
-			if (background != null && background.isStateful())
-				background.setState(getDrawableState());
-		}
+		final boolean needsRefresh = pressed != this.pressed;
+		this.pressed = pressed;
+		if (needsRefresh)
+			refreshDrawableState();
+		dispatchSetPressed(pressed);
 	}
+
+	protected void dispatchSetPressed(boolean pressed) {}
 
 	public void setSelected(boolean selected) {}
 
@@ -1359,7 +1983,8 @@ public class View implements Drawable.Callback {
 				window.view_tree_observer = new ViewTreeObserver(window);
 			return window.view_tree_observer;
 		} else {
-			floating_observer = new ViewTreeObserver(null);
+			if (floating_observer == null)
+				floating_observer = new ViewTreeObserver(null);
 			return floating_observer;
 		}
 	}
@@ -1450,16 +2075,46 @@ public class View implements Drawable.Callback {
 	}
 
 	public void scrollTo(int x, int y) {
+		atlScrollTo(x, y, false);
+	}
+
+	/* The toolkit animates a smooth scroll and reports where it is; a plain one moves the mirror at
+	 * once, so the toolkit's report of it is an echo. */
+	protected final void atlScrollTo(int x, int y, boolean animated) {
+		if (!animated && (scrollX != x || scrollY != y))
+			scrolled(x, y);
+		native_scrollTo(widget, x, y, animated);
+	}
+
+	// from the ui backend: the toolkit's offset changed (a pan, a fling, a request applied)
+	private void atlScrolled(int x, int y) {
+		if (scrollX != x || scrollY != y)
+			scrolled(x, y);
+	}
+
+	private void scrolled(int x, int y) {
+		int oldX = scrollX;
+		int oldY = scrollY;
 		scrollX = x;
 		scrollY = y;
 		invalidate();
+		onScrollChanged(scrollX, scrollY, oldX, oldY);
+		Window window = attachedWindow;
+		if (window != null) {
+			window.updateExclusion();
+			if (window.view_tree_observer != null)
+				window.view_tree_observer.dispatchOnScrollChanged();
+		}
 	}
 
 	protected int computeVerticalScrollOffset() {
 		return -1;
 	}
 
-	protected void onScrollChanged(int l, int t, int oldl, int oldt) {}
+	protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+		if (on_scroll_change_listener != null)
+			on_scroll_change_listener.onScrollChange(this, l, t, oldl, oldt);
+	}
 
 	// the window's origin is the origin of ATL's coordinates
 	public void getLocationOnScreen(int[] location) {
@@ -1551,9 +2206,14 @@ public class View implements Drawable.Callback {
 	}
 
 	public void refreshDrawableState() {
+		drawableStateChanged();
 	}
 
-	public void setDescendantFocusability(int value) {}
+	protected void drawableStateChanged() {
+		final int[] state = getDrawableState();
+		if (background != null && background.isStateful() && background.setState(state))
+			invalidate();
+	}
 
 	public void setAccessibilityDelegate(AccessibilityDelegate delegate) {}
 
@@ -1565,11 +2225,21 @@ public class View implements Drawable.Callback {
 		return background;
 	}
 
-	public void setClickable(boolean clickable) {}
+	public void setClickable(boolean clickable) {
+		this.clickable = clickable;
+	}
 
 	public void setEnabled(boolean enabled) {
+		if (atl_enabled == enabled)
+			return;
 		atl_enabled = enabled;
 		native_setVisibility(widget, visibility, alpha, atl_enabled);
+		if (!enabled) {
+			cancelLongPress();
+			if (focused)
+				clearFocus();
+		}
+		refreshDrawableState();
 	}
 
 	public CharSequence getContentDescription() {
@@ -1577,22 +2247,35 @@ public class View implements Drawable.Callback {
 	}
 
 	private OnLongClickListener on_long_click_listener = null;
+	private float longClickX = Float.NaN;
+	private float longClickY = Float.NaN;
+	public boolean performLongClick() {
+		return performLongClickInternal(longClickX, longClickY);
+	}
 	public boolean performLongClick(float x, float y) {
-		if (on_long_click_listener != null) {
+		longClickX = x;
+		longClickY = y;
+		final boolean handled = performLongClick();
+		longClickX = Float.NaN;
+		longClickY = Float.NaN;
+		return handled;
+	}
+	// AOSP also shows the context menu and gives haptic feedback: ATL has no context menu, and the
+	// vibrator is gtk-only
+	private boolean performLongClickInternal(float x, float y) {
+		if (on_long_click_listener != null)
 			return on_long_click_listener.onLongClick(this);
-		}
 		return false;
 	}
-	public boolean performLongClick() {
-		return performLongClick(Float.NaN, Float.NaN);
-	}
 	public void setOnLongClickListener(OnLongClickListener listener) {
-		nativeSetOnLongClickListener(widget);
+		if (!longClickable)
+			setLongClickable(true);
 		on_long_click_listener = listener;
 	}
-	protected native void nativeSetOnLongClickListener(long widget);
 
-	public void setLongClickable(boolean longClickable) {}
+	public void setLongClickable(boolean longClickable) {
+		this.longClickable = longClickable;
+	}
 
 	public void setOnHoverListener(OnHoverListener listener) {}
 
@@ -1752,6 +2435,8 @@ public class View implements Drawable.Callback {
 			backgroundDrawable.setCallback(this);
 			if (backgroundTint != 0)
 				backgroundDrawable.setTint(backgroundTint);
+			if (backgroundDrawable.isStateful())
+				backgroundDrawable.setState(getDrawableState());
 		}
 		native_setBackgroundDrawable(widget, backgroundDrawable != null ? backgroundDrawable.paintable : 0);
 	}
@@ -1877,12 +2562,7 @@ public class View implements Drawable.Callback {
 	}
 
 	public final int[] getDrawableState() {
-		int[] state = new int[2];
-		state[0] = R.attr.state_enabled;
-		if (pressed) {
-			state[1] = R.attr.state_pressed;
-		}
-		return state;
+		return onCreateDrawableState(0);
 	}
 
 	public float getRotation() { return 0.f; }
@@ -1890,14 +2570,8 @@ public class View implements Drawable.Callback {
 	public void bringToFront() {}
 
 	public boolean isEnabled() { return atl_enabled; }
-	public boolean hasFocus() { return false; }
 	public boolean isLayoutRequested() { return layoutRequested; }
 	public int getBaseline() { return -1; }
-	public boolean hasFocusable() { return false; }
-	private static native boolean nativeIsFocused(long widget);
-	public boolean isFocused() {
-		return nativeIsFocused(widget);
-	}
 
 	public void clearAnimation() {}
 
@@ -1989,7 +2663,6 @@ public class View implements Drawable.Callback {
 	public static class BaseSavedState extends AbsSavedState {
 	}
 
-	public void clearFocus() {}
 
 	public static View inflate(Context context, int resource, ViewGroup root) {
 		LayoutInflater factory = LayoutInflater.from(context);
@@ -2010,7 +2683,10 @@ public class View implements Drawable.Callback {
 
 	public void jumpDrawablesToCurrentState() {}
 
-	public void setOnFocusChangeListener(View.OnFocusChangeListener l) {}
+	private OnFocusChangeListener on_focus_change_listener;
+	public void setOnFocusChangeListener(View.OnFocusChangeListener l) {
+		on_focus_change_listener = l;
+	}
 
 	public boolean hasWindowFocus() { return true; }
 
@@ -2073,9 +2749,11 @@ public class View implements Drawable.Callback {
 		return true;
 	}
 
-	public final boolean isFocusable() { return atl_focusable; }
-	public boolean isClickable() { return true; }
-	public boolean isLongClickable() { return true; }
+	public final boolean isFocusable() {
+		return focusable == FOCUSABLE || (focusable == FOCUSABLE_AUTO && clickable);
+	}
+	public boolean isClickable() { return clickable; }
+	public boolean isLongClickable() { return longClickable; }
 
 	public int getLayoutDirection() { return LAYOUT_DIRECTION_LTR; }
 
@@ -2147,6 +2825,9 @@ public class View implements Drawable.Callback {
 		if (!attachedToWindow)
 			return;
 		onDetachedFromWindow();
+		removeUnsetPressCallback();
+		removeLongPressCallback();
+		removePerformClickCallback();
 		if (onAttachStateChangeListener != null)
 			onAttachStateChangeListener.onViewDetachedFromWindow(this);
 		if (keepScreenOn)
@@ -2191,7 +2872,6 @@ public class View implements Drawable.Callback {
 
 	public float getAlpha() { return alpha; }
 
-	public View findFocus() { return this; }
 
 	public int getMinimumHeight() { return minHeight; }
 	public int getMinimumWidth() { return minWidth; }
@@ -2248,7 +2928,7 @@ public class View implements Drawable.Callback {
 
 	public boolean canScrollVertically(int value) { return false; }
 
-	public boolean isInTouchMode() { return false; }
+	public boolean isInTouchMode() { return ATLInput.isInTouchMode(); }
 
 	public void stopNestedScroll() {}
 
@@ -2329,9 +3009,6 @@ public class View implements Drawable.Callback {
 		}
 	}
 
-	public boolean onInterceptTouchEvent(MotionEvent event) { return false; }
-
-	public boolean dispatchTouchEvent(MotionEvent event) { return false; }
 
 	public boolean canScrollHorizontally(int direction) { return false; }
 
@@ -2341,7 +3018,7 @@ public class View implements Drawable.Callback {
 
 	public boolean onCheckIsTextEditor() { return false; }
 
-	public boolean hasOnClickListeners() { return false; }
+	public boolean hasOnClickListeners() { return on_click_listener != null; }
 
 	public void setTextAlignment(int textAlignment) {
 		String[] classesToRemove = {"ATL-text-align-left", "ATL-text-align-center", "ATL-text-align-right"};
@@ -2368,7 +3045,7 @@ public class View implements Drawable.Callback {
 
 	public void requestFitSystemWindows() {}
 
-	public boolean isPressed() { return false; }
+	public boolean isPressed() { return pressed; }
 
 	public native void getWindowVisibleDisplayFrame(Rect rect);
 
@@ -2439,7 +3116,6 @@ public class View implements Drawable.Callback {
 		return new ViewOverlay();
 	}
 
-	public void cancelLongPress() {}
 
 	public int getTextAlignment() { return 0; }
 
@@ -2492,19 +3168,40 @@ public class View implements Drawable.Callback {
 
 	public void setCameraDistance(float distance) {}
 
-	public boolean requestRectangleOnScreen(Rect rectangle, boolean immediate) { return false; }
-
-	public boolean requestRectangleOnScreen(Rect rectangle) { return false; }
-
-	public boolean onKeyDown(int keyCode, KeyEvent event) {
-		return false;
+	public boolean requestRectangleOnScreen(Rect rectangle) {
+		return requestRectangleOnScreen(rectangle, false);
 	}
 
-	public boolean dispatchKeyEvent(KeyEvent event) {
-		if (event.getAction() == KeyEvent.ACTION_DOWN)
-			return onKeyDown(event.getKeyCode(), event);
-		else
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public boolean requestRectangleOnScreen(Rect rectangle, boolean immediate) {
+		if (parent == null) {
 			return false;
+		}
+
+		View child = this;
+
+		RectF position = new RectF();
+		position.set(rectangle);
+
+		ViewParent parent = this.parent;
+		boolean scrolled = false;
+		while (parent != null) {
+			rectangle.set((int)position.left, (int)position.top, (int)position.right, (int)position.bottom);
+
+			scrolled |= parent.requestChildRectangleOnScreen(child, rectangle, immediate);
+
+			if (!(parent instanceof View)) {
+				break;
+			}
+
+			// move it from child's content coordinate space to parent's content coordinate space
+			position.offset(child.left - child.getScrollX(), child.top - child.getScrollY());
+
+			child = (View)parent;
+			parent = child.getParent();
+		}
+
+		return scrolled;
 	}
 
 	public WindowInsets getRootWindowInsets() {
@@ -2584,13 +3281,21 @@ public class View implements Drawable.Callback {
 
 	public void setBackgroundTintMode(PorterDuff.Mode tintMode) {}
 
-	public void setNextFocusLeftId(int id) {}
+	public void setNextFocusLeftId(int id) { nextFocusLeftId = id; }
 
-	public void setNextFocusRightId(int id) {}
+	public void setNextFocusRightId(int id) { nextFocusRightId = id; }
 
-	public void setNextFocusDownId(int id) {}
+	public void setNextFocusDownId(int id) { nextFocusDownId = id; }
 
-	public void setNextFocusUpId(int id) {}
+	public void setNextFocusUpId(int id) { nextFocusUpId = id; }
+
+	public int getNextFocusLeftId() { return nextFocusLeftId; }
+
+	public int getNextFocusRightId() { return nextFocusRightId; }
+
+	public int getNextFocusDownId() { return nextFocusDownId; }
+
+	public int getNextFocusUpId() { return nextFocusUpId; }
 
 	public void setHasTransientState(boolean hasTransientState) {}
 
@@ -2611,19 +3316,19 @@ public class View implements Drawable.Callback {
 		return window != null ? window.getInsetsController() : null;
 	}
 
-	public final boolean isKeyboardNavigationCluster() { return false; }
+	public final boolean isKeyboardNavigationCluster() { return keyboardNavigationCluster; }
 
-	public void setKeyboardNavigationCluster(boolean isCluster) {}
+	public void setKeyboardNavigationCluster(boolean isCluster) { keyboardNavigationCluster = isCluster; }
 
 	public AutofillId getAutofillId() { return new AutofillId(); }
 
 	public AccessibilityDelegate getAccessibilityDelegate() { return null; }
 
 	public void setScrollX(int value) {
-		this.scrollX = value;
+		scrollTo(value, scrollY);
 	}
 	public void setScrollY(int value) {
-		this.scrollY = value;
+		scrollTo(scrollX, value);
 	}
 
 	protected boolean dispatchHoverEvent(MotionEvent event) { return false; }
@@ -2634,7 +3339,9 @@ public class View implements Drawable.Callback {
 
 	public ActionMode startActionMode(ActionMode.Callback callback) { return null; }
 
-	public void getFocusedRect(Rect r) {}
+	public void getFocusedRect(Rect r) {
+		getDrawingRect(r);
+	}
 
 	/**
 	* An implementation of OnClickListener that attempts to lazily load a
@@ -2726,7 +3433,6 @@ public class View implements Drawable.Callback {
 
 	public void setLabelFor(int id) {}
 
-	public ArrayList<View> getFocusables(int direction) { return new ArrayList<View>(); }
 
 	public WindowInsets onApplyWindowInsets(WindowInsets insets) {
 		Insets system = insets.getSystemWindowInsets();
@@ -2741,9 +3447,23 @@ public class View implements Drawable.Callback {
 
 	public boolean isAccessibilityFocused() { return false; }
 
+	public final boolean hasIdentityMatrix() {
+		Matrix matrix = getMatrix();
+		return translationX == 0 && translationY == 0 && (matrix == Matrix.IDENTITY_MATRIX || matrix.isIdentity());
+	}
+
+	// the inverse of the translation and getMatrix(), as AOSP's render node applies them
+	public final Matrix getInverseMatrix() {
+		Matrix matrix = new Matrix(getMatrix());
+		matrix.postTranslate(translationX, translationY);
+		Matrix inverse = new Matrix();
+		matrix.invert(inverse);
+		return inverse;
+	}
+
 	public float getCameraDistance() { return 0; }
 
-	public OnFocusChangeListener getOnFocusChangeListener() { return null; }
+	public OnFocusChangeListener getOnFocusChangeListener() { return on_focus_change_listener; }
 
 	public int getTextDirection() { return 0; /* TEXT_DIRECTION_INHERIT */ }
 

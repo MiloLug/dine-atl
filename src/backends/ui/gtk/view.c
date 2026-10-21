@@ -61,6 +61,10 @@ struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, co
 void ui_view_add_child(struct ui_view *parent_view, struct ui_view *child, int index)
 {
 	GtkWidget *parent = GTK_WIDGET(parent_view);
+	if (GTK_IS_SCROLLED_WINDOW(parent)) { // a scroll node: its viewport holds the one child
+		gtk_viewport_set_child(GTK_VIEWPORT(gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(parent))), gtk_widget_get_parent(GTK_WIDGET(child)));
+		return;
+	}
 	GtkWidget *iter = gtk_widget_get_first_child(parent);
 	for (int i = 0; i < index; i++) {
 		iter = gtk_widget_get_next_sibling(iter);
@@ -74,8 +78,30 @@ void ui_view_add_child(struct ui_view *parent_view, struct ui_view *child, int i
 void ui_view_remove_child(struct ui_view *parent, struct ui_view *child)
 {
 	GtkWidget *wrapper = gtk_widget_get_parent(GTK_WIDGET(child));
+	if (GTK_IS_SCROLLED_WINDOW(parent)) {
+		GtkViewport *viewport = GTK_VIEWPORT(gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(parent)));
+		if (gtk_viewport_get_child(viewport) == wrapper)
+			gtk_viewport_set_child(viewport, NULL);
+		return;
+	}
 	if (gtk_widget_get_parent(wrapper) == GTK_WIDGET(parent))
 		gtk_widget_unparent(wrapper);
+}
+
+// GTK focus follows Java's into a widget that edits text, and leaves one Java's left
+void ui_view_set_focused(struct ui_view *view, bool focused)
+{
+	GtkWidget *widget = GTK_WIDGET(view);
+	GtkRoot *root = gtk_widget_get_root(widget);
+	if (!root)
+		return;
+	if (focused && gtk_widget_get_focusable(widget)) {
+		gtk_widget_grab_focus(widget);
+		return;
+	}
+	GtkWidget *focus = gtk_root_get_focus(root);
+	if (!focused && focus && (focus == widget || gtk_widget_is_ancestor(focus, widget)))
+		gtk_root_set_focus(root, NULL);
 }
 
 // drops the ref ui_view_new took for Java; a parent holds its own

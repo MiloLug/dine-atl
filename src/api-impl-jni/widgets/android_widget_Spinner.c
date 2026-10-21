@@ -5,6 +5,7 @@
 
 #include "AdapterView.h"
 #include "WrapperWidget.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 
 #include "../generated_headers/android_view_View.h"
 #include "../generated_headers/android_widget_Spinner.h"
@@ -96,6 +97,7 @@ JNIEXPORT jlong JNICALL Java_android_widget_Spinner_native_1constructor(JNIEnv *
 	model->jobject = _WEAK_REF(this);
 	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), dropdown);
 	gtk_widget_set_name(dropdown, "Spinner");
+	input_take_native(dropdown);
 	return _INTPTR(dropdown);
 }
 

@@ -23,8 +23,6 @@ struct _WrapperWidget {
 	int real_width;
 	int real_height;
 	gboolean needs_allocation;
-	gboolean intercepting_touch;
-	gboolean custom_dispatch_touch;
 	gboolean hover_exit_pending;
 	int hover_x;
 	int hover_y;
@@ -43,10 +41,10 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 void wrapper_widget_queue_draw(WrapperWidget *wrapper);
 void wrapper_widget_set_layout_params(WrapperWidget *wrapper, int width, int height);
 void wrapper_widget_set_background(WrapperWidget *wrapper, GdkPaintable *paintable);
-void wrapper_widget_consume_touch_events(WrapperWidget *wrapper);
 void wrapper_widget_register_invalidation_listener(WrapperWidget *wrapper);
 
-void _setOnTouchListener(JNIEnv *env, jobject this, GtkWidget *widget);
 void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view_traits *traits);
+/* The last pointer went up: hover exits held back while it was down go out. */
+void view_flush_hover_exits(void);
 
 #endif

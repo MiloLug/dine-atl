@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/shared/input.h"
 #include "src/shared/upcall.h"
 #include "src/slots/gfx.h"
 #include "src/slots/loop.h"
@@ -103,6 +104,23 @@ struct ui_window *ui_window_new(void *surface)
 	return the_window;
 }
 
+struct ui_window *records_app_window(void)
+{
+	return the_window;
+}
+
+void records_touch(const struct atl_touch *touch)
+{
+	if (the_window && the_window->shown)
+		atl_upcall_touch(the_window->shown->ref, touch);
+}
+
+void records_key(const struct atl_key *key)
+{
+	if (the_window && the_window->shown)
+		atl_upcall_key(the_window->shown->ref, key);
+}
+
 void ui_window_set_title(struct ui_window *window, const char *title) {}
 
 void ui_window_clear_background(struct ui_window *window) {}
@@ -184,6 +202,7 @@ void records_observations_orphan(struct ui_window *window)
 	window->observations = NULL;
 }
 
+// the caller sets its kind's fields, then calls records_view_created
 static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name)
 {
 	struct ui_view *view = calloc(1, sizeof(*view));
@@ -196,14 +215,36 @@ static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, c
 		view->text = strdup("");
 		view->text_size = DEFAULT_TEXT_SIZE_SP * atl_window_get()->density_dpi / 160;
 	}
+	return view;
+}
+
+static struct ui_view *created(struct ui_view *view)
+{
 	records_view_created(view);
 	return view;
 }
 
 struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	return view_new(NODE_VIEW, view_ref, class_name);
+	return created(view_new(NODE_VIEW, view_ref, class_name));
 }
+
+struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, bool horizontal)
+{
+	struct ui_view *view = view_new(NODE_SCROLL, view_ref, class_name);
+	view->horizontal = horizontal;
+	return created(view);
+}
+
+void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated)
+{
+	view->scroll_x = x;
+	view->scroll_y = y;
+	records_scroll_changed(view, animated);
+}
+
+// focus is Java's; no toolkit widget here edits text yet
+void ui_view_set_focused(struct ui_view *view, bool focused) {}
 
 void ui_view_add_child(struct ui_view *parent, struct ui_view *child, int index)
 {
@@ -251,6 +292,7 @@ void ui_view_free(struct ui_view *view)
 	set_background(view, NULL);
 	hold(&view->image, NULL);
 	atl_ref_free(view->ref);
+	view->ref = NULL; // uikit: a scroll report still queued finds the view gone
 	records_view_freed(view);
 }
 
@@ -344,13 +386,13 @@ void ui_view_layout(struct ui_view *view, int left, int top, int right, int bott
 	view->top = top + (int)translation_y;
 	view->right = right + (int)translation_x;
 	view->bottom = bottom + (int)translation_y;
-	if (view->kind == NODE_VIEW)
+	if (view->kind == NODE_VIEW || view->kind == NODE_SCROLL)
 		atl_upcall_view_layout(view->ref, right - left, bottom - top);
 }
 
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)
 {
-	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name);
+	struct ui_view *view = created(view_new(NODE_TEXT, view_ref, class_name));
 	if (text)
 		ui_text_set_text(view, text);
 	return view;
@@ -393,7 +435,7 @@ struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, c
 {
 	struct ui_view *view = view_new(NODE_IMAGE, view_ref, class_name);
 	view->image_width = view->image_height = -1;
-	return view;
+	return created(view);
 }
 
 void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, int width, int height)
@@ -411,7 +453,7 @@ void ui_image_set_scale_type(struct ui_view *view, int scale_type)
 
 struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	return view_new(NODE_PROGRESS, view_ref, class_name);
+	return created(view_new(NODE_PROGRESS, view_ref, class_name));
 }
 
 void ui_progress_set_fraction(struct ui_view *view, float fraction)

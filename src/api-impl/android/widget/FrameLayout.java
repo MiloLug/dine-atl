@@ -44,6 +44,12 @@ import java.util.ArrayList;
  */
 public class FrameLayout extends ViewGroup {
 	private static final int DEFAULT_CHILD_GRAVITY = Gravity.TOP | Gravity.START;
+
+	@Override
+	public boolean shouldDelayChildPressedState() {
+		return false;
+	}
+
 	boolean mMeasureAllChildren = false;
 	// private int mForegroundPaddingLeft = 0;
 	// private int mForegroundPaddingTop = 0;

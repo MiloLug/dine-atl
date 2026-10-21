@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/com/android/internal/policy/PhoneWindow.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.view;
 
 import android.R;
@@ -19,6 +24,8 @@ public class Window {
 	public static final int FEATURE_NO_TITLE = 1;
 
 	public ViewTreeObserver view_tree_observer = null;
+	// AOSP keeps one per ViewRootImpl: key tracking (Back on its up) and long presses
+	final KeyEvent.DispatcherState key_dispatcher_state = new KeyEvent.DispatcherState();
 	private WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, 0, 0, 0);
 
 	public static interface Callback {
@@ -35,6 +42,10 @@ public class Window {
 		public void onPanelClosed(int featureId, Menu menu);
 
 		public boolean onMenuOpened(int featureId, Menu menu);
+
+		public boolean dispatchKeyEvent(KeyEvent event);
+
+		public boolean dispatchTouchEvent(MotionEvent event);
 	}
 
 	public static interface OnFrameMetricsAvailableListener {}
@@ -104,6 +115,22 @@ public class Window {
 	public View getDecorView() {
 		styleBars();
 		return decorView;
+	}
+
+	ViewGroup atlDecor() {
+		return decorView;
+	}
+
+	public boolean superDispatchKeyEvent(KeyEvent event) {
+		return decorView.dispatchKeyEvent(event);
+	}
+
+	public boolean superDispatchTouchEvent(MotionEvent event) {
+		return decorView.dispatchTouchEvent(event);
+	}
+
+	public View getCurrentFocus() {
+		return decorView.findFocus();
 	}
 
 	public void takeInputQueue(InputQueue.Callback callback) {
@@ -241,7 +268,7 @@ public class Window {
 		return true;
 	}
 
-	// a move without a layout (scroll, translation) keeps the old rects until the next layout
+	// after each layout pass and each scroll; a translation moves views at the next layout pass
 	void updateExclusion() {
 		ArrayList<View> views = new ArrayList<View>();
 		int count = 0;

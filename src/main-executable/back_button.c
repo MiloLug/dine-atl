@@ -7,6 +7,8 @@ GtkWidget *back_button;
 GtkWidget *back_button_new()
 {
 	back_button = gtk_button_new_from_icon_name("go-previous");
+	// GTK focus on it would take Enter and Space from the app's key chain
+	gtk_widget_set_focusable(back_button, FALSE);
 
 	g_signal_connect(back_button, "clicked", G_CALLBACK(atl_nav_back), NULL);
 

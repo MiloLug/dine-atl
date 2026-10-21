@@ -11,6 +11,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.MessageQueue;
 import android.util.Slog;
+import android.view.ATLInput;
 import android.view.KeyEvent;
 import dalvik.system.DexClassLoader;
 /* for hacky classloader patching */
@@ -101,7 +102,7 @@ public class Instrumentation {
 	}
 
 	public void setInTouchMode(boolean inTouch) {
-		Slog.w(TAG, "FIXME: Instrumentation.setInTouchMode: " + inTouch);
+		ATLInput.setInTouchMode(inTouch);
 	}
 
 	public void sendKeySync(KeyEvent event) {

@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/view/ViewGroup.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.view;
 
 import android.R;
@@ -5,13 +10,17 @@ import android.animation.LayoutTransition;
 import android.annotation.UnsupportedAppUsage;
 import android.atl.GskCanvas;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
+import android.graphics.PointF;
 import android.graphics.Rect;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Slog;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Objects;
@@ -40,6 +49,12 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 	public ArrayList<View> children;
 	private ArrayList<View> detachedChildren;
+	View focusedChild; // AOSP's mFocused: the child that is or holds the focus
+	private int descendantFocusability = FOCUS_BEFORE_DESCENDANTS;
+	private boolean touchscreenBlocksFocus;
+	private boolean disallowIntercept;
+	private boolean splitMotionEvents = true;
+	private TouchTarget firstTouchTarget;
 	private boolean pendingHideDetachedChildren = false;
 	private OnHierarchyChangeListener onHierarchyChangeListener;
 	private LayoutTransition transition;
@@ -62,7 +77,15 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 		children = new ArrayList<View>();
 		detachedChildren = new ArrayList<View>();
+
+		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.ViewGroup, defStyleAttr, defStyleRes);
+		descendantFocusability = DESCENDANT_FOCUSABILITY_FLAGS[a.getInt(com.android.internal.R.styleable.ViewGroup_descendantFocusability, 0)];
+		splitMotionEvents = a.getBoolean(com.android.internal.R.styleable.ViewGroup_splitMotionEvents, true);
+		touchscreenBlocksFocus = a.getBoolean(com.android.internal.R.styleable.ViewGroup_touchscreenBlocksFocus, false);
+		a.recycle();
 	}
+
+	private static final int[] DESCENDANT_FOCUSABILITY_FLAGS = {FOCUS_BEFORE_DESCENDANTS, FOCUS_AFTER_DESCENDANTS, FOCUS_BLOCK_DESCENDANTS};
 
 	public void addView(View child) {
 		addView(child, -1);
@@ -131,12 +154,6 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		}
 	}
 
-	/* We never call this ourselves */
-	@Override
-	public boolean dispatchTouchEvent(MotionEvent event) {
-		return native_dispatchTouchEvent(widget, event, event.getX(), event.getY());
-	}
-
 	protected boolean addViewInLayout(View child, int index, LayoutParams params) {
 		addViewInternal(child, index, params, true);
 		return true;
@@ -155,6 +172,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected void removeViewInternal(View child) {
 		if (child == null || child.parent != this)
 			return;
+		boolean clearChildFocus = loseChild(child);
 		child.dispatchDetachedFromWindow();
 		child.parent = null;
 		children.remove(child);
@@ -163,6 +181,22 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		if (onHierarchyChangeListener != null) {
 			onHierarchyChangeListener.onChildViewRemoved(this, child);
 		}
+		if (clearChildFocus)
+			lostFocusedChild(child);
+	}
+
+	// a child leaves: its touch target goes, and its focus; true when it held the focus
+	private boolean loseChild(View child) {
+		cancelTouchTarget(child);
+		if (child != focusedChild)
+			return false;
+		child.unFocus(null);
+		return true;
+	}
+
+	private void lostFocusedChild(View child) {
+		clearChildFocus(child);
+		rootViewRequestFocus();
 	}
 
 	public void removeView(View child) {
@@ -179,8 +213,11 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	}
 
 	public void removeAllViews() {
+		View focused = null;
 		for (Iterator<View> it = children.iterator(); it.hasNext();) {
 			View child = it.next();
+			if (loseChild(child))
+				focused = child;
 			child.dispatchDetachedFromWindow();
 			child.parent = null;
 			it.remove();
@@ -190,6 +227,8 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 				onHierarchyChangeListener.onChildViewRemoved(this, child);
 			}
 		}
+		if (focused != null)
+			lostFocusedChild(focused);
 		requestLayout();
 	}
 
@@ -216,6 +255,10 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected void removeDetachedView(View child, boolean animate) {
 		if (!detachedChildren.remove(child))
 			return;
+		if (child == focusedChild) {
+			child.unFocus(null);
+			clearChildFocus(child);
+		}
 		child.dispatchDetachedFromWindow();
 		child.parent = null;
 		native_removeView(widget, child.widget);
@@ -254,6 +297,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	public void dispatchDetachedFromWindow() {
 		if (!attachedToWindow)
 			return;
+		cancelAndClearTouchTargets(null);
 		for (View child : new ArrayList<View>(children))
 			child.dispatchDetachedFromWindow();
 		super.dispatchDetachedFromWindow();
@@ -315,7 +359,13 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		return children.size();
 	}
 
-	public void setMotionEventSplittingEnabled(boolean enabled) {}
+	public void setMotionEventSplittingEnabled(boolean enabled) {
+		splitMotionEvents = enabled;
+	}
+
+	public boolean isMotionEventSplittingEnabled() {
+		return splitMotionEvents;
+	}
 
 	public void setOnHierarchyChangeListener(OnHierarchyChangeListener listener) {
 		this.onHierarchyChangeListener = listener;
@@ -420,9 +470,21 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 	public void setAddStatesFromChildren(boolean addsStates) {}
 
-	public View getFocusedChild() { return null; }
+	public View getFocusedChild() { return focusedChild; }
 
-	public int getDescendantFocusability() { return 0; }
+	public int getDescendantFocusability() { return descendantFocusability; }
+
+	public void setDescendantFocusability(int focusability) {
+		switch (focusability) {
+			case FOCUS_BEFORE_DESCENDANTS:
+			case FOCUS_AFTER_DESCENDANTS:
+			case FOCUS_BLOCK_DESCENDANTS:
+				break;
+			default:
+				throw new IllegalArgumentException("must be one of FOCUS_BEFORE_DESCENDANTS, FOCUS_AFTER_DESCENDANTS, FOCUS_BLOCK_DESCENDANTS");
+		}
+		descendantFocusability = focusability;
+	}
 
 	public void startViewTransition(View view) {}
 	public void endViewTransition(View view) {}
@@ -446,9 +508,615 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 	protected void setChildrenDrawingOrderEnabled(boolean enabled) {}
 
+	/* Copyright (C) 2006 The Android Open Source Project: requestDisallowInterceptTouchEvent to TouchTarget */
 	public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
-		for (ViewGroup iter = this; iter != null; iter = iter.parent instanceof ViewGroup ? (ViewGroup)iter.parent : null)
-			iter.disallowIntercept = disallowIntercept;
+		if (disallowIntercept == this.disallowIntercept) {
+			// We're already in this state, assume our ancestors are too
+			return;
+		}
+		this.disallowIntercept = disallowIntercept;
+		// Pass it up to our parent
+		if (parent != null) {
+			parent.requestDisallowInterceptTouchEvent(disallowIntercept);
+		}
+	}
+
+	public boolean onInterceptTouchEvent(MotionEvent ev) {
+		return false;
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		// If the event targets the accessibility focused view and this is it, start
+		// normal event dispatch. Maybe a descendant is what will handle the click.
+		if (ev.isTargetAccessibilityFocus() && isAccessibilityFocused()) {
+			ev.setTargetAccessibilityFocus(false);
+		}
+
+		boolean handled = false;
+		final int action = ev.getAction();
+		final int actionMasked = action & MotionEvent.ACTION_MASK;
+
+		// Handle an initial down.
+		if (actionMasked == MotionEvent.ACTION_DOWN) {
+			// Throw away all previous state when starting a new touch gesture.
+			// The framework may have dropped the up or cancel event for the previous gesture
+			// due to an app switch, ANR, or some other state change.
+			cancelAndClearTouchTargets(ev);
+			resetTouchState();
+		}
+
+		// Check for interception.
+		final boolean intercepted;
+		if (actionMasked == MotionEvent.ACTION_DOWN || firstTouchTarget != null) {
+			if (!disallowIntercept) {
+				intercepted = onInterceptTouchEvent(ev);
+				ev.setAction(action); // restore action in case it was changed
+			} else {
+				intercepted = false;
+			}
+		} else {
+			// There are no touch targets and this action is not an initial down
+			// so this view group continues to intercept touches.
+			intercepted = true;
+		}
+
+		// If intercepted, start normal event dispatch. Also if there is already
+		// a view that is handling the gesture, do normal event dispatch.
+		if (intercepted || firstTouchTarget != null) {
+			ev.setTargetAccessibilityFocus(false);
+		}
+
+		// Check for cancelation.
+		final boolean canceled = actionMasked == MotionEvent.ACTION_CANCEL;
+
+		// Update list of touch targets for pointer down, if needed.
+		final boolean split = splitMotionEvents;
+		TouchTarget newTouchTarget = null;
+		boolean alreadyDispatchedToNewTouchTarget = false;
+		if (!canceled && !intercepted) {
+			if (actionMasked == MotionEvent.ACTION_DOWN
+			    || (split && actionMasked == MotionEvent.ACTION_POINTER_DOWN)
+			    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+				final int actionIndex = ev.getActionIndex(); // always 0 for down
+				final int idBitsToAssign = split ? 1 << ev.getPointerId(actionIndex)
+				                                 : TouchTarget.ALL_POINTER_IDS;
+
+				// Clean up earlier touch targets for this pointer id in case they
+				// have become out of sync.
+				removePointersFromTouchTargets(idBitsToAssign);
+
+				final int childrenCount = children.size();
+				if (newTouchTarget == null && childrenCount != 0) {
+					final float x = ev.getX(actionIndex);
+					final float y = ev.getY(actionIndex);
+					// Find a child that can receive the event.
+					// Scan children from front to back.
+					final ArrayList<View> preorderedList = buildTouchDispatchChildList();
+					for (int i = childrenCount - 1; i >= 0; i--) {
+						final View child = preorderedList != null ? preorderedList.get(i) : children.get(i);
+
+						if (!child.canReceivePointerEvents()
+						    || !isTransformedTouchPointInView(x, y, child, null)) {
+							ev.setTargetAccessibilityFocus(false);
+							continue;
+						}
+
+						newTouchTarget = getTouchTarget(child);
+						if (newTouchTarget != null) {
+							// Child is already receiving touch within its bounds.
+							// Give it the new pointer in addition to the ones it is handling.
+							newTouchTarget.pointerIdBits |= idBitsToAssign;
+							break;
+						}
+
+						if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
+							// Child wants to receive touch within its bounds.
+							newTouchTarget = addTouchTarget(child, idBitsToAssign);
+							alreadyDispatchedToNewTouchTarget = true;
+							break;
+						}
+
+						// The accessibility focus didn't handle the event, so clear
+						// the flag and do a normal dispatch to all children.
+						ev.setTargetAccessibilityFocus(false);
+					}
+				}
+
+				if (newTouchTarget == null && firstTouchTarget != null) {
+					// Did not find a child to receive the event.
+					// Assign the pointer to the least recently added target.
+					newTouchTarget = firstTouchTarget;
+					while (newTouchTarget.next != null) {
+						newTouchTarget = newTouchTarget.next;
+					}
+					newTouchTarget.pointerIdBits |= idBitsToAssign;
+				}
+			}
+		}
+
+		// Dispatch to touch targets.
+		if (firstTouchTarget == null) {
+			// No touch targets so treat this as an ordinary view.
+			handled = dispatchTransformedTouchEvent(ev, canceled, null, TouchTarget.ALL_POINTER_IDS);
+		} else {
+			// Dispatch to touch targets, excluding the new touch target if we already
+			// dispatched to it.  Cancel touch targets if necessary.
+			TouchTarget predecessor = null;
+			TouchTarget target = firstTouchTarget;
+			while (target != null) {
+				final TouchTarget next = target.next;
+				if (alreadyDispatchedToNewTouchTarget && target == newTouchTarget) {
+					handled = true;
+				} else {
+					final boolean cancelChild = intercepted;
+					if (dispatchTransformedTouchEvent(ev, cancelChild, target.child, target.pointerIdBits)) {
+						handled = true;
+					}
+					if (cancelChild) {
+						if (predecessor == null) {
+							firstTouchTarget = next;
+						} else {
+							predecessor.next = next;
+						}
+						target = next;
+						continue;
+					}
+				}
+				predecessor = target;
+				target = next;
+			}
+		}
+
+		// Update list of touch targets for pointer up or cancel, if needed.
+		if (canceled
+		    || actionMasked == MotionEvent.ACTION_UP
+		    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+			resetTouchState();
+		} else if (split && actionMasked == MotionEvent.ACTION_POINTER_UP) {
+			final int actionIndex = ev.getActionIndex();
+			final int idBitsToRemove = 1 << ev.getPointerId(actionIndex);
+			removePointersFromTouchTargets(idBitsToRemove);
+		}
+
+		return handled;
+	}
+
+	// children in touch order when Z sorts them, else null: the children's order
+	private ArrayList<View> buildTouchDispatchChildList() {
+		boolean hasZ = false;
+		for (View child : children) {
+			if (child.getZ() != 0) {
+				hasZ = true;
+				break;
+			}
+		}
+		if (!hasZ)
+			return null;
+		ArrayList<View> ordered = new ArrayList<View>(children);
+		ordered.sort(new Comparator<View>() {
+			@Override
+			public int compare(View a, View b) {
+				return Float.compare(a.getZ(), b.getZ());
+			}
+		});
+		return ordered;
+	}
+
+	private void resetTouchState() {
+		firstTouchTarget = null;
+		disallowIntercept = false;
+	}
+
+	private void cancelAndClearTouchTargets(MotionEvent event) {
+		if (firstTouchTarget != null) {
+			if (event == null) {
+				final long now = SystemClock.uptimeMillis();
+				event = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0.0f, 0.0f, 0);
+				event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+			}
+
+			for (TouchTarget target = firstTouchTarget; target != null; target = target.next) {
+				dispatchTransformedTouchEvent(event, true, target.child, target.pointerIdBits);
+			}
+			firstTouchTarget = null;
+		}
+	}
+
+	private TouchTarget getTouchTarget(View child) {
+		for (TouchTarget target = firstTouchTarget; target != null; target = target.next) {
+			if (target.child == child) {
+				return target;
+			}
+		}
+		return null;
+	}
+
+	private TouchTarget addTouchTarget(View child, int pointerIdBits) {
+		final TouchTarget target = new TouchTarget(child, pointerIdBits);
+		target.next = firstTouchTarget;
+		firstTouchTarget = target;
+		return target;
+	}
+
+	private void removePointersFromTouchTargets(int pointerIdBits) {
+		TouchTarget predecessor = null;
+		TouchTarget target = firstTouchTarget;
+		while (target != null) {
+			final TouchTarget next = target.next;
+			if ((target.pointerIdBits & pointerIdBits) != 0) {
+				target.pointerIdBits &= ~pointerIdBits;
+				if (target.pointerIdBits == 0) {
+					if (predecessor == null) {
+						firstTouchTarget = next;
+					} else {
+						predecessor.next = next;
+					}
+					target = next;
+					continue;
+				}
+			}
+			predecessor = target;
+			target = next;
+		}
+	}
+
+	private void cancelTouchTarget(View view) {
+		TouchTarget predecessor = null;
+		TouchTarget target = firstTouchTarget;
+		while (target != null) {
+			final TouchTarget next = target.next;
+			if (target.child == view) {
+				if (predecessor == null) {
+					firstTouchTarget = next;
+				} else {
+					predecessor.next = next;
+				}
+
+				final long now = SystemClock.uptimeMillis();
+				MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0.0f, 0.0f, 0);
+				event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+				view.dispatchTouchEvent(event);
+				event.recycle();
+				return;
+			}
+			predecessor = target;
+			target = next;
+		}
+	}
+
+	protected boolean isTransformedTouchPointInView(float x, float y, View child, PointF outLocalPoint) {
+		final float[] point = new float[] {x, y};
+		transformPointToViewLocal(point, child);
+		final boolean isInView = child.pointInView(point[0], point[1]);
+		if (isInView && outLocalPoint != null) {
+			outLocalPoint.set(point[0], point[1]);
+		}
+		return isInView;
+	}
+
+	public void transformPointToViewLocal(float[] point, View child) {
+		point[0] += getScrollX() - child.getLeft();
+		point[1] += getScrollY() - child.getTop();
+
+		if (!child.hasIdentityMatrix()) {
+			child.getInverseMatrix().mapPoints(point);
+		}
+	}
+
+	private boolean dispatchTransformedTouchEvent(MotionEvent event, boolean cancel, View child, int desiredPointerIdBits) {
+		final boolean handled;
+
+		// Canceling motions is a special case.  We don't need to perform any transformations
+		// or filtering.  The important part is the action, not the contents.
+		final int oldAction = event.getAction();
+		if (cancel || oldAction == MotionEvent.ACTION_CANCEL) {
+			event.setAction(MotionEvent.ACTION_CANCEL);
+			if (child == null) {
+				handled = super.dispatchTouchEvent(event);
+			} else {
+				handled = child.dispatchTouchEvent(event);
+			}
+			event.setAction(oldAction);
+			return handled;
+		}
+
+		// Calculate the number of pointers to deliver.
+		final int oldPointerIdBits = event.getPointerIdBits();
+		final int newPointerIdBits = oldPointerIdBits & desiredPointerIdBits;
+
+		// If for some reason we ended up in an inconsistent state where it looks like we
+		// might produce a motion event with no pointers in it, then drop the event.
+		if (newPointerIdBits == 0) {
+			return false;
+		}
+
+		// If the number of pointers is the same and we don't need to perform any fancy
+		// irreversible transformations, then we can reuse the motion event for this
+		// dispatch as long as we are careful to revert any changes we make.
+		// Otherwise we need to make a copy.
+		final MotionEvent transformedEvent;
+		if (newPointerIdBits == oldPointerIdBits) {
+			if (child == null || child.hasIdentityMatrix()) {
+				if (child == null) {
+					handled = super.dispatchTouchEvent(event);
+				} else {
+					final float offsetX = getScrollX() - child.getLeft();
+					final float offsetY = getScrollY() - child.getTop();
+					event.offsetLocation(offsetX, offsetY);
+
+					handled = child.dispatchTouchEvent(event);
+
+					event.offsetLocation(-offsetX, -offsetY);
+				}
+				return handled;
+			}
+			transformedEvent = MotionEvent.obtain(event);
+		} else {
+			transformedEvent = event.split(newPointerIdBits);
+		}
+
+		// Perform any necessary transformations and dispatch.
+		if (child == null) {
+			handled = super.dispatchTouchEvent(transformedEvent);
+		} else {
+			final float offsetX = getScrollX() - child.getLeft();
+			final float offsetY = getScrollY() - child.getTop();
+			transformedEvent.offsetLocation(offsetX, offsetY);
+			if (!child.hasIdentityMatrix()) {
+				transformedEvent.transform(child.getInverseMatrix());
+			}
+
+			handled = child.dispatchTouchEvent(transformedEvent);
+		}
+
+		// Done.
+		transformedEvent.recycle();
+		return handled;
+	}
+
+	private static final class TouchTarget {
+		public static final int ALL_POINTER_IDS = -1; // all ones
+
+		// The touched child view.
+		public final View child;
+
+		// The combined bit mask of pointer ids for all pointers captured by the target.
+		public int pointerIdBits;
+
+		// The next target in the target list.
+		public TouchTarget next;
+
+		TouchTarget(View child, int pointerIdBits) {
+			this.child = child;
+			this.pointerIdBits = pointerIdBits;
+		}
+	}
+
+	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		if (isFocused()) {
+			if (super.dispatchKeyEvent(event)) {
+				return true;
+			}
+		} else if (focusedChild != null) {
+			if (focusedChild.dispatchKeyEvent(event)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	@Override
+	public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
+		int descendantFocusability = getDescendantFocusability();
+
+		switch (descendantFocusability) {
+			case FOCUS_BLOCK_DESCENDANTS:
+				return super.requestFocus(direction, previouslyFocusedRect);
+			case FOCUS_BEFORE_DESCENDANTS: {
+				final boolean took = super.requestFocus(direction, previouslyFocusedRect);
+				return took ? took : onRequestFocusInDescendants(direction, previouslyFocusedRect);
+			}
+			case FOCUS_AFTER_DESCENDANTS: {
+				final boolean took = onRequestFocusInDescendants(direction, previouslyFocusedRect);
+				return took ? took : super.requestFocus(direction, previouslyFocusedRect);
+			}
+			default:
+				throw new IllegalStateException("descendant focusability must be one of FOCUS_BEFORE_DESCENDANTS, FOCUS_AFTER_DESCENDANTS, FOCUS_BLOCK_DESCENDANTS but is " + descendantFocusability);
+		}
+	}
+
+	protected boolean onRequestFocusInDescendants(int direction, Rect previouslyFocusedRect) {
+		int index;
+		int increment;
+		int end;
+		int count = children.size();
+		if ((direction & FOCUS_FORWARD) != 0) {
+			index = 0;
+			increment = 1;
+			end = count;
+		} else {
+			index = count - 1;
+			increment = -1;
+			end = -1;
+		}
+		for (int i = index; i != end; i += increment) {
+			View child = children.get(i);
+			if (child.getVisibility() == VISIBLE) {
+				if (child.requestFocus(direction, previouslyFocusedRect)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	@Override
+	void unFocus(View focused) {
+		if (focusedChild == null) {
+			super.unFocus(focused);
+		} else {
+			focusedChild.unFocus(focused);
+			focusedChild = null;
+		}
+	}
+
+	@Override
+	public void clearFocus() {
+		if (focusedChild == null) {
+			super.clearFocus();
+		} else {
+			View focused = focusedChild;
+			focusedChild = null;
+			focused.clearFocus();
+		}
+	}
+
+	@Override
+	public boolean hasFocus() {
+		return isFocused() || focusedChild != null;
+	}
+
+	@Override
+	public View findFocus() {
+		if (isFocused()) {
+			return this;
+		}
+		if (focusedChild != null) {
+			return focusedChild.findFocus();
+		}
+		return null;
+	}
+
+	@Override
+	public boolean hasFocusable() {
+		if (getVisibility() != VISIBLE)
+			return false;
+		if (super.hasFocusable())
+			return true;
+		if (getDescendantFocusability() != FOCUS_BLOCK_DESCENDANTS) {
+			for (View child : children) {
+				if (child.hasFocusable())
+					return true;
+			}
+		}
+		return false;
+	}
+
+	// the root of the view tree searches, as AOSP's DecorView (isRootNamespace) and ViewRootImpl do
+	public View focusSearch(View focused, int direction) {
+		if (parent instanceof ViewGroup) {
+			return parent.focusSearch(focused, direction);
+		}
+		return FocusFinder.getInstance().findNextFocus(this, focused, direction);
+	}
+
+	public void clearChildFocus(View child) {
+		focusedChild = null;
+		if (parent != null) {
+			parent.clearChildFocus(this);
+		}
+	}
+
+	@Override
+	public void addFocusables(ArrayList<View> views, int direction, int focusableMode) {
+		final int focusableCount = views.size();
+
+		final int descendantFocusability = getDescendantFocusability();
+		final boolean blockFocusForTouchscreen = shouldBlockFocusForTouchscreen();
+		final boolean focusSelf = (isFocusableInTouchMode() || !blockFocusForTouchscreen);
+
+		if (descendantFocusability == FOCUS_BLOCK_DESCENDANTS) {
+			if (focusSelf) {
+				super.addFocusables(views, direction, focusableMode);
+			}
+			return;
+		}
+
+		if (blockFocusForTouchscreen) {
+			focusableMode |= FOCUSABLES_TOUCH_MODE;
+		}
+
+		if ((descendantFocusability == FOCUS_BEFORE_DESCENDANTS) && focusSelf) {
+			super.addFocusables(views, direction, focusableMode);
+		}
+
+		int count = 0;
+		final View[] visible = new View[children.size()];
+		for (View child : children) {
+			if (child.getVisibility() == VISIBLE) {
+				visible[count++] = child;
+			}
+		}
+		FocusFinder.sort(visible, 0, count, this, isLayoutRtl());
+		for (int i = 0; i < count; ++i) {
+			visible[i].addFocusables(views, direction, focusableMode);
+		}
+
+		// When set to FOCUS_AFTER_DESCENDANTS, we only add ourselves if
+		// there aren't any focusable descendants.  this is
+		// to avoid the focus search finding layouts when a more precise search
+		// among the focusable children would be more interesting.
+		if ((descendantFocusability == FOCUS_AFTER_DESCENDANTS) && focusSelf
+		    && focusableCount == views.size()) {
+			super.addFocusables(views, direction, focusableMode);
+		}
+	}
+
+	@Override
+	public void addTouchables(ArrayList<View> views) {
+		super.addTouchables(views);
+		for (View child : children) {
+			if (child.getVisibility() == VISIBLE) {
+				child.addTouchables(views);
+			}
+		}
+	}
+
+	@Override
+	public void addKeyboardNavigationClusters(Collection<View> views, int direction) {
+		final int focusableCount = views.size();
+
+		super.addKeyboardNavigationClusters(views, direction);
+
+		if (focusableCount != views.size()) {
+			// No need to look for groups inside a group.
+			return;
+		}
+
+		if (getDescendantFocusability() == FOCUS_BLOCK_DESCENDANTS) {
+			return;
+		}
+
+		int count = 0;
+		final View[] visible = new View[children.size()];
+		for (View child : children) {
+			if (child.getVisibility() == VISIBLE) {
+				visible[count++] = child;
+			}
+		}
+		FocusFinder.sort(visible, 0, count, this, isLayoutRtl());
+		for (int i = 0; i < count; ++i) {
+			visible[i].addKeyboardNavigationClusters(views, direction);
+		}
+	}
+
+	private boolean shouldBlockFocusForTouchscreen() {
+		return getTouchscreenBlocksFocus() && getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+		    && !(isKeyboardNavigationCluster() && hasFocus());
+	}
+
+	@Override
+	View findViewWithNextFocusForward(int forwardId) {
+		View found = super.findViewWithNextFocusForward(forwardId);
+		for (int i = 0; found == null && i < children.size(); i++)
+			found = children.get(i).findViewWithNextFocusForward(forwardId);
+		return found;
+	}
+
+	public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
+		return false;
 	}
 
 	protected boolean isChildrenDrawingOrderEnabled() { return false; }
@@ -504,11 +1172,23 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		}
 	}
 
-	public void setTouchscreenBlocksFocus(boolean touchscreenBlocksFocus) {}
+	public void setTouchscreenBlocksFocus(boolean touchscreenBlocksFocus) {
+		this.touchscreenBlocksFocus = touchscreenBlocksFocus;
+	}
 
 	public void setClipChildren(boolean clipChildren) {}
 
-	protected void dispatchSetPressed(boolean pressed) {}
+	@Override
+	protected void dispatchSetPressed(boolean pressed) {
+		for (View child : children) {
+			// Children that are clickable on their own should not
+			// show a pressed state when their parent view does.
+			// Clearing a pressed state always propagates.
+			if (!pressed || (!child.isClickable() && !child.isLongClickable())) {
+				child.setPressed(pressed);
+			}
+		}
+	}
 
 	@Override
 	public View findViewWithTag(Object tag) {
@@ -534,7 +1214,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 	protected void cleanupLayoutState(View child) {}
 
-	public boolean shouldDelayChildPressedState() { return false; }
+	public boolean shouldDelayChildPressedState() { return true; }
 
 	public void removeAllViewsInLayout() {
 		for (int i = getChildCount() - 1; i >= 0; i--) {
@@ -552,6 +1232,11 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 
 	public final void offsetRectIntoDescendantCoords(View descendant, Rect rect) {
 		offsetRectBetweenParentAndChild(descendant, rect, false);
+	}
+
+	// clipToBounds isn't implemented: FocusFinder's touchable search is the only caller
+	void offsetRectBetweenParentAndChild(View descendant, Rect rect, boolean offsetFromChildToParent, boolean clipToBounds) {
+		offsetRectBetweenParentAndChild(descendant, rect, offsetFromChildToParent);
 	}
 
 	/* Copyright (C) 2006 The Android Open Source Project */
@@ -771,18 +1456,35 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		throw new UnsupportedOperationException("Unimplemented method 'onStopNestedScroll'");
 	}
 
-	public void requestChildFocus(View child, View focused) {}
+	public void requestChildFocus(View child, View focused) {
+		if (getDescendantFocusability() == FOCUS_BLOCK_DESCENDANTS) {
+			return;
+		}
+
+		// Unfocus us, if necessary
+		super.unFocus(focused);
+
+		// We had a previous notion of who had focus. Clear it.
+		if (focusedChild != child) {
+			if (focusedChild != null) {
+				focusedChild.unFocus(focused);
+			}
+
+			focusedChild = child;
+		}
+		if (parent != null) {
+			parent.requestChildFocus(this, focused);
+		}
+	}
 
 	public boolean getClipChildren() {
 		return false;
 	}
 
-	public native boolean native_dispatchTouchEvent(long widget, MotionEvent event, double x, double y);
-
 	@Override
 	public void onDescendantInvalidated(View child, View target) {}
 
-	public boolean getTouchscreenBlocksFocus() { return false; }
+	public boolean getTouchscreenBlocksFocus() { return touchscreenBlocksFocus; }
 
 	public ViewGroupOverlay getOverlay() {
 		if (viewGroupOverlay == null)

@@ -44,5 +44,9 @@ void gfx_drawable_ref(struct gfx_drawable *drawable);
 void gfx_drawable_unref(struct gfx_drawable *drawable);
 /* Its content changed: redraw what shows it. */
 void gfx_drawable_invalidate(struct gfx_drawable *drawable);
+/* A DrawableContainer (StateListDrawable, LevelListDrawable, AnimationDrawable): shows the child
+ * Java selects, held while selected; NULL: none. */
+struct gfx_drawable *gfx_container_new(void);
+void gfx_container_select(struct gfx_drawable *container, struct gfx_drawable *child);
 
 #endif

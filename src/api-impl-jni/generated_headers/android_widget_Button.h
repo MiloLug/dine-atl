@@ -13,6 +13,8 @@ extern "C" {
 #define android_widget_Button_NOT_FOCUSABLE 0L
 #undef android_widget_Button_FOCUSABLE
 #define android_widget_Button_FOCUSABLE 1L
+#undef android_widget_Button_FOCUSABLE_AUTO
+#define android_widget_Button_FOCUSABLE_AUTO 16L
 #undef android_widget_Button_FOCUSABLE_MASK
 #define android_widget_Button_FOCUSABLE_MASK 1L
 #undef android_widget_Button_FITS_SYSTEM_WINDOWS
@@ -228,14 +230,6 @@ JNIEXPORT jlong JNICALL Java_android_widget_Button_native_1constructor
  */
 JNIEXPORT void JNICALL Java_android_widget_Button_native_1setText
   (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_widget_Button
- * Method:    nativeSetOnClickListener
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_widget_Button_nativeSetOnClickListener
-  (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     android_widget_Button

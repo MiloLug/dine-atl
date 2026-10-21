@@ -1,5 +1,7 @@
 package android.content;
 
+import android.view.KeyEvent;
+
 public interface DialogInterface {
 	/** The identifier for the positive button. */
 	int BUTTON_POSITIVE = -1;
@@ -27,5 +29,6 @@ public interface DialogInterface {
 	public interface OnMultiChoiceClickListener {
 	}
 	public interface OnKeyListener {
+		boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event);
 	}
 }

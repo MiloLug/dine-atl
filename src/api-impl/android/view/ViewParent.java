@@ -1,5 +1,7 @@
 package android.view;
 
+import android.graphics.Rect;
+
 public interface ViewParent {
 	public abstract ViewParent getParent();
 
@@ -24,4 +26,14 @@ public interface ViewParent {
 	public void onDescendantInvalidated(View child, View target);
 
 	public void requestLayout();
+
+	public void requestChildFocus(View child, View focused);
+
+	public void clearChildFocus(View child);
+
+	public View focusSearch(View v, int direction);
+
+	public void focusableViewAvailable(View v);
+
+	public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate);
 }
