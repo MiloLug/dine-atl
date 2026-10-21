@@ -3,10 +3,16 @@ package android.view;
 import android.R;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Insets;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.transition.Transition;
 import android.widget.FrameLayout;
 import android.widget.Toolbar;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Window {
 	public static final int FEATURE_OPTIONS_PANEL = 0;
@@ -188,6 +194,82 @@ public class Window {
 		return light_status_bar;
 	}
 
+	WindowInsets rootInsets = new WindowInsets();
+	private boolean insets_requested;
+
+	// activity.c calls it when the activity is shown and when the host's insets change
+	private void dispatchInsets() {
+		insets_requested = false;
+		int[] px = get_insets(); // system gestures, mandatory system gestures, navigation bars: l t r b
+		rootInsets = new WindowInsets.Builder()
+		                 .setInsets(WindowInsets.Type.systemGestures(), Insets.of(px[0], px[1], px[2], px[3]))
+		                 .setInsets(WindowInsets.Type.mandatorySystemGestures(), Insets.of(px[4], px[5], px[6], px[7]))
+		                 .setInsets(WindowInsets.Type.navigationBars(), Insets.of(px[8], px[9], px[10], px[11]))
+		                 .build();
+		decorView.dispatchApplyWindowInsets(rootInsets);
+		decorView.requestLayout();
+	}
+
+	void requestInsets() {
+		if (insets_requested)
+			return;
+		insets_requested = true;
+		new Handler(Looper.getMainLooper()).post(new Runnable() {
+			@Override
+			public void run() {
+				dispatchInsets();
+			}
+		});
+	}
+
+	private final ArrayList<View> exclusion_views = new ArrayList<View>();
+	private int[] exclusion_rects = new int[0]; // px in the window, left top right bottom per rect
+
+	// an attached view in this window has gesture exclusion rects, or no longer
+	void exclusionViewChanged(View view, boolean excludes) {
+		exclusion_views.remove(view);
+		if (excludes)
+			exclusion_views.add(view);
+		updateExclusion();
+	}
+
+	private static boolean shown(View view) {
+		for (View v = view; v != null; v = v.parent instanceof View ? (View)v.parent : null) {
+			if (v.getVisibility() != View.VISIBLE)
+				return false;
+		}
+		return true;
+	}
+
+	// a move without a layout (scroll, translation) keeps the old rects until the next layout
+	void updateExclusion() {
+		ArrayList<View> views = new ArrayList<View>();
+		int count = 0;
+		for (View view : exclusion_views) {
+			if (shown(view)) {
+				views.add(view);
+				count += view.getSystemGestureExclusionRects().size();
+			}
+		}
+		int[] rects = new int[count * 4];
+		int i = 0;
+		int[] location = new int[2];
+		for (View view : views) {
+			view.getLocationInWindow(location);
+			for (Rect rect : view.getSystemGestureExclusionRects()) {
+				rects[i++] = location[0] + rect.left;
+				rects[i++] = location[1] + rect.top;
+				rects[i++] = location[0] + rect.right;
+				rects[i++] = location[1] + rect.bottom;
+			}
+		}
+		if (Arrays.equals(rects, exclusion_rects))
+			return;
+		exclusion_rects = rects;
+		if (bars_styled) // else the show sends them, with the frame
+			set_exclusion_rects(rects);
+	}
+
 	private int views_keeping_screen_on;
 	void viewKeepsScreenOn(boolean keeps) {
 		views_keeping_screen_on += keeps ? 1 : -1;
@@ -226,6 +308,7 @@ public class Window {
 		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
 		          view_fullscreen || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0);
 		set_keep_screen_on(views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
+		set_exclusion_rects(exclusion_rects);
 	}
 
 	// before styleBars the activity's show publishes the frame
@@ -296,5 +379,7 @@ public class Window {
 	private native void clear_background(long native_window);
 	private native void set_frame(boolean has_color, int color, boolean light, boolean fullscreen);
 	private native void set_keep_screen_on(boolean keep);
+	private native void set_exclusion_rects(int[] rects);
+	private static native int[] get_insets();
 	private native void set_screen_brightness(float brightness);
 }

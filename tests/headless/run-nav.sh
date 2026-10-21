@@ -3,7 +3,9 @@
 # -c commands in the headless build: Back finishes B, Back on the task root A moves the task to the
 # back, front and home move it again. A's list, shown while the task is in the back, appears only on
 # front and closes and comes back with the task. The window's frame follows the shown activity: A's
-# theme color; none for B, which clears the theme's flag, until B draws its own. Each command's
+# theme color; none for B, which clears the theme's flag, until B draws its own. Each show logs the
+# insets the content gets; B's exclusion rect reaches the host once the insets give the right edge a
+# gesture strip, and A, which has none, clears it. Each command's
 # lifecycle, dialog, host and window lines must come in order; a command that must do nothing is
 # checked by the next command's lines coming first.
 # Usage: run-nav.sh <headless build dir> <nav.apk>
@@ -52,25 +54,33 @@ send() {
 }
 
 a_frame='window: frame #ff1a1b20' # Theme.DeviceDefault's colorPrimaryDark
-expect "nav: A onCreate" "nav: A onStart" "$a_frame" "nav: A onResume" "nav: A onPause" "nav: A onStop" \
-  "nav: B onCreate" "nav: B onStart" "window: frame none" "nav: B onResume" "window: frame #ff2196f3 light"
+none='0 0 0 0 0 0 0 0 0 0 0 0'
+expect "nav: A onCreate" "nav: A onStart" "$a_frame" "nav: A insets $none" "nav: A onResume" "nav: A onPause" "nav: A onStop" \
+  "nav: B onCreate" "nav: B onStart" "window: frame none" "nav: B insets $none" "nav: B onResume" "window: frame #ff2196f3 light"
+# dp = px at the default density: 20 dp side strips, 10 dp top and bottom, mandatory top and bottom,
+# a 10 dp navigation bar. B's rects merge to 200-520, cut to 530 by the bottom strip and to the
+# bottom-most 200 dp.
+insets='20 10 20 10 0 10 0 10 0 0 0 10'
+send "insets $insets"
+expect "nav: B insets $insets" "host: exclusion left - right 320-520"
 send back
-expect "nav: B onPause" "nav: B onStop" "nav: A onRestart" "nav: A onStart" "$a_frame" "nav: A onResume" "nav: B onDestroy"
+expect "nav: B onPause" "nav: B onStop" "nav: A onRestart" "nav: A onStart" "$a_frame" "host: exclusion left - right -" \
+  "nav: A insets $insets" "nav: A onResume" "nav: B onDestroy"
 send back # the task root: the task moves to the back
 expect "nav: A onPause" "nav: A onStop" "host: task back app"
 send back # nothing while in the back
 send front
-expect "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
+expect "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
 send front # nothing while in front
 send home # A shows its list in onStop
 expect "nav: A onPause" "nav: A onStop" "host: task back host"
 list='dialog: show title="Nav list" items="Close","Odd ��😀��" cancelable'
 send front
-expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
+expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
 send home
 expect "dialog: close" "nav: A onPause" "nav: A onStop" "host: task back host"
 send front
-expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A onResume" "host: task front host"
+expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
 
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true

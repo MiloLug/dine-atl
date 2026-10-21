@@ -97,6 +97,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_widget_ImageView.c',
 	'src/shared/android_widget_ProgressBar.c',
 	'src/shared/android_widget_TextView.c',
+	'src/shared/insets.c',
 	'src/shared/startup.c',
 	'src/shared/upcall.c',
 ] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],

@@ -52,6 +52,12 @@ void host_task_moved(bool front, bool by_host)
 		listener->task_moved(listener->context, front, by_host);
 }
 
+void host_gesture_exclusion_changed(const struct atl_gesture_exclusion *exclusion)
+{
+	if (listener && listener->exclusion_changed)
+		listener->exclusion_changed(listener->context, exclusion);
+}
+
 void host_keep_screen_on(bool on)
 {
 	if (listener && listener->keep_screen_on)

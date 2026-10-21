@@ -224,6 +224,20 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		}
 	}
 
+	// before API 30 (ATL's level): the children until one consumes all
+	@Override
+	public WindowInsets dispatchApplyWindowInsets(WindowInsets insets) {
+		insets = super.dispatchApplyWindowInsets(insets);
+		if (!insets.isConsumed()) {
+			for (View child : new ArrayList<View>(children)) {
+				insets = child.dispatchApplyWindowInsets(insets);
+				if (insets.isConsumed())
+					break;
+			}
+		}
+		return insets;
+	}
+
 	@Override
 	public void dispatchAttachedToWindow() {
 		if (attachedToWindow)

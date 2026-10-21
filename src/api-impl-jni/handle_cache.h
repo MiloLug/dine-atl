@@ -104,6 +104,7 @@ struct handle_cache {
 	struct {
 		jclass class;
 		jmethodID updateFrame;
+		jmethodID dispatchInsets;
 	} window;
 	struct {
 		jclass class;

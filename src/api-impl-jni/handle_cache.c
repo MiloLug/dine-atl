@@ -102,6 +102,7 @@ void set_up_handle_cache(JNIEnv *env)
 
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));
 	handle_cache.window.updateFrame = _METHOD(handle_cache.window.class, "updateFrame", "()V");
+	handle_cache.window.dispatchInsets = _METHOD(handle_cache.window.class, "dispatchInsets", "()V");
 
 	handle_cache.asset_manager.class = _REF((*env)->FindClass(env, "android/content/res/AssetManager"));
 	handle_cache.asset_manager.extractFromAPK = _STATIC_METHOD(handle_cache.asset_manager.class, "extractFromAPK", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");

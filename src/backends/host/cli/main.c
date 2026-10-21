@@ -19,6 +19,15 @@
 
 #define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY | --instrument CLASS] [-X JVM_OPTION]... APK...\n"
 
+// "insets" and 12 dp: system gestures, mandatory gestures, navigation bars, each left top right bottom
+static bool parse_insets(const char *line, struct atl_window_insets *insets)
+{
+	struct atl_edges *e[] = {&insets->system_gestures, &insets->mandatory_gestures, &insets->navigation_bars};
+	return sscanf(line, "insets %f %f %f %f %f %f %f %f %f %f %f %f",
+	              &e[0]->left, &e[0]->top, &e[0]->right, &e[0]->bottom, &e[1]->left, &e[1]->top, &e[1]->right, &e[1]->bottom,
+	              &e[2]->left, &e[2]->top, &e[2]->right, &e[2]->bottom) == 12;
+}
+
 // -c: system navigation from stdin, one command per line; the loop slot has no fd watch
 static void *read_commands(void *data)
 {
@@ -26,14 +35,17 @@ static void *read_commands(void *data)
 	size_t size = 0;
 	while (getline(&line, &size, stdin) != -1) {
 		line[strcspn(line, "\n")] = '\0';
+		struct atl_window_insets insets;
 		if (!strcmp(line, "back"))
 			atl_nav_back();
 		else if (!strcmp(line, "home"))
 			atl_nav_home();
 		else if (!strcmp(line, "front"))
 			atl_nav_front();
+		else if (parse_insets(line, &insets))
+			atl_nav_set_insets(&insets);
 		else
-			fprintf(stderr, "commands: back, home, front; not \"%s\"\n", line);
+			fprintf(stderr, "commands: back, home, front, insets <12 dp>; not \"%s\"\n", line);
 	}
 	free(line);
 	return NULL;

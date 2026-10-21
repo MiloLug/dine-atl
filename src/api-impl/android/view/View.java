@@ -18,6 +18,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -49,7 +50,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -719,7 +722,7 @@ public class View implements Drawable.Callback {
 	}
 
 	public interface OnApplyWindowInsetsListener {
-		// TODO
+		public WindowInsets onApplyWindowInsets(View v, WindowInsets insets);
 	}
 
 	public interface OnLayoutChangeListener {
@@ -1057,6 +1060,7 @@ public class View implements Drawable.Callback {
 		if (a.hasValue(com.android.internal.R.styleable.View_focusable)) {
 			atl_focusable = a.getBoolean(com.android.internal.R.styleable.View_focusable, true);
 		}
+		fitsSystemWindows = a.getBoolean(com.android.internal.R.styleable.View_fitsSystemWindows, false);
 		if (a.hasValue(com.android.internal.R.styleable.View_visibility)) {
 			visibility = VISIBILITY_FLAGS[a.getInt(com.android.internal.R.styleable.View_visibility, 0)];
 			native_setVisibility(widget, visibility, alpha, atl_enabled);
@@ -1706,6 +1710,8 @@ public class View implements Drawable.Callback {
 		}
 		oldWidth = width;
 		oldHeight = height;
+		if (decor_window != null) // the root: the window's views have their frames
+			decor_window.updateExclusion();
 	}
 
 	/** Prefill the measureSpec cache, so that AndroidLayout can use it from native code if GTK measure spec is incomplete */
@@ -1752,7 +1758,10 @@ public class View implements Drawable.Callback {
 
 	public int getOverScrollMode() { return 0; }
 
-	public void setFitsSystemWindows(boolean fitsSystemWindows) {}
+	private boolean fitsSystemWindows;
+	public void setFitsSystemWindows(boolean fitsSystemWindows) {
+		this.fitsSystemWindows = fitsSystemWindows;
+	}
 
 	public void setWillNotDraw(boolean value) {}
 
@@ -2042,9 +2051,27 @@ public class View implements Drawable.Callback {
 		return importantForAccessibility;
 	}
 
-	public boolean getFitsSystemWindows() { return true; }
+	public boolean getFitsSystemWindows() {
+		return fitsSystemWindows;
+	}
 
-	public void setOnApplyWindowInsetsListener(View.OnApplyWindowInsetsListener l) {}
+	private OnApplyWindowInsetsListener onApplyWindowInsetsListener;
+	public void setOnApplyWindowInsetsListener(View.OnApplyWindowInsetsListener l) {
+		onApplyWindowInsetsListener = l;
+	}
+
+	public WindowInsets dispatchApplyWindowInsets(WindowInsets insets) {
+		if (onApplyWindowInsetsListener != null)
+			return onApplyWindowInsetsListener.onApplyWindowInsets(this, insets);
+		return onApplyWindowInsets(insets);
+	}
+
+	protected boolean fitSystemWindows(Rect insets) {
+		if (!fitsSystemWindows)
+			return false;
+		setPadding(insets.left, insets.top, insets.right, insets.bottom);
+		return true;
+	}
 
 	public final boolean isFocusable() { return atl_focusable; }
 	public boolean isClickable() { return true; }
@@ -2108,6 +2135,8 @@ public class View implements Drawable.Callback {
 		}
 		if (keepScreenOn)
 			windowKeepsScreenOn(true);
+		if (attachedWindow != null && !systemGestureExclusionRects.isEmpty())
+			attachedWindow.exclusionViewChanged(this, true);
 		onAttachedToWindow();
 		if (onAttachStateChangeListener != null)
 			onAttachStateChangeListener.onViewAttachedToWindow(this);
@@ -2122,11 +2151,31 @@ public class View implements Drawable.Callback {
 			onAttachStateChangeListener.onViewDetachedFromWindow(this);
 		if (keepScreenOn)
 			windowKeepsScreenOn(false);
+		if (attachedWindow != null && !systemGestureExclusionRects.isEmpty())
+			attachedWindow.exclusionViewChanged(this, false);
 		attachedToWindow = false;
 		attachedWindow = null;
 	}
 
-	public void requestApplyInsets() {}
+	public void requestApplyInsets() {
+		if (attachedWindow != null)
+			attachedWindow.requestInsets();
+	}
+
+	private List<Rect> systemGestureExclusionRects = Collections.emptyList();
+	public void setSystemGestureExclusionRects(List<Rect> rects) {
+		boolean had = !systemGestureExclusionRects.isEmpty();
+		ArrayList<Rect> copy = new ArrayList<Rect>(rects.size());
+		for (Rect rect : rects)
+			copy.add(new Rect(rect));
+		systemGestureExclusionRects = copy;
+		if (attachedWindow != null && (had || !copy.isEmpty()))
+			attachedWindow.exclusionViewChanged(this, !copy.isEmpty());
+	}
+
+	public List<Rect> getSystemGestureExclusionRects() {
+		return Collections.unmodifiableList(systemGestureExclusionRects);
+	}
 
 	public View getRootView() {
 		View view = this;
@@ -2458,7 +2507,9 @@ public class View implements Drawable.Callback {
 			return false;
 	}
 
-	public WindowInsets getRootWindowInsets() { return new WindowInsets(); }
+	public WindowInsets getRootWindowInsets() {
+		return attachedWindow != null ? attachedWindow.rootInsets : null;
+	}
 
 	public PointerIcon getPointerIcon() { return null; }
 
@@ -2523,7 +2574,11 @@ public class View implements Drawable.Callback {
 
 	public void setAccessibilityHeading(boolean heading) {}
 
-	public WindowInsets computeSystemWindowInsets(WindowInsets insets, Rect contentInsets) { return insets; }
+	public WindowInsets computeSystemWindowInsets(WindowInsets insets, Rect contentInsets) {
+		Insets system = insets.getSystemWindowInsets();
+		contentInsets.set(system.left, system.top, system.right, system.bottom);
+		return insets.consumeSystemWindowInsets();
+	}
 
 	public boolean isDuplicateParentStateEnabled() { return false; }
 
@@ -2674,6 +2729,9 @@ public class View implements Drawable.Callback {
 	public ArrayList<View> getFocusables(int direction) { return new ArrayList<View>(); }
 
 	public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+		Insets system = insets.getSystemWindowInsets();
+		if (fitSystemWindows(new Rect(system.left, system.top, system.right, system.bottom)))
+			return insets.consumeSystemWindowInsets();
 		return insets;
 	}
 

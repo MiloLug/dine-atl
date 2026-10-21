@@ -61,6 +61,22 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on
 
 /*
  * Class:     android_view_Window
+ * Method:    set_exclusion_rects
+ * Signature: ([I)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects
+  (JNIEnv *, jobject, jintArray);
+
+/*
+ * Class:     android_view_Window
+ * Method:    get_insets
+ * Signature: ()[I
+ */
+JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     android_view_Window
  * Method:    set_screen_brightness
  * Signature: (F)V
  */

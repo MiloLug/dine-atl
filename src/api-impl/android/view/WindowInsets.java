@@ -7,58 +7,129 @@ import java.util.List;
 
 public class WindowInsets {
 
-	public static final WindowInsets CONSUMED = new WindowInsets();
+	public static final WindowInsets CONSUMED = new WindowInsets(null, null);
 
-	public WindowInsets() {}
+	// the system window insets of Android before API 30: these bars
+	private static final int SYSTEM_WINDOW = Type.STATUS_BARS | Type.NAVIGATION_BARS | Type.CAPTION_BAR;
 
-	public WindowInsets(WindowInsets windowInsets) {}
+	/* by Type.indexOf, null entries are Insets.NONE; as AOSP 10: a null map is consumed, and
+	 * consuming the system window insets drops every type's */
+	private final Insets[] typeInsets;
+	private final Insets[] maxInsets; // the stable insets' source
+
+	private WindowInsets(Insets[] typeInsets, Insets[] maxInsets) {
+		this.typeInsets = typeInsets;
+		this.maxInsets = maxInsets;
+	}
+
+	public WindowInsets() {
+		this(new Insets[Type.SIZE], new Insets[Type.SIZE]);
+	}
+
+	public WindowInsets(WindowInsets windowInsets) {
+		this(windowInsets.typeInsets, windowInsets.maxInsets);
+	}
 
 	public WindowInsets consumeStableInsets() {
-		return this;
+		return new WindowInsets(typeInsets, null);
 	}
 
 	public WindowInsets consumeSystemWindowInsets() {
-		return this;
+		return new WindowInsets(null, maxInsets);
 	}
 
+	// consumed insets stay consumed, as on AOSP 10
 	public WindowInsets replaceSystemWindowInsets(int left, int top, int right, int bottom) {
-		return this;
+		if (typeInsets == null)
+			return this;
+		return new Builder(this).setSystemWindowInsets(Insets.of(left, top, right, bottom)).build();
+	}
+
+	public WindowInsets replaceSystemWindowInsets(Rect systemWindowInsets) {
+		return replaceSystemWindowInsets(systemWindowInsets.left, systemWindowInsets.top, systemWindowInsets.right, systemWindowInsets.bottom);
+	}
+
+	public Insets getSystemWindowInsets() {
+		return getInsets(SYSTEM_WINDOW);
 	}
 
 	public int getSystemWindowInsetLeft() {
-		return 0;
+		return getSystemWindowInsets().left;
 	}
 
 	public int getSystemWindowInsetTop() {
-		return 0;
+		return getSystemWindowInsets().top;
 	}
 
 	public int getSystemWindowInsetRight() {
-		return 0;
+		return getSystemWindowInsets().right;
 	}
 
 	public int getSystemWindowInsetBottom() {
-		return 0;
+		return getSystemWindowInsets().bottom;
+	}
+
+	public boolean hasSystemWindowInsets() {
+		return !getSystemWindowInsets().equals(Insets.NONE);
+	}
+
+	public Insets getStableInsets() {
+		return max(maxInsets, SYSTEM_WINDOW);
 	}
 
 	public int getStableInsetLeft() {
-		return 0;
+		return getStableInsets().left;
 	}
 
 	public int getStableInsetTop() {
-		return 0;
+		return getStableInsets().top;
 	}
 
 	public int getStableInsetRight() {
-		return 0;
+		return getStableInsets().right;
 	}
 
 	public int getStableInsetBottom() {
-		return 0;
+		return getStableInsets().bottom;
+	}
+
+	public boolean hasStableInsets() {
+		return !getStableInsets().equals(Insets.NONE);
+	}
+
+	public Insets getSystemGestureInsets() {
+		return getInsets(Type.SYSTEM_GESTURES);
+	}
+
+	public Insets getMandatorySystemGestureInsets() {
+		return getInsets(Type.MANDATORY_SYSTEM_GESTURES);
+	}
+
+	public Insets getTappableElementInsets() {
+		return getInsets(Type.TAPPABLE_ELEMENT);
+	}
+
+	public boolean hasInsets() {
+		return !getInsets(~0).equals(Insets.NONE) || !getStableInsets().equals(Insets.NONE);
+	}
+
+	private static Insets max(Insets[] map, int typeMask) {
+		Insets result = Insets.NONE;
+		for (int i = 0; map != null && i < Type.SIZE; i++) {
+			if ((typeMask & (1 << i)) != 0 && map[i] != null)
+				result = Insets.max(result, map[i]);
+		}
+		return result;
 	}
 
 	public Insets getInsets(int typeMask) {
-		return Insets.NONE;
+		return max(typeInsets, typeMask);
+	}
+
+	public Insets getInsetsIgnoringVisibility(int typeMask) {
+		if ((typeMask & Type.IME) != 0)
+			throw new IllegalArgumentException("Unable to query the maximum insets for IME");
+		return max(maxInsets, typeMask);
 	}
 
 	public DisplayCutout getDisplayCutout() {
@@ -70,45 +141,72 @@ public class WindowInsets {
 	}
 
 	public boolean isConsumed() {
-		return false;
+		return typeInsets == null && maxInsets == null;
 	}
 
+	// every type but the IME (there is none) is shown
 	public boolean isVisible(int typeMask) {
-		return false;
+		return (typeMask & Type.IME) == 0;
 	}
 
 	public WindowInsets consumeDisplayCutout() {
 		return this;
 	}
 
+	// a Builder's maps stay consumed (null) until something is set, as on AOSP 10
 	public static final class Builder {
+		private Insets[] typeInsets;
+		private Insets[] maxInsets;
 
 		public Builder() {}
 
-		public Builder(WindowInsets insets) {}
+		public Builder(WindowInsets insets) {
+			typeInsets = insets.typeInsets != null ? insets.typeInsets.clone() : null;
+			maxInsets = insets.maxInsets != null ? insets.maxInsets.clone() : null;
+		}
 
+		private static Insets[] set(Insets[] map, int typeMask, Insets insets) {
+			if (map == null)
+				map = new Insets[Type.SIZE];
+			for (int i = 0; i < Type.SIZE; i++) {
+				if ((typeMask & (1 << i)) != 0)
+					map[i] = insets;
+			}
+			return map;
+		}
+
+		/* Copyright (C) 2019 The Android Open Source Project */
 		public Builder setSystemWindowInsets(Insets systemWindowInsets) {
+			typeInsets = set(typeInsets, Type.STATUS_BARS, Insets.of(0, systemWindowInsets.top, 0, 0));
+			typeInsets = set(typeInsets, Type.NAVIGATION_BARS, Insets.of(systemWindowInsets.left, 0, systemWindowInsets.right, systemWindowInsets.bottom));
+			typeInsets = set(typeInsets, Type.CAPTION_BAR, null);
 			return this;
 		}
 
 		public Builder setSystemGestureInsets(Insets insets) {
-			return this;
+			return setInsets(Type.SYSTEM_GESTURES, insets);
 		}
 
 		public Builder setMandatorySystemGestureInsets(Insets insets) {
-			return this;
+			return setInsets(Type.MANDATORY_SYSTEM_GESTURES, insets);
 		}
 
 		public Builder setTappableElementInsets(Insets insets) {
-			return this;
+			return setInsets(Type.TAPPABLE_ELEMENT, insets);
 		}
 
+		// the bars never hide: an inset is also its maximum
 		public Builder setInsets(int typeMask, Insets insets) {
+			typeInsets = set(typeInsets, typeMask, insets);
+			maxInsets = set(maxInsets, typeMask, insets);
 			return this;
 		}
 
 		public Builder setInsetsIgnoringVisibility(int typeMask, Insets insets)
 		    throws IllegalArgumentException {
+			if ((typeMask & Type.IME) != 0)
+				throw new IllegalArgumentException("Maximum inset not available for IME");
+			maxInsets = set(maxInsets, typeMask, insets);
 			return this;
 		}
 
@@ -117,6 +215,8 @@ public class WindowInsets {
 		}
 
 		public Builder setStableInsets(Insets stableInsets) {
+			maxInsets = set(maxInsets, Type.STATUS_BARS, Insets.of(0, stableInsets.top, 0, 0));
+			maxInsets = set(maxInsets, Type.NAVIGATION_BARS, Insets.of(stableInsets.left, 0, stableInsets.right, stableInsets.bottom));
 			return this;
 		}
 
@@ -153,7 +253,7 @@ public class WindowInsets {
 		}
 
 		public WindowInsets build() {
-			return new WindowInsets();
+			return new WindowInsets(typeInsets != null ? typeInsets.clone() : null, maxInsets != null ? maxInsets.clone() : null);
 		}
 	}
 

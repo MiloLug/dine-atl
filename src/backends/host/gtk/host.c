@@ -11,6 +11,9 @@ bool host_task_to_back(void)
 
 void host_task_moved(bool front, bool by_host) {}
 
+// a desktop window has no gesture strips
+void host_gesture_exclusion_changed(const struct atl_gesture_exclusion *exclusion) {}
+
 void host_keep_screen_on(bool on)
 {
 	static guint cookie;
