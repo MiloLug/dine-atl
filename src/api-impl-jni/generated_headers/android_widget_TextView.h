@@ -277,6 +277,14 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setCompoundDrawables
   (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jlong);
 
+/*
+ * Class:     android_widget_TextView
+ * Method:    native_setSelectable
+ * Signature: (Z)V
+ */
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setSelectable
+  (JNIEnv *, jobject, jboolean);
+
 #ifdef __cplusplus
 }
 #endif

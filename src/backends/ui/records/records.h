@@ -14,11 +14,12 @@
 struct atl_ref;
 struct atl_touch;
 struct atl_key;
+struct atl_edit_report;
 struct ui_dialog_state;
 
 enum node_kind {
 	NODE_VIEW, // ui_view_new: laid out by Java
-	NODE_TEXT, // ui_text_new, ui_button_new: measured by the backend
+	NODE_TEXT, // ui_text_new, ui_button_new, ui_edit_new: measured by the backend
 	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5
 	NODE_PROGRESS, // ui_progress_new
 	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
@@ -40,6 +41,11 @@ struct ui_view {
 	bool is_button;  // ui_button_new: button, pressed and checked mean something
 	enum ui_button button;
 	bool pressed, checked;
+	bool edit;              // ui_edit_new: text and selection are the field's, as last known here
+	int sel_start, sel_end; // UTF-16 code units
+	uint32_t edit_seq;      // headless: the field's last report; uikit counts on UIKit's thread
+	struct ui_edit_config edit_config; // hint: owned
+	bool selectable;
 	int visibility;  // UI_VIEW_VISIBLE, INVISIBLE or GONE
 	float alpha;
 	bool enabled;
@@ -93,6 +99,16 @@ void records_progress_changed(struct ui_view *view);   // NODE_PROGRESS: fractio
 void records_text_changed(struct ui_view *view); // text, size, style or alignment
 void records_button_changed(struct ui_view *view); // pressed or checked
 void records_text_color_changed(struct ui_view *view, uint32_t argb);
+void records_selectable_changed(struct ui_view *view);
+// edit nodes only
+void records_edit_config_changed(struct ui_view *view);
+/* Java's snapshot (ui_edit_set_state); the backend puts it in the record with records_edit_set, at
+ * once (uikit: a dropped one is followed by the newer report) or once its field takes it. */
+void records_edit_state_changed(struct ui_view *view, const char *text, int start, int end, uint32_t ack);
+void records_edit_set(struct ui_view *view, const char *text, int start, int end);
+bool records_edit_keyboard(struct ui_view *view, bool shown);
+/* On the Android main thread: the field's report goes into the record, then to Java. */
+void records_edit_report(struct ui_view *view, const struct atl_edit_report *report);
 /* ui_dialog_free's part: the window's observations wait for their ui_window_unobserve. */
 void records_observations_orphan(struct ui_window *window);
 /* The text's size in px within max_width (-1: unbounded), without padding. */

@@ -243,7 +243,7 @@ void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated)
 	records_scroll_changed(view, animated);
 }
 
-// focus is Java's; no toolkit widget here edits text yet
+// focus is Java's; a field's input target follows ui_edit_set_keyboard
 void ui_view_set_focused(struct ui_view *view, bool focused) {}
 
 void ui_view_add_child(struct ui_view *parent, struct ui_view *child, int index)
@@ -289,6 +289,7 @@ void ui_view_free(struct ui_view *view)
 	free(view->children); // the children may be freed already
 	free(view->class_name);
 	free(view->text);
+	free((char *)view->edit_config.hint);
 	set_background(view, NULL);
 	hold(&view->image, NULL);
 	atl_ref_free(view->ref);
@@ -402,6 +403,8 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 
 void ui_text_set_text(struct ui_view *view, const char *text)
 {
+	if (view->edit)
+		return;
 	free(view->text);
 	view->text = strdup(text);
 	if (view->kind == NODE_TEXT)
@@ -430,7 +433,8 @@ void ui_text_set_style(struct ui_view *view, int style)
 
 void ui_text_set_markup(struct ui_view *view, bool markup)
 {
-	view->markup = markup;
+	if (!view->edit)
+		view->markup = markup;
 }
 
 void ui_text_set_alignment(struct ui_view *view, int alignment)
@@ -438,6 +442,14 @@ void ui_text_set_alignment(struct ui_view *view, int alignment)
 	view->alignment = alignment;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
+}
+
+void ui_text_set_selectable(struct ui_view *view, bool selectable)
+{
+	if (view->kind != NODE_TEXT || view->is_button || view->edit || view->selectable == selectable)
+		return;
+	view->selectable = selectable;
+	records_selectable_changed(view);
 }
 
 // Java holds the drawables; nothing draws them before M5
@@ -495,4 +507,49 @@ void ui_progress_set_indeterminate(struct ui_view *view, bool indeterminate)
 {
 	view->indeterminate = indeterminate;
 	records_progress_changed(view);
+}
+
+struct ui_view *ui_edit_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
+{
+	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name);
+	view->edit = true;
+	return created(view);
+}
+
+void ui_edit_set_config(struct ui_view *view, const struct ui_edit_config *config)
+{
+	free((char *)view->edit_config.hint);
+	view->edit_config = *config;
+	view->edit_config.hint = config->hint ? strdup(config->hint) : NULL;
+	records_edit_config_changed(view);
+	ui_view_request_layout(view); // the hint and the line count measure
+}
+
+void records_edit_set(struct ui_view *view, const char *text, int start, int end)
+{
+	if (strcmp(view->text, text)) {
+		free(view->text);
+		view->text = strdup(text);
+		ui_view_request_layout(view);
+	}
+	view->sel_start = start;
+	view->sel_end = end;
+}
+
+void ui_edit_set_state(struct ui_view *view, const char *text, int start, int end, uint32_t ack)
+{
+	records_edit_state_changed(view, text, start, end, ack);
+}
+
+bool ui_edit_set_keyboard(struct ui_view *view, bool shown)
+{
+	return records_edit_keyboard(view, shown);
+}
+
+void records_edit_report(struct ui_view *view, const struct atl_edit_report *report)
+{
+	if (!view->ref) // freed; its record waits for this post to pass
+		return;
+	records_edit_set(view, report->text, report->start, report->end);
+	atl_upcall_edit_report(view->ref, report);
 }

@@ -57,3 +57,8 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setCompoundDrawables
 {
 	ui_text_set_drawables(_PTR(widget_ptr), _PTR(left), _PTR(top), _PTR(right), _PTR(bottom));
 }
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setSelectable(JNIEnv *env, jobject this, jboolean selectable)
+{
+	ui_text_set_selectable(text_view(env, this), selectable);
+}

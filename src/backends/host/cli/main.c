@@ -60,6 +60,58 @@ static bool parse_key(const char *line)
 	return true;
 }
 
+// "\n" a newline, "\\" a backslash
+static char *unescape(const char *text)
+{
+	char *out = malloc(strlen(text) + 1), *o = out;
+	for (; *text; text++) {
+		if (*text == '\\' && (text[1] == 'n' || text[1] == '\\'))
+			*o++ = *++text == 'n' ? '\n' : '\\';
+		else
+			*o++ = *text;
+	}
+	*o = '\0';
+	return out;
+}
+
+/* "text commit|compose <text>", "text delete <before> <after>", "text select <start> <end>",
+ * "text tap <x> <y>", "text action|dismiss|hold|release": the keyboard's field, UTF-16 positions */
+static bool parse_text(const char *line)
+{
+	static const struct {
+		const char *name;
+		enum headless_text_what what;
+	} kinds[] = {
+		{"commit ", HEADLESS_TEXT_COMMIT}, {"compose ", HEADLESS_TEXT_COMPOSE}, {"delete ", HEADLESS_TEXT_DELETE}, {"select ", HEADLESS_TEXT_SELECT},
+		{"tap ", HEADLESS_TEXT_TAP}, {"action", HEADLESS_TEXT_ACTION}, {"dismiss", HEADLESS_TEXT_DISMISS}, {"hold", HEADLESS_TEXT_HOLD},
+		{"release", HEADLESS_TEXT_RELEASE},
+	};
+	if (strncmp(line, "text ", 5))
+		return false;
+	line += 5;
+	for (size_t i = 0; i < sizeof(kinds) / sizeof(*kinds); i++) {
+		size_t length = strlen(kinds[i].name);
+		if (strncmp(line, kinds[i].name, length) || (kinds[i].name[length - 1] != ' ' && line[length]))
+			continue;
+		const char *rest = line + length;
+		struct headless_text text = {.what = kinds[i].what, .text = ""};
+		if (text.what == HEADLESS_TEXT_DELETE || text.what == HEADLESS_TEXT_SELECT) {
+			if (sscanf(rest, "%d %d", &text.a, &text.b) != 2)
+				return false;
+		} else if (text.what == HEADLESS_TEXT_TAP) {
+			if (sscanf(rest, "%f %f", &text.x, &text.y) != 2)
+				return false;
+		}
+		char *unescaped = text.what == HEADLESS_TEXT_COMMIT || text.what == HEADLESS_TEXT_COMPOSE ? unescape(rest) : NULL;
+		if (unescaped)
+			text.text = unescaped;
+		headless_text(&text);
+		free(unescaped);
+		return true;
+	}
+	return false;
+}
+
 // -c: system navigation and input from stdin, one command per line; the loop slot has no fd watch
 static void *read_commands(void *data)
 {
@@ -76,9 +128,10 @@ static void *read_commands(void *data)
 			atl_nav_front();
 		else if (parse_insets(line, &insets))
 			atl_nav_set_insets(&insets);
-		else if (!parse_touch(line) && !parse_key(line))
+		else if (!parse_touch(line) && !parse_key(line) && !parse_text(line))
 			fprintf(stderr, "commands: back, home, front, insets <12 dp>, touch down|move|up|cancel <id> <x> <y>, "
-			                "key down|up <code> [<meta> [<unicode>]]; not \"%s\"\n",
+			                "key down|up <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
+			                "text select <start> <end>, text tap <x> <y>, text action|dismiss|hold|release; not \"%s\"\n",
 			        line);
 	}
 	free(line);

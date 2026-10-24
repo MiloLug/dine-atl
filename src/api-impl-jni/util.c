@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "src/api-impl-jni/defines.h"
 #include "util.h"
@@ -49,6 +50,33 @@ char *jstring_to_utf8(JNIEnv *env, jstring string)
 	*out = '\0';
 	(*env)->ReleaseStringChars(env, string, chars);
 	return utf8;
+}
+
+jstring utf8_to_jstring(JNIEnv *env, const char *utf8)
+{
+	size_t size = strlen(utf8);
+	jchar *chars = malloc((size + 1) * sizeof(*chars)); // no more units than bytes
+	jsize length = 0;
+	const unsigned char *in = (const unsigned char *)utf8;
+	while (*in) {
+		uint32_t c = *in++;
+		int more = c >= 0xf0 ? 3 : c >= 0xe0 ? 2 : c >= 0xc0 ? 1 : 0;
+		if (more)
+			c &= 0x3f >> more;
+		for (; more && (*in & 0xc0) == 0x80; more--)
+			c = c << 6 | (*in++ & 0x3f);
+		if (more || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff))
+			c = 0xfffd;
+		if (c >= 0x10000) {
+			chars[length++] = 0xd800 + ((c - 0x10000) >> 10);
+			chars[length++] = 0xdc00 + ((c - 0x10000) & 0x3ff);
+		} else {
+			chars[length++] = c;
+		}
+	}
+	jstring string = (*env)->NewString(env, chars, length);
+	free(chars);
+	return string;
 }
 
 char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema)

@@ -8,6 +8,7 @@ package android.view;
 import android.app.Activity;
 import android.app.Dialog;
 import android.graphics.Rect;
+import android.view.inputmethod.InputMethodManager;
 
 /* What AOSP's ViewRootImpl does with input, for ATL's hosts: touch mode, and the entries the ui
  * backends call (atl_upcall_touch, atl_upcall_key) with the root view of the window that got the
@@ -18,6 +19,8 @@ public final class ATLInput {
 	/* ESCAPE went down unhandled: Back stands in for it until its up. ATL's, since a keyboard on iOS
 	 * has no Back key; Android 10's keymap gives plain ESCAPE no fallback, and Dialog takes it. */
 	private static boolean escapeFallsBack;
+	// Android's IME takes Back while it shows: the keyboard hides and the window gets neither half
+	private static boolean keyboardTookBack;
 
 	private ATLInput() {}
 
@@ -68,9 +71,29 @@ public final class ATLInput {
 		return handled;
 	}
 
+	// TextView.onEditorAction's Enter: ViewRootImpl.dispatchKeyFromIme
+	public static boolean dispatchKeyFromIme(View view, KeyEvent event) {
+		return key(view.getRootView(), event);
+	}
+
 	private static boolean deliver(Window window, View decor, KeyEvent event) {
+		if (keyboardTakesBack(event))
+			return true;
 		Window.Callback callback = window != null ? window.getCallback() : null;
 		return callback != null ? callback.dispatchKeyEvent(event) : decor.dispatchKeyEvent(event);
+	}
+
+	private static boolean keyboardTakesBack(KeyEvent event) {
+		if (event.getKeyCode() != KeyEvent.KEYCODE_BACK)
+			return false;
+		if (event.getAction() == KeyEvent.ACTION_DOWN) {
+			if (event.getRepeatCount() == 0 && InputMethodManager.atlHideKeyboard())
+				keyboardTookBack = true;
+			return keyboardTookBack;
+		}
+		boolean took = keyboardTookBack;
+		keyboardTookBack = false;
+		return took;
 	}
 
 	private static KeyEvent fallback(KeyEvent event, int keyCode) {

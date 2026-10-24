@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "src/shared/input.h"
 
@@ -27,6 +28,7 @@ void records_progress_changed(struct ui_view *view) {}
 void records_text_changed(struct ui_view *view) {}
 void records_button_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
+void records_selectable_changed(struct ui_view *view) {}
 void records_layout_done(struct ui_window *window) {}
 
 // no toolkit animates or clamps: the offset is reached at once
@@ -39,6 +41,7 @@ void records_window_closed(struct ui_window *window) {}
 void records_view_freed(struct ui_view *view)
 {
 	headless_input_view_freed(view);
+	headless_edit_view_freed(view);
 	free(view);
 }
 
@@ -53,16 +56,16 @@ void records_frame_changed(struct ui_window *window)
 	fflush(stdout);
 }
 
-static int utf8_length(const char *text)
+static int utf8_length(const char *text, const char *end)
 {
 	int length = 0;
-	for (; *text; text++)
+	for (; text < end && *text; text++)
 		length += (*text & 0xC0) != 0x80;
 	return length;
 }
 
 // greedily wrapped, with a button's control beside the text
-void records_text_extent(struct ui_view *view, int max_width, int *width, int *height)
+static void line_extent(struct ui_view *view, const char *text, const char *end, int max_width, int *width, int *height)
 {
 	float char_width = CHAR_WIDTH_PER_SIZE * view->text_size;
 	int line_height = ceilf(LINE_HEIGHT_PER_SIZE * view->text_size);
@@ -73,7 +76,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		control = 2 * line_height;
 	if (max_width >= 0)
 		max_width = max_width > control ? max_width - control : 0;
-	int length = utf8_length(view->text);
+	int length = utf8_length(text, end);
 	int lines = 1;
 	*width = ceilf(length * char_width);
 	if (max_width >= 0 && *width > max_width) {
@@ -84,4 +87,33 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 	}
 	*width += control;
 	*height = lines * line_height;
+}
+
+// an edit node is at least as wide as its hint, and its lines break at each newline
+void records_text_extent(struct ui_view *view, int max_width, int *width, int *height)
+{
+	if (!view->edit) {
+		line_extent(view, view->text, view->text + strlen(view->text), max_width, width, height);
+		return;
+	}
+	const char *hint = view->edit_config.hint;
+	*width = *height = 0;
+	for (const char *line = view->text;;) {
+		const char *end = strchr(line, '\n');
+		if (!end || !view->edit_config.multiline)
+			end = line + strlen(line);
+		int line_width, line_height;
+		line_extent(view, line, end, max_width, &line_width, &line_height);
+		*width = line_width > *width ? line_width : *width;
+		*height += line_height;
+		if (!*end)
+			break;
+		line = end + 1;
+	}
+	if (hint) {
+		int hint_width, hint_height;
+		line_extent(view, hint, hint + strlen(hint), max_width, &hint_width, &hint_height);
+		*width = hint_width > *width ? hint_width : *width;
+		*height = hint_height > *height ? hint_height : *height;
+	}
 }

@@ -221,6 +221,32 @@ extern "C" {
 #define android_widget_EditText_ALIGN_CENTER 1L
 #undef android_widget_EditText_ALIGN_END
 #define android_widget_EditText_ALIGN_END 2L
+#undef android_widget_EditText_CHANGE_WATCHER_PRIORITY
+#define android_widget_EditText_CHANGE_WATCHER_PRIORITY 100L
+#undef android_widget_EditText_KEYBOARD_TEXT
+#define android_widget_EditText_KEYBOARD_TEXT 0L
+#undef android_widget_EditText_KEYBOARD_NUMBER
+#define android_widget_EditText_KEYBOARD_NUMBER 1L
+#undef android_widget_EditText_KEYBOARD_DECIMAL
+#define android_widget_EditText_KEYBOARD_DECIMAL 2L
+#undef android_widget_EditText_KEYBOARD_PHONE
+#define android_widget_EditText_KEYBOARD_PHONE 3L
+#undef android_widget_EditText_KEYBOARD_EMAIL
+#define android_widget_EditText_KEYBOARD_EMAIL 4L
+#undef android_widget_EditText_KEYBOARD_URL
+#define android_widget_EditText_KEYBOARD_URL 5L
+#undef android_widget_EditText_RETURN_DEFAULT
+#define android_widget_EditText_RETURN_DEFAULT 0L
+#undef android_widget_EditText_RETURN_DONE
+#define android_widget_EditText_RETURN_DONE 1L
+#undef android_widget_EditText_RETURN_GO
+#define android_widget_EditText_RETURN_GO 2L
+#undef android_widget_EditText_RETURN_SEARCH
+#define android_widget_EditText_RETURN_SEARCH 3L
+#undef android_widget_EditText_RETURN_NEXT
+#define android_widget_EditText_RETURN_NEXT 4L
+#undef android_widget_EditText_RETURN_SEND
+#define android_widget_EditText_RETURN_SEND 5L
 /*
  * Class:     android_widget_EditText
  * Method:    native_constructor
@@ -231,59 +257,27 @@ JNIEXPORT jlong JNICALL Java_android_widget_EditText_native_1constructor
 
 /*
  * Class:     android_widget_EditText
- * Method:    native_getText
- * Signature: (J)Ljava/lang/String;
+ * Method:    native_setConfig
+ * Signature: (IIIZZZLjava/lang/String;)V
  */
-JNIEXPORT jstring JNICALL Java_android_widget_EditText_native_1getText
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setConfig
+  (JNIEnv *, jobject, jint, jint, jint, jboolean, jboolean, jboolean, jstring);
 
 /*
  * Class:     android_widget_EditText
- * Method:    native_addTextChangedListener
- * Signature: (JLandroid/text/TextWatcher;)V
+ * Method:    native_setState
+ * Signature: (Ljava/lang/String;III)V
  */
-JNIEXPORT void JNICALL Java_android_widget_EditText_native_1addTextChangedListener
-  (JNIEnv *, jobject, jlong, jobject);
+JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setState
+  (JNIEnv *, jobject, jstring, jint, jint, jint);
 
 /*
  * Class:     android_widget_EditText
- * Method:    native_removeTextChangedListener
- * Signature: (JLandroid/text/TextWatcher;)V
+ * Method:    native_setKeyboard
+ * Signature: (Z)Z
  */
-JNIEXPORT void JNICALL Java_android_widget_EditText_native_1removeTextChangedListener
-  (JNIEnv *, jobject, jlong, jobject);
-
-/*
- * Class:     android_widget_EditText
- * Method:    native_setOnEditorActionListener
- * Signature: (JLandroid/widget/TextView/OnEditorActionListener;)V
- */
-JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setOnEditorActionListener
-  (JNIEnv *, jobject, jlong, jobject);
-
-/*
- * Class:     android_widget_EditText
- * Method:    native_setText
- * Signature: (JLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setText
-  (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_widget_EditText
- * Method:    native_setHint
- * Signature: (JLjava/lang/CharSequence;)V
- */
-JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setHint
-  (JNIEnv *, jobject, jlong, jobject);
-
-/*
- * Class:     android_widget_EditText
- * Method:    native_getHint
- * Signature: (J)Ljava/lang/CharSequence;
- */
-JNIEXPORT jobject JNICALL Java_android_widget_EditText_native_1getHint
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT jboolean JNICALL Java_android_widget_EditText_native_1setKeyboard
+  (JNIEnv *, jobject, jboolean);
 
 #ifdef __cplusplus
 }

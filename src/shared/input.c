@@ -89,3 +89,83 @@ void atl_upcall_scrolled(struct atl_ref *view, int x, int y)
 	}
 	(*env)->DeleteLocalRef(env, view_obj);
 }
+
+// a weak view ref for a call that takes no event: each frees its local refs
+static jobject view_local(JNIEnv *env, struct atl_ref *view)
+{
+	return (*env)->NewLocalRef(env, (jobject)view);
+}
+
+static void clear_exception(JNIEnv *env)
+{
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
+}
+
+void atl_upcall_edit_report(struct atl_ref *view, const struct atl_edit_report *report)
+{
+	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8);
+	jobject view_obj = view_local(env, view);
+	if (view_obj) {
+		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlEdited, utf8_to_jstring(env, report->prev), report->prev_start, report->prev_end,
+		                       utf8_to_jstring(env, report->text), report->start, report->end, (jint)report->seq);
+		clear_exception(env);
+	}
+	(*env)->PopLocalFrame(env, NULL);
+}
+
+void atl_upcall_edit_action(struct atl_ref *view)
+{
+	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 4);
+	jobject view_obj = view_local(env, view);
+	if (view_obj) {
+		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlEditorAction);
+		clear_exception(env);
+	}
+	(*env)->PopLocalFrame(env, NULL);
+}
+
+void atl_upcall_edit_focus(struct atl_ref *view, bool focused, bool keyboard)
+{
+	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 4);
+	jobject view_obj = view_local(env, view);
+	if (view_obj) {
+		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlToolkitFocus, focused, keyboard);
+		clear_exception(env);
+	}
+	(*env)->PopLocalFrame(env, NULL);
+}
+
+// a sequence's lead byte: 4-byte sequences are a surrogate pair in UTF-16
+static int utf8_units(unsigned char lead)
+{
+	return lead >= 0xF0 ? 2 : 1;
+}
+
+static int utf8_size(unsigned char lead)
+{
+	return lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+}
+
+size_t atl_utf8_offset(const char *text, int utf16)
+{
+	size_t offset = 0;
+	while (utf16 > 0 && text[offset]) {
+		utf16 -= utf8_units(text[offset]);
+		offset += utf8_size(text[offset]);
+	}
+	return offset;
+}
+
+int atl_utf16_length(const char *text, size_t bytes)
+{
+	int length = 0;
+	for (size_t offset = 0; offset < bytes && text[offset]; offset += utf8_size(text[offset]))
+		length += utf8_units(text[offset]);
+	return length;
+}

@@ -34,6 +34,13 @@ name another project.
 | `graphics/drawable/DrawableContainer.java` | `graphics/java/android/graphics/drawable/DrawableContainer.java` | `getCurrent` |
 | `widget/CompoundButton.java` | `core/java/android/widget/CompoundButton.java` | `toggle`, `performClick`, `setChecked`, `onCreateDrawableState` |
 | `widget/RadioButton.java` | `core/java/android/widget/RadioButton.java` | `toggle` |
+| `text/Editable.java` | `core/java/android/text/Editable.java` | the whole file |
+| `text/InputType.java` | `core/java/android/text/InputType.java` | the whole file |
+| `text/InputFilter.java` | `core/java/android/text/InputFilter.java` | the whole file; `AllCaps` upper-cases with `String.toUpperCase` (no ICU `CaseMap`) and keeps spans only when the length stays |
+| `view/inputmethod/EditorInfo.java` | `core/java/android/view/inputmethod/EditorInfo.java` | the `IME_*` constants, `implements InputType` |
+| `widget/TextView.java` | `core/java/android/widget/TextView.java` | `onEditorAction` (its Enter keys go through `ATLInput.dispatchKeyFromIme`), `getSelectionStart`, `getSelectionEnd`, `hasSelection` |
+| `widget/EditText.java` | `core/java/android/widget/EditText.java` | `getText`, `setSelection`, `selectAll`, `extendSelection` |
+| `widget/EditText.java` | `core/java/android/widget/TextView.java` | `setText`'s filters, Editable and watcher calls, the ChangeWatcher's TextWatcher part, `sendBeforeTextChanged`, `sendOnTextChanged`, `sendAfterTextChanged`, `isMultilineInputType`, `isPasswordInputType`, `setInputTypeSingleLine`, the constructor's `inputType`, `singleLine`, `password` and `maxLength` handling, `shouldAdvanceFocusOnEnter`, `onKeyDown` and `onKeyUp`'s Enter |
 
 Open: Dine's app bundle carries `api-impl.jar` without these notices, `NOTICE-AOSP.txt` or the
 Apache text.

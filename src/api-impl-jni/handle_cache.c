@@ -92,6 +92,11 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.atl_input.touch = _STATIC_METHOD(handle_cache.atl_input.class, "touch", "(Landroid/view/View;Landroid/view/MotionEvent;)Z");
 	handle_cache.atl_input.key = _STATIC_METHOD(handle_cache.atl_input.class, "key", "(Landroid/view/View;Landroid/view/KeyEvent;)Z");
 
+	handle_cache.edit_text.class = _REF((*env)->FindClass(env, "android/widget/EditText"));
+	handle_cache.edit_text.atlEdited = _METHOD(handle_cache.edit_text.class, "atlEdited", "(Ljava/lang/String;IILjava/lang/String;III)V");
+	handle_cache.edit_text.atlEditorAction = _METHOD(handle_cache.edit_text.class, "atlEditorAction", "()V");
+	handle_cache.edit_text.atlToolkitFocus = _METHOD(handle_cache.edit_text.class, "atlToolkitFocus", "(ZZ)V");
+
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
 	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)Z");
 	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Z)V");

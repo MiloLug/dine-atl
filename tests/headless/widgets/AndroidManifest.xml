@@ -9,5 +9,6 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".ControlsActivity"/>
+		<activity android:name=".TextActivity"/>
 	</application>
 </manifest>

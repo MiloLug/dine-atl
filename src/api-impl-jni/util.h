@@ -13,6 +13,8 @@ JNIEnv *get_jni_env(void);
 /* Text for a ui slot, NULL for NULL; free() it. Valid UTF-8, unlike GetStringUTFChars' modified
  * UTF-8: U+0000 and lone surrogates become U+FFFD. */
 char *jstring_to_utf8(JNIEnv *env, jstring string);
+/* Standard UTF-8, which NewStringUTF's Modified UTF-8 isn't for a character beyond the BMP. */
+jstring utf8_to_jstring(JNIEnv *env, const char *utf8);
 /* The attribute's text through jstring_to_utf8; free() it. */
 char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema);
 int attribute_set_get_int(JNIEnv *env, jobject attrs, char *attribute, char *schema, int default_value);

@@ -14,17 +14,21 @@ static jmethodID toString;
 
 static jobject connection;
 
+// GTK calls these from the base JNI frame
 static void commit_cb(GtkIMContext *context, gchar *str, gpointer user_data)
 {
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 4);
 	(*env)->CallBooleanMethod(env, connection, commitText, _JSTRING(str), 1);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 static void retrieve_surrounding_cb(GtkIMContext *context, gpointer user_data)
 {
 	JNIEnv *env = get_jni_env();
+	(*env)->PushLocalFrame(env, 8);
 	jobject before = (*env)->CallObjectMethod(env, connection, getTextBeforeCursor, 100, 0);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionDescribe(env);
@@ -43,6 +47,7 @@ static void retrieve_surrounding_cb(GtkIMContext *context, gpointer user_data)
 		(*env)->ReleaseStringUTFChars(env, before_str, before_cstr);
 	if (after_str)
 		(*env)->ReleaseStringUTFChars(env, after_str, after_cstr);
+	(*env)->PopLocalFrame(env, NULL);
 }
 
 static void delete_surrounding_cb(GtkIMContext *context, gint offset, gint n_chars, gpointer user_data)

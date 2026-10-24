@@ -14,10 +14,11 @@
 #import "queue.h"
 #import "surface.h"
 
-/* A UIView per view record, an ATLLabel per text record (an ATLButton per button's), in the surface
- * the host gave; the shown activity's frame goes to the surface as ATLSurface. Changes queue on the
- * Android main thread and reach UIKit's thread in order, one batch per layout pass. Text measurement
- * waits for UIKit's thread: deadlock-free only while main never waits for the Android thread. */
+/* A UIView per view record, an ATLLabel per text record (an ATLButton per button's, a UITextField or
+ * UITextView per edit record's), in the surface the host gave; the shown activity's frame goes to
+ * the surface as ATLSurface. Changes queue on the Android main thread and reach UIKit's thread in
+ * order, one batch per layout pass. Text measurement waits for UIKit's thread: deadlock-free only
+ * while main never waits for the Android thread. */
 
 // each node view hands the touches UIKit gives it to input.m
 #define FORWARD_TOUCHES                                                            \
@@ -43,6 +44,38 @@
 @property(nonatomic) BOOL activityRoot;
 @end
 
+static void root_take_responder(UIView *root);
+
+// an edit view's report waiting for the Android thread; freed there, after the record
+struct edit_report_box {
+	struct ui_view *view;
+	bool posted;
+	char *prev, *text; // the waiting report's
+	int prev_start, prev_end, start, end;
+	uint32_t seq;
+};
+
+@interface ATLEditState : NSObject
+@property(nonatomic) struct ui_view *record; // NULL once freed
+@property(nonatomic) struct edit_report_box *box;
+@property(nonatomic, copy) NSString *prev; // the last reported or applied state
+@property(nonatomic) NSInteger prevStart, prevEnd;
+@property(nonatomic) uint32_t seq;
+@property(nonatomic) bool applying;    // a snapshot's changes don't report
+@property(nonatomic) bool javaFocus;   // Java moves the first responder: no focus upcall
+@property(nonatomic) bool wasMarked;   // the next committed state reports, changed or not
+@property(nonatomic) bool multiline;
+@property(nonatomic, copy) NSString *hint;
+@property(nonatomic) UIEdgeInsets padding;
+@end
+
+@interface ATLEditField : UITextField
+@property(nonatomic) ATLEditState *atlState;
+@end
+// UIKit's thread: the field the keyboard types into, as Java asked or the user tapped
+static UIView *keyboard_field;
+static void edit_box_free(struct edit_report_box *box);
+
 @implementation ATLView
 FORWARD_TOUCHES
 
@@ -56,7 +89,7 @@ FORWARD_TOUCHES
 {
 	[super didMoveToWindow];
 	if (_activityRoot && !self.hidden && self.window)
-		[self becomeFirstResponder];
+		root_take_responder(self);
 }
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
@@ -80,6 +113,11 @@ FORWARD_TOUCHES
 - (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment;
 - (void)atlSetColor:(UIColor *)color;
 - (void)atlSetPadding:(UIEdgeInsets)padding;
+@end
+
+// an edit record's view
+@protocol ATLEditor <ATLText, UITextInput>
+@property(nonatomic) ATLEditState *atlState; // moves to the view that replaces this one
 @end
 
 @interface ATLLabel : UILabel <ATLText>
@@ -500,12 +538,18 @@ void records_view_created(struct ui_view *view)
 	@autoreleasepool {
 		enum node_kind kind = view->kind;
 		bool horizontal = view->horizontal;
-		bool is_button = view->is_button;
+		bool is_button = view->is_button, edit = view->edit;
 		enum ui_button button = view->button;
 		uikit_enqueue(^{
 			UIView *created;
 			if (kind == NODE_TEXT && is_button) {
 				created = [[ATLButton alloc] initWithRecord:view kind:button];
+			} else if (kind == NODE_TEXT && edit) {
+				ATLEditField *field = [ATLEditField new];
+				field.atlState.record = view;
+				field.atlState.box = calloc(1, sizeof(struct edit_report_box));
+				field.atlState.box->view = view;
+				created = field;
 			} else if (kind == NODE_TEXT) {
 				ATLLabel *label = [ATLLabel new];
 				label.numberOfLines = 0;
@@ -547,7 +591,10 @@ void records_child_removed(struct ui_view *parent, struct ui_view *child)
 static void free_record(void *data)
 {
 	struct ui_view *view = data;
-	free(view->native); // a scroll node's report, else NULL
+	if (view->edit)
+		edit_box_free(view->native);
+	else
+		free(view->native); // a scroll node's report, else NULL
 	free(view);
 }
 
@@ -565,6 +612,15 @@ void records_view_freed(struct ui_view *view)
 			}
 			if ([freed isKindOfClass:[ATLButton class]]) // VoiceOver may still hold it
 				[(ATLButton *)freed detachRecord];
+			if ([freed conformsToProtocol:@protocol(ATLEditor)]) {
+				ATLEditState *state = ((id<ATLEditor>)freed).atlState;
+				state.record = NULL;
+				state.javaFocus = true;
+				report = (struct scroll_report *)state.box;
+				state.box = NULL;
+				if (keyboard_field == freed)
+					keyboard_field = nil;
+			}
 			[freed removeFromSuperview];
 			view->native = report;
 			if (!loop_main_post(free_record, view))
@@ -601,7 +657,7 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 			for (UIView *other in surface_view.subviews)
 				other.hidden = other != shown || !visible;
 			[surface_view bringSubviewToFront:shown];
-			[shown becomeFirstResponder];
+			root_take_responder(shown);
 		});
 	}
 }
@@ -708,6 +764,8 @@ void records_visibility_changed(struct ui_view *view)
 			changed.userInteractionEnabled = enabled;
 			if ([changed isKindOfClass:[ATLButton class]])
 				((ATLButton *)changed).enabled = enabled;
+			if ([changed isKindOfClass:[UITextField class]])
+				((UITextField *)changed).enabled = enabled;
 		});
 	}
 }
@@ -757,6 +815,8 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		int style = view->text_style;
 		CGFloat s = scale();
 		bool is_button = view->is_button, has_background = view->has_background;
+		bool edit = view->edit, multiline = view->edit_config.multiline, selectable = view->selectable;
+		NSString *hint = view->edit_config.hint ? [NSString stringWithUTF8String:view->edit_config.hint] : nil;
 		enum ui_button button = view->button;
 		__block CGSize fit;
 		// a view of its own: the record's view may still wait for queued changes
@@ -770,6 +830,36 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 				scratch.hasBackground = has_background;
 				[scratch atlSetText:text font:font(size, style) alignment:NSTextAlignmentNatural];
 				fit = [scratch contentSizeThatFits:width];
+				return;
+			}
+			if (edit || selectable) {
+				static UITextField *field;
+				static UITextView *area;
+				if (!field) {
+					field = [UITextField new];
+					area = [UITextView new]; // as ATLEditView and ATLSelectableText lay out
+					area.scrollEnabled = NO;
+					area.textContainerInset = UIEdgeInsetsZero;
+					area.textContainer.lineFragmentPadding = 0;
+				}
+				UIView *scratch = edit && !multiline ? field : area;
+				UIFont *scratch_font = font(size, style);
+				CGSize bound = CGSizeMake(width, CGFLOAT_MAX);
+				fit = CGSizeZero;
+				for (NSString *shown in hint && edit ? @[text, hint] : @[text]) {
+					// an empty UITextField measures taller (22 pt at 14 pt) than one with text (18.7)
+					NSString *measured = shown.length ? shown : @" ";
+					if (scratch == field) {
+						field.font = scratch_font;
+						field.text = measured;
+					} else {
+						area.font = scratch_font;
+						area.text = measured;
+					}
+					CGSize size = [scratch sizeThatFits:bound];
+					fit = CGSizeMake(MAX(fit.width, size.width), MAX(fit.height, size.height));
+				}
+				fit.height = MAX(fit.height, scratch_font.lineHeight); // a field keeps one line's height
 				return;
 			}
 			static ATLLabel *scratch;
@@ -856,6 +946,567 @@ void records_scroll_changed(struct ui_view *view, bool animated)
 				bounds.origin = offset;
 				scrolled.bounds = bounds;
 			}
+		});
+	}
+}
+
+/* An edit view is the mirror UITextInput reads on UIKit's thread. Each committed change reports with
+ * the state it started from; a report still waiting for the Android thread takes the next one too.
+ * Java's snapshot applies only when it acks the last report and no marked text is open. */
+
+static pthread_mutex_t edit_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void edit_box_free(struct edit_report_box *box)
+{
+	if (!box)
+		return;
+	free(box->prev);
+	free(box->text);
+	free(box);
+}
+
+static void deliver_edit(void *data)
+{
+	struct edit_report_box *box = data;
+	pthread_mutex_lock(&edit_lock);
+	struct atl_edit_report report = {box->prev, box->prev_start, box->prev_end, box->text, box->start, box->end, box->seq};
+	box->prev = box->text = NULL;
+	box->posted = false;
+	pthread_mutex_unlock(&edit_lock);
+	if (report.prev && report.text)
+		records_edit_report(box->view, &report); // skips a freed record
+	free((char *)report.prev);
+	free((char *)report.text);
+}
+
+static void edit_post(void (*fn)(void *), struct ui_view *view)
+{
+	if (view)
+		loop_main_post(fn, view);
+}
+
+static void action_post(void *data)
+{
+	struct ui_view *view = data;
+	if (view->ref)
+		atl_upcall_edit_action(view->ref);
+}
+
+static void focus_in_post(void *data)
+{
+	struct ui_view *view = data;
+	if (view->ref)
+		atl_upcall_edit_focus(view->ref, true, true);
+}
+
+static void focus_out_post(void *data)
+{
+	struct ui_view *view = data;
+	if (view->ref)
+		atl_upcall_edit_focus(view->ref, false, false);
+}
+
+
+@implementation ATLEditState
+@end
+
+static NSString *editor_text(UIView<UITextInput> *editor)
+{
+	NSString *text = [editor isKindOfClass:[UITextField class]] ? ((UITextField *)editor).text : ((UITextView *)editor).text;
+	return text ?: @"";
+}
+
+static NSRange editor_selection(UIView<UITextInput> *editor)
+{
+	UITextRange *range = editor.selectedTextRange;
+	if (!range)
+		return NSMakeRange(editor_text(editor).length, 0);
+	NSInteger start = [editor offsetFromPosition:editor.beginningOfDocument toPosition:range.start];
+	NSInteger end = [editor offsetFromPosition:editor.beginningOfDocument toPosition:range.end];
+	return NSMakeRange(start, end - start);
+}
+
+static void editor_set(UIView<UITextInput> *editor, NSString *text, NSInteger start, NSInteger end)
+{
+	if (![editor_text(editor) isEqualToString:text]) {
+		if ([editor isKindOfClass:[UITextField class]])
+			((UITextField *)editor).text = text;
+		else
+			((UITextView *)editor).text = text;
+	}
+	UITextPosition *from = [editor positionFromPosition:editor.beginningOfDocument offset:start];
+	UITextPosition *to = [editor positionFromPosition:editor.beginningOfDocument offset:end];
+	if (from && to)
+		editor.selectedTextRange = [editor textRangeFromPosition:from toPosition:to];
+}
+
+// a committed change goes to Java; marked text waits for its end
+static void editor_changed(UIView<UITextInput> *editor, ATLEditState *state)
+{
+	if (state.applying || !state.record || !state.box)
+		return;
+	if (editor.markedTextRange) {
+		state.wasMarked = true;
+		return;
+	}
+	NSString *text = editor_text(editor);
+	NSRange selection = editor_selection(editor);
+	if (!state.wasMarked && [text isEqualToString:state.prev] && selection.location == (NSUInteger)state.prevStart
+	    && NSMaxRange(selection) == (NSUInteger)state.prevEnd)
+		return;
+	state.wasMarked = false;
+	struct edit_report_box *box = state.box;
+	pthread_mutex_lock(&edit_lock);
+	if (!box->posted) {
+		free(box->prev);
+		box->prev = strdup(state.prev.UTF8String);
+		box->prev_start = state.prevStart;
+		box->prev_end = state.prevEnd;
+	}
+	free(box->text);
+	box->text = strdup(text.UTF8String);
+	box->start = selection.location;
+	box->end = NSMaxRange(selection);
+	box->seq = ++state.seq;
+	bool post = !box->posted;
+	box->posted = true;
+	pthread_mutex_unlock(&edit_lock);
+	state.prev = text;
+	state.prevStart = selection.location;
+	state.prevEnd = NSMaxRange(selection);
+	if (post && !loop_main_post(deliver_edit, box)) {
+		pthread_mutex_lock(&edit_lock);
+		box->posted = false;
+		pthread_mutex_unlock(&edit_lock);
+	}
+}
+
+static void editor_began(UIView *editor, ATLEditState *state)
+{
+	keyboard_field = editor;
+	if (!state.javaFocus)
+		edit_post(focus_in_post, state.record);
+}
+
+// the root takes the hardware keyboard back unless another field took the responder
+static void editor_ended(UIView *editor, ATLEditState *state)
+{
+	if (keyboard_field == editor)
+		keyboard_field = nil;
+	if (!state.javaFocus)
+		edit_post(focus_out_post, state.record);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		if (keyboard_field)
+			return;
+		for (UIView *root = editor.superview; root; root = root.superview) {
+			if ([root isKindOfClass:[ATLView class]] && ((ATLView *)root).activityRoot && !root.hidden) {
+				[root becomeFirstResponder];
+				break;
+			}
+		}
+	});
+}
+
+@interface ATLEditField () <ATLEditor, UITextFieldDelegate>
+@end
+
+@implementation ATLEditField
+@synthesize atlState = _atlState;
+
+- (instancetype)init
+{
+	if ((self = [super initWithFrame:CGRectZero])) {
+		_atlState = [ATLEditState new];
+		_atlState.prev = @"";
+		self.delegate = self;
+		self.borderStyle = UITextBorderStyleNone;
+		[self addTarget:self action:@selector(atlChanged) forControlEvents:UIControlEventEditingChanged];
+	}
+	return self;
+}
+
+- (void)atlChanged
+{
+	editor_changed(self, _atlState);
+}
+
+- (void)textFieldDidChangeSelection:(UITextField *)textField
+{
+	editor_changed(self, _atlState);
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField
+{
+	edit_post(action_post, _atlState.record);
+	return NO;
+}
+
+- (void)atlReturn
+{
+	[self textFieldShouldReturn:self];
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField
+{
+	editor_began(self, _atlState);
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField
+{
+	editor_changed(self, _atlState); // a composition the end commits
+	editor_ended(self, _atlState);
+}
+
+- (CGRect)textRectForBounds:(CGRect)bounds
+{
+	return UIEdgeInsetsInsetRect(bounds, _atlState.padding);
+}
+
+- (CGRect)editingRectForBounds:(CGRect)bounds
+{
+	return UIEdgeInsetsInsetRect(bounds, _atlState.padding);
+}
+
+- (CGRect)placeholderRectForBounds:(CGRect)bounds
+{
+	return UIEdgeInsetsInsetRect(bounds, _atlState.padding);
+}
+
+// Java's text arrives through snapshots only
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+{
+	self.font = font;
+	self.textAlignment = alignment;
+}
+
+- (void)atlSetColor:(UIColor *)color
+{
+	self.textColor = color;
+}
+
+- (void)atlSetPadding:(UIEdgeInsets)padding
+{
+	_atlState.padding = padding;
+	[self setNeedsLayout];
+}
+@end
+
+@interface ATLEditView : UITextView <ATLEditor, UITextViewDelegate>
+@end
+
+@implementation ATLEditView {
+	UILabel *_placeholder;
+}
+@synthesize atlState = _atlState;
+
+- (instancetype)init
+{
+	if ((self = [super initWithFrame:CGRectZero textContainer:nil])) {
+		_atlState = [ATLEditState new];
+		_atlState.prev = @"";
+		_atlState.multiline = true;
+		self.delegate = self;
+		self.scrollEnabled = NO; // Java sizes it to its lines
+		self.backgroundColor = UIColor.clearColor;
+		self.textContainerInset = UIEdgeInsetsZero;
+		self.textContainer.lineFragmentPadding = 0;
+		_placeholder = [UILabel new];
+		_placeholder.textColor = UIColor.placeholderTextColor;
+		_placeholder.numberOfLines = 0;
+		[self addSubview:_placeholder];
+	}
+	return self;
+}
+
+- (void)atlShowPlaceholder
+{
+	_placeholder.text = _atlState.hint;
+	_placeholder.font = self.font;
+	_placeholder.hidden = self.text.length > 0;
+	[self setNeedsLayout];
+}
+
+- (void)layoutSubviews
+{
+	[super layoutSubviews];
+	CGRect inner = UIEdgeInsetsInsetRect(self.bounds, self.textContainerInset);
+	CGSize size = [_placeholder sizeThatFits:CGSizeMake(inner.size.width, CGFLOAT_MAX)];
+	_placeholder.frame = CGRectMake(inner.origin.x, inner.origin.y, inner.size.width, size.height);
+}
+
+- (void)textViewDidChange:(UITextView *)textView
+{
+	_placeholder.hidden = self.text.length > 0;
+	editor_changed(self, _atlState);
+}
+
+- (void)textViewDidChangeSelection:(UITextView *)textView
+{
+	editor_changed(self, _atlState);
+}
+
+- (void)textViewDidBeginEditing:(UITextView *)textView
+{
+	editor_began(self, _atlState);
+}
+
+- (void)textViewDidEndEditing:(UITextView *)textView
+{
+	editor_changed(self, _atlState);
+	editor_ended(self, _atlState);
+}
+
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+{
+	self.font = font;
+	self.textAlignment = alignment;
+	[self atlShowPlaceholder];
+}
+
+- (void)atlSetColor:(UIColor *)color
+{
+	self.textColor = color;
+}
+
+- (void)atlSetPadding:(UIEdgeInsets)padding
+{
+	_atlState.padding = padding;
+	self.textContainerInset = padding;
+}
+@end
+
+// a TextView with setTextIsSelectable: UIKit's selection and its edit menu, not editable
+@interface ATLSelectableText : UITextView <ATLText>
+@end
+
+@implementation ATLSelectableText
+- (instancetype)init
+{
+	if ((self = [super initWithFrame:CGRectZero textContainer:nil])) {
+		self.editable = NO;
+		self.selectable = YES;
+		self.scrollEnabled = NO;
+		self.backgroundColor = UIColor.clearColor;
+		self.textContainerInset = UIEdgeInsetsZero;
+		self.textContainer.lineFragmentPadding = 0;
+	}
+	return self;
+}
+
+// the label a UILabel derives from its text, for VoiceOver and the debug agent
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+{
+	self.text = text;
+	self.font = font;
+	self.textAlignment = alignment;
+	self.accessibilityLabel = text;
+}
+
+- (void)atlSetColor:(UIColor *)color
+{
+	self.textColor = color;
+}
+
+- (void)atlSetPadding:(UIEdgeInsets)padding
+{
+	self.textContainerInset = padding;
+}
+@end
+
+// UIKit's thread: the keyboard's field when its root shows, else the root for the hardware keyboard
+static void root_take_responder(UIView *root)
+{
+	if (keyboard_field && [keyboard_field isDescendantOfView:root]) {
+		ATLEditState *state = ((id<ATLEditor>)keyboard_field).atlState;
+		state.javaFocus = true;
+		[keyboard_field becomeFirstResponder];
+		state.javaFocus = false;
+		return;
+	}
+	[root becomeFirstResponder];
+}
+
+/* UIKit's thread: replacement takes the old view's place, record and first responder; enabled is
+ * the record's (a UILabel's own interaction is off) */
+static void replace_native(struct ui_view *view, UIView *replacement, bool enabled)
+{
+	UIView *old = native(view);
+	replacement.frame = old.frame;
+	replacement.hidden = old.hidden;
+	replacement.alpha = old.alpha;
+	replacement.userInteractionEnabled = enabled;
+	if ([replacement isKindOfClass:[UITextField class]])
+		((UITextField *)replacement).enabled = enabled;
+	replacement.backgroundColor = old.backgroundColor;
+	replacement.multipleTouchEnabled = YES;
+	bool responder = old.isFirstResponder;
+	if (old.superview)
+		[old.superview insertSubview:replacement aboveSubview:old];
+	// the old editor's end of editing and the new one's start are the swap's, not the user's
+	ATLEditState *state = [old conformsToProtocol:@protocol(ATLEditor)] ? ((id<ATLEditor>)old).atlState : nil;
+	state.javaFocus = true;
+	if (keyboard_field == old)
+		keyboard_field = replacement;
+	[old removeFromSuperview];
+	CFBridgingRelease(view->native);
+	view->native = (void *)CFBridgingRetain(replacement);
+	if (responder)
+		[replacement becomeFirstResponder];
+	if ([replacement conformsToProtocol:@protocol(ATLEditor)] && ((id<ATLEditor>)replacement).atlState == state)
+		state.javaFocus = false;
+}
+
+// the number and phone pads have no return key: a bar above them holds it
+static UIToolbar *return_bar(UIView *field, enum ui_return_key key)
+{
+	static NSString *const titles[] = {
+		[UI_RETURN_DEFAULT] = @"Return", [UI_RETURN_GO] = @"Go", [UI_RETURN_SEARCH] = @"Search",
+		[UI_RETURN_NEXT] = @"Next", [UI_RETURN_SEND] = @"Send",
+	};
+	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
+	UIBarButtonItem *item = key == UI_RETURN_DONE
+	                            ? [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:field action:@selector(atlReturn)]
+	                            : [[UIBarButtonItem alloc] initWithTitle:titles[key] style:UIBarButtonItemStyleDone target:field action:@selector(atlReturn)];
+	bar.items = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil], item];
+	[bar sizeToFit];
+	return bar;
+}
+
+static UITextAutocapitalizationType autocap_type(enum ui_autocap autocap)
+{
+	static const UITextAutocapitalizationType types[] = {
+		[UI_AUTOCAP_NONE] = UITextAutocapitalizationTypeNone, [UI_AUTOCAP_WORDS] = UITextAutocapitalizationTypeWords,
+		[UI_AUTOCAP_SENTENCES] = UITextAutocapitalizationTypeSentences, [UI_AUTOCAP_CHARACTERS] = UITextAutocapitalizationTypeAllCharacters,
+	};
+	return types[autocap];
+}
+
+void records_edit_config_changed(struct ui_view *view)
+{
+	@autoreleasepool {
+		struct ui_edit_config config = view->edit_config;
+		bool enabled = view->enabled;
+		NSString *hint = config.hint ? [NSString stringWithUTF8String:config.hint] : nil;
+		uikit_enqueue(^{
+			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
+			ATLEditState *state = editor.atlState;
+			if (state.multiline != config.multiline) {
+				UIView<ATLEditor> *replacement = config.multiline ? (UIView<ATLEditor> *)[ATLEditView new] : (UIView<ATLEditor> *)[ATLEditField new];
+				NSString *text = editor_text(editor);
+				NSRange selection = editor_selection(editor);
+				UIFont *font = [(id)editor font];
+				UIColor *text_color = [(id)editor textColor];
+				NSTextAlignment alignment = [(id)editor textAlignment];
+				replacement.atlState = state;
+				state.multiline = config.multiline;
+				state.applying = true;
+				[replacement atlSetText:text font:font alignment:alignment];
+				[replacement atlSetColor:text_color];
+				[replacement atlSetPadding:state.padding];
+				editor_set(replacement, text, selection.location, NSMaxRange(selection));
+				state.applying = false;
+				replace_native(view, replacement, enabled);
+				editor = replacement;
+			}
+			static const UIKeyboardType keyboards[] = {
+				[UI_KEYBOARD_TEXT] = UIKeyboardTypeDefault, [UI_KEYBOARD_NUMBER] = UIKeyboardTypeNumberPad,
+				[UI_KEYBOARD_DECIMAL] = UIKeyboardTypeDecimalPad, [UI_KEYBOARD_PHONE] = UIKeyboardTypePhonePad,
+				[UI_KEYBOARD_EMAIL] = UIKeyboardTypeEmailAddress, [UI_KEYBOARD_URL] = UIKeyboardTypeURL,
+			};
+			static const UIReturnKeyType returns[] = {
+				[UI_RETURN_DEFAULT] = UIReturnKeyDefault, [UI_RETURN_DONE] = UIReturnKeyDone, [UI_RETURN_GO] = UIReturnKeyGo,
+				[UI_RETURN_SEARCH] = UIReturnKeySearch, [UI_RETURN_NEXT] = UIReturnKeyNext, [UI_RETURN_SEND] = UIReturnKeySend,
+			};
+			editor.keyboardType = keyboards[config.keyboard];
+			editor.returnKeyType = returns[config.return_key];
+			editor.autocapitalizationType = autocap_type(config.autocap);
+			editor.autocorrectionType = config.autocorrect ? UITextAutocorrectionTypeDefault : UITextAutocorrectionTypeNo;
+			editor.spellCheckingType = config.autocorrect ? UITextSpellCheckingTypeDefault : UITextSpellCheckingTypeNo;
+			editor.secureTextEntry = config.secure;
+			editor.accessibilityLabel = hint;
+			state.hint = hint;
+			if ([editor isKindOfClass:[UITextField class]]) {
+				((UITextField *)editor).placeholder = hint;
+				bool pad = config.keyboard == UI_KEYBOARD_NUMBER || config.keyboard == UI_KEYBOARD_DECIMAL || config.keyboard == UI_KEYBOARD_PHONE;
+				((UITextField *)editor).inputAccessoryView = pad ? return_bar(editor, config.return_key) : nil;
+			}
+			else
+				[(ATLEditView *)editor atlShowPlaceholder];
+			if (editor.isFirstResponder)
+				[editor reloadInputViews];
+		});
+	}
+}
+
+void records_edit_state_changed(struct ui_view *view, const char *text, int start, int end, uint32_t ack)
+{
+	records_edit_set(view, text, start, end);
+	@autoreleasepool {
+		NSString *string = [NSString stringWithUTF8String:text] ?: @"";
+		uikit_enqueue(^{
+			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
+			ATLEditState *state = editor.atlState;
+			if (ack != state.seq || editor.markedTextRange)
+				return; // its newer report makes Java answer again
+			state.applying = true;
+			editor_set(editor, string, start, end);
+			if ([editor isKindOfClass:[ATLEditView class]])
+				[(ATLEditView *)editor atlShowPlaceholder];
+			state.applying = false;
+			state.prev = string;
+			state.prevStart = start;
+			state.prevEnd = end;
+		});
+	}
+}
+
+bool records_edit_keyboard(struct ui_view *view, bool shown)
+{
+	@autoreleasepool {
+		uikit_enqueue(^{
+			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
+			ATLEditState *state = editor.atlState;
+			state.javaFocus = true;
+			if (shown) {
+				keyboard_field = editor;
+				[editor becomeFirstResponder];
+			} else if (editor.isFirstResponder) {
+				[editor resignFirstResponder];
+			}
+			state.javaFocus = false;
+			if (!shown && keyboard_field == editor)
+				keyboard_field = nil;
+		});
+	}
+	return true;
+}
+
+void records_selectable_changed(struct ui_view *view)
+{
+	@autoreleasepool {
+		NSString *text = [NSString stringWithUTF8String:view->text] ?: @"";
+		float size = view->text_size;
+		int style = view->text_style;
+		NSTextAlignment alignment = text_alignment(view->alignment);
+		CGFloat s = scale();
+		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
+		bool selectable = view->selectable, enabled = view->enabled;
+		uikit_enqueue(^{
+			UIView<ATLText> *old = (UIView<ATLText> *)native(view);
+			UIColor *text_color = [(id)old textColor];
+			UIView<ATLText> *replacement;
+			if (selectable) {
+				replacement = [ATLSelectableText new];
+			} else {
+				ATLLabel *label = [ATLLabel new];
+				label.numberOfLines = 0;
+				replacement = label;
+			}
+			[replacement atlSetText:text font:font(size, style) alignment:alignment];
+			if (text_color)
+				[replacement atlSetColor:text_color];
+			[replacement atlSetPadding:padding];
+			replace_native(view, replacement, enabled);
 		});
 	}
 }

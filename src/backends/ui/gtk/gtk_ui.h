@@ -20,6 +20,7 @@ void input_attach_window(GtkWindow *window);
 /* A toolkit widget that takes its own presses (text, a scrollbar): GTK keeps a gesture that starts
  * on it or its children, Java doesn't see it. */
 void input_take_native(GtkWidget *widget);
+void input_return_native(GtkWidget *widget);
 /* No pointer is down; hover exits wait for it. */
 bool input_pointers_up(void);
 

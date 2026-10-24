@@ -27,6 +27,11 @@ void input_take_native(GtkWidget *widget)
 	g_object_set_data(G_OBJECT(widget), NATIVE_INPUT, GINT_TO_POINTER(TRUE));
 }
 
+void input_return_native(GtkWidget *widget)
+{
+	g_object_set_data(G_OBJECT(widget), NATIVE_INPUT, NULL);
+}
+
 bool input_pointers_up(void)
 {
 	return gesture.touch.count == 0;
@@ -276,6 +281,8 @@ static int map_key_code(int key_code)
 		case GDK_KEY_space:
 			return KEYCODE_SPACE;
 		case GDK_KEY_Return:
+		case GDK_KEY_KP_Enter:
+		case GDK_KEY_ISO_Enter:
 			return KEYCODE_ENTER;
 		case GDK_KEY_BackSpace:
 			return KEYCODE_DEL;
@@ -346,31 +353,77 @@ static int map_meta_state(GdkModifierType state)
 #define ACTION_DOWN 0
 #define ACTION_UP   1
 
-// the key held down, for repeats and down times
-static guint held_keyval;
+/* Keys by hardware keycode: a release's keyval follows the modifiers at release (Shift+a goes down
+ * as A, up as a). The key held down, for repeats and down times. */
+static guint held_keycode;
 static int held_repeat;
 static int64_t held_down_time;
 
-static gboolean on_key(GtkEventControllerKey *controller, guint keyval, GdkModifierType state, int action)
+/* The keys whose press went to Java. GTK passes on the release of a press a text widget took, also
+ * when Java moved focus out of it meanwhile (a watcher after a pin's last digit): a release goes to
+ * Java only after its press. A window going inactive gets no releases: the table empties then. */
+#define JAVA_KEYS_MAX 16
+static guint java_keys[JAVA_KEYS_MAX];
+static int n_java_keys;
+
+static void java_key_pressed(guint keycode)
+{
+	for (int i = 0; i < n_java_keys; i++) {
+		if (java_keys[i] == keycode)
+			return;
+	}
+	if (n_java_keys < JAVA_KEYS_MAX)
+		java_keys[n_java_keys++] = keycode;
+}
+
+static bool java_key_released(guint keycode)
+{
+	for (int i = 0; i < n_java_keys; i++) {
+		if (java_keys[i] == keycode) {
+			java_keys[i] = java_keys[--n_java_keys];
+			return true;
+		}
+	}
+	return false;
+}
+
+static void on_active_changed(GtkWindow *window, GParamSpec *pspec, gpointer data)
+{
+	if (!gtk_window_is_active(window)) {
+		n_java_keys = 0;
+		held_keycode = 0;
+	}
+}
+
+static gboolean on_key(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, int action)
 {
 	GtkWidget *window = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
 	GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(window));
-	bool text_focus = focus && GTK_IS_EDITABLE(focus);
+	bool text_focus = focus && (GTK_IS_EDITABLE(focus) || (GTK_IS_LABEL(focus) && gtk_label_get_selectable(GTK_LABEL(focus))));
+	// an EditText takes a hardware Enter first, as Android's does; the GtkText gets what it leaves,
+	// and an open preedit's Enter, which commits it
+	if (text_focus && g_object_get_data(G_OBJECT(focus), "atl-edit") && !g_object_get_data(G_OBJECT(focus), "atl-preedit")
+	    && (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_ISO_Enter))
+		text_focus = false;
 	// the capture controller leaves a text widget's keys to it; the bubble one takes what it left
 	if ((gtk_event_controller_get_propagation_phase(GTK_EVENT_CONTROLLER(controller)) == GTK_PHASE_CAPTURE) == text_focus)
 		return FALSE;
 	WrapperWidget *root = root_wrapper(GTK_NATIVE(window));
 	if (!root)
 		return FALSE;
+	if (action == ACTION_DOWN)
+		java_key_pressed(keycode);
+	else if (!java_key_released(keycode))
+		return FALSE;
 
 	int64_t now = atl_uptime_ms();
 	if (action == ACTION_DOWN) {
-		held_repeat = keyval == held_keyval ? held_repeat + 1 : 0;
+		held_repeat = keycode == held_keycode ? held_repeat + 1 : 0;
 		if (!held_repeat)
 			held_down_time = now;
-		held_keyval = keyval;
-	} else if (keyval == held_keyval) {
-		held_keyval = 0;
+		held_keycode = keycode;
+	} else if (keycode == held_keycode) {
+		held_keycode = 0;
 	}
 	struct atl_key key = {
 		.action = action,
@@ -386,12 +439,12 @@ static gboolean on_key(GtkEventControllerKey *controller, guint keyval, GdkModif
 
 static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data)
 {
-	return on_key(controller, keyval, state, ACTION_DOWN);
+	return on_key(controller, keyval, keycode, state, ACTION_DOWN);
 }
 
 static void on_key_released(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data)
 {
-	on_key(controller, keyval, state, ACTION_UP);
+	on_key(controller, keyval, keycode, state, ACTION_UP);
 }
 
 static void add_key_controller(GtkWidget *window, GtkPropagationPhase phase)
@@ -416,4 +469,5 @@ void input_attach_window(GtkWindow *window)
 
 	add_key_controller(GTK_WIDGET(window), GTK_PHASE_CAPTURE);
 	add_key_controller(GTK_WIDGET(window), GTK_PHASE_BUBBLE);
+	g_signal_connect(window, "notify::is-active", G_CALLBACK(on_active_changed), NULL);
 }

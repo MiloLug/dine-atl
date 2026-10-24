@@ -5,6 +5,7 @@
  * (android.view.ATLInput, ViewRootImpl's part). Backends see no JNI. */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct atl_ref;
@@ -57,5 +58,27 @@ bool atl_upcall_touch(struct atl_ref *root, const struct atl_touch *touch);
 bool atl_upcall_key(struct atl_ref *root, const struct atl_key *key);
 /* The toolkit's scroll offset of the view changed (View.atlScrolled), px. */
 void atl_upcall_scrolled(struct atl_ref *view, int x, int y);
+
+/* An EditText's field went from prev to text by the user's edit; positions are UTF-16 code units,
+ * as Java's. seq counts the field's reports: Java's snapshot (ui_edit_set_state) acks the last one
+ * it applied. */
+struct atl_edit_report {
+	const char *prev;
+	int prev_start, prev_end;
+	const char *text;
+	int start, end;
+	uint32_t seq;
+};
+void atl_upcall_edit_report(struct atl_ref *view, const struct atl_edit_report *report);
+/* The return key of a single-line field: the IME's editor action. */
+void atl_upcall_edit_action(struct atl_ref *view);
+/* The toolkit gave the field its input target, a tap for one (keyboard: a keyboard shows), or took
+ * it away; Java's focus follows the first. */
+void atl_upcall_edit_focus(struct atl_ref *view, bool focused, bool keyboard);
+
+/* The byte offset in UTF-8 text of a UTF-16 position, clamped to the text's end. */
+size_t atl_utf8_offset(const char *text, int utf16);
+/* The UTF-16 length of text's first bytes. */
+int atl_utf16_length(const char *text, size_t bytes);
 
 #endif

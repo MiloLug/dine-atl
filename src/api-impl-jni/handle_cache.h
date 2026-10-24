@@ -94,6 +94,12 @@ struct handle_cache {
 	} atl_input;
 	struct {
 		jclass class;
+		jmethodID atlEdited;
+		jmethodID atlEditorAction;
+		jmethodID atlToolkitFocus;
+	} edit_text;
+	struct {
+		jclass class;
 		jmethodID atlDialogResult;
 		jmethodID atlTaskMoved;
 	} dialog;

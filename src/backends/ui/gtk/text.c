@@ -124,6 +124,19 @@ void ui_text_set_alignment(struct ui_view *view, int alignment)
 	gtk_label_set_justify(label, justify[alignment]);
 }
 
+// the label keeps its own presses for the selection and its menu: Java's clicks on it stop
+void ui_text_set_selectable(struct ui_view *view, bool selectable)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
+	gtk_label_set_selectable(label, selectable);
+	if (selectable)
+		input_take_native(GTK_WIDGET(label));
+	else
+		input_return_native(GTK_WIDGET(label));
+}
+
 // pictures before and after the label in its box
 void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, struct gfx_drawable *top, struct gfx_drawable *right, struct gfx_drawable *bottom)
 {

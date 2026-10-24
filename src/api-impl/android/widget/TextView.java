@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/widget/TextView.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.widget;
 
 import android.annotation.UnsupportedAppUsage;
@@ -8,10 +13,12 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.BoringLayout;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.Layout;
+import android.text.Selection;
 import android.text.SpannableStringBuilder;
 import android.text.TextDirectionHeuristic;
 import android.text.TextDirectionHeuristics;
@@ -26,9 +33,13 @@ import android.text.style.URLSpan;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.ActionMode;
+import android.view.ATLInput;
 import android.view.Gravity;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import java.util.Locale;
 
 public class TextView extends View {
@@ -40,6 +51,12 @@ public class TextView extends View {
 	private int hyphenation_frequency = 0 /*HYPHENATION_FREQUENCY_NONE*/;
 	private int gravity = Gravity.CENTER;
 	private boolean allCaps;
+	private CharSequence hint;
+	private boolean selectable;
+	private TransformationMethod transformation;
+	OnEditorActionListener editorActionListener;
+	// Editor's InputContentType exists: an action listener or IME options were set
+	boolean inputContentType;
 
 	public TextView(Context context, AttributeSet attrs) {
 		this(context, attrs, 0);
@@ -92,6 +109,8 @@ public class TextView extends View {
 				boolean allCaps = a.getBoolean(com.android.internal.R.styleable.TextView_textAllCaps, false);
 				setAllCaps(allCaps);
 			}
+			if (a.getBoolean(com.android.internal.R.styleable.TextView_textIsSelectable, false))
+				setTextIsSelectable(true);
 		} catch (java.lang.Exception e) {
 			System.out.println("exception while inflating TextView:");
 			e.printStackTrace();
@@ -182,10 +201,62 @@ public class TextView extends View {
 
 	public void addTextChangedListener(TextWatcher watcher) {}
 	public void removeTextChangedListener(TextWatcher watcher) {}
-	public void setOnEditorActionListener(TextView.OnEditorActionListener l) {}
+	public void setOnEditorActionListener(TextView.OnEditorActionListener l) {
+		editorActionListener = l;
+		inputContentType = true;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void onEditorAction(int actionCode) {
+		if (inputContentType) {
+			if (editorActionListener != null && editorActionListener.onEditorAction(this, actionCode, null))
+				return;
+
+			// This is the handling for some default action.
+			// Note that for backwards compatibility we don't do this
+			// default handling if explicit ime options have not been given,
+			// instead turning this into the normal enter key codes that an
+			// app may be expecting.
+			if (actionCode == EditorInfo.IME_ACTION_NEXT) {
+				View v = focusSearch(FOCUS_FORWARD);
+				if (v != null) {
+					if (!v.requestFocus(FOCUS_FORWARD)) {
+						throw new IllegalStateException("focus search returned a view "
+						                                + "that wasn't able to take focus!");
+					}
+				}
+				return;
+
+			} else if (actionCode == EditorInfo.IME_ACTION_PREVIOUS) {
+				View v = focusSearch(FOCUS_BACKWARD);
+				if (v != null) {
+					if (!v.requestFocus(FOCUS_BACKWARD)) {
+						throw new IllegalStateException("focus search returned a view "
+						                                + "that wasn't able to take focus!");
+					}
+				}
+				return;
+
+			} else if (actionCode == EditorInfo.IME_ACTION_DONE) {
+				InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+				if (imm != null && imm.isActive(this)) {
+					imm.hideSoftInputFromWindow(getWindowToken(), 0);
+				}
+				return;
+			}
+		}
+
+		long eventTime = SystemClock.uptimeMillis();
+		ATLInput.dispatchKeyFromIme(this, new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, 0,
+		                                               KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+		                                               KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE | KeyEvent.FLAG_EDITOR_ACTION));
+		ATLInput.dispatchKeyFromIme(this, new KeyEvent(SystemClock.uptimeMillis(), eventTime, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0, 0,
+		                                               KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+		                                               KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE | KeyEvent.FLAG_EDITOR_ACTION));
+	}
 
 	public TransformationMethod getTransformationMethod() {
-		return null;
+		return transformation;
 	}
 
 	public void setHintTextColor(ColorStateList colorStateList) {}
@@ -197,11 +268,11 @@ public class TextView extends View {
 	public void setSelection(int i, int j) {}
 
 	public int getSelectionStart() {
-		return 0;
+		return Selection.getSelectionStart(getText());
 	}
 
 	public int getSelectionEnd() {
-		return 0;
+		return Selection.getSelectionEnd(getText());
 	}
 
 	public void setEllipsize(TextUtils.TruncateAt truncateAt) {}
@@ -291,7 +362,13 @@ public class TextView extends View {
 
 	public int getInputType() { return 0; }
 
-	public final void setTransformationMethod(TransformationMethod method) {}
+	public final void setTransformationMethod(TransformationMethod method) {
+		transformation = method;
+		transformationChanged();
+	}
+
+	// the toolkit shows the text as it is; an EditText's field hides a password's
+	void transformationChanged() {}
 
 	public InputFilter[] getFilters() { return new InputFilter[0]; }
 
@@ -307,13 +384,19 @@ public class TextView extends View {
 
 	public void setMovementMethod(MovementMethod method) {}
 
-	public void setTextIsSelectable(boolean selectable) {}
+	public void setTextIsSelectable(boolean selectable) {
+		this.selectable = selectable;
+		native_setSelectable(selectable);
+	}
+	private native void native_setSelectable(boolean selectable);
 
 	public MovementMethod getMovementMethod() {
 		return new BaseMovementMethod();
 	}
 
-	public CharSequence getHint() { return "HINT"; }
+	public CharSequence getHint() {
+		return hint;
+	}
 
 	public int getMinHeight() { return 0; }
 	public int getMinWidth() { return 0; }
@@ -361,13 +444,17 @@ public class TextView extends View {
 
 	public boolean getLinksClickable() { return true; }
 
-	public boolean isTextSelectable() { return true; }
+	public boolean isTextSelectable() {
+		return selectable;
+	}
 
 	public void setCompoundDrawablesWithIntrinsicBounds(int left, int top, int right, int bottom) {}
 
 	public void setCompoundDrawablesWithIntrinsicBounds(Drawable left, Drawable top, Drawable right, Drawable bottom) {}
 
-	public void setHint(CharSequence s) {}
+	public void setHint(CharSequence hint) {
+		this.hint = hint;
+	}
 
 	public Drawable[] getCompoundDrawablesRelative() {
 		return getCompoundDrawables();
@@ -514,7 +601,11 @@ public class TextView extends View {
 
 	public int getExtendedPaddingBottom() { return 0; }
 
-	public boolean hasSelection() { return false; }
+	public boolean hasSelection() {
+		int start = getSelectionStart();
+		int end = getSelectionEnd();
+		return start >= 0 && end > 0 && start != end;
+	}
 
 	@UnsupportedAppUsage /* androidx ACTVAutoSizeHelper seems to love this */
 	/* Copyright (C) 2006 The Android Open Source Project */

@@ -134,7 +134,8 @@ void ui_view_layout(struct ui_view *view, int left, int top, int right, int bott
 /* View.scrollTo, px. A scroll node's toolkit moves its content, animated if asked, and reports every
  * offset it reaches through atl_upcall_scrolled; elsewhere the backend shifts the children or not. */
 void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated);
-/* Java's focus came or went: a toolkit widget that edits text takes the toolkit's focus with it. */
+/* Java's focus came or went. gtk: a widget that edits text takes GTK's focus with it; a backend
+ * with a soft keyboard leaves its fields' input target to ui_edit_set_keyboard. */
 void ui_view_set_focused(struct ui_view *view, bool focused);
 
 /* A TextView: the toolkit measures and draws the text. */
@@ -155,6 +156,53 @@ void ui_text_set_markup(struct ui_view *view, bool markup);
 void ui_text_set_alignment(struct ui_view *view, int alignment);
 /* TextView's compound drawables, NULL: none. */
 void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, struct gfx_drawable *top, struct gfx_drawable *right, struct gfx_drawable *bottom);
+/* TextView.setTextIsSelectable: the toolkit's own selection and edit menu (Copy). Edit nodes have
+ * them anyway. */
+void ui_text_set_selectable(struct ui_view *view, bool selectable);
+
+/* An EditText: a text node whose field the user edits. Java's Editable is the truth: the field
+ * applies the user's edits at once and reports each (atl_upcall_edit_report); ui_text_set_text and
+ * ui_text_set_markup don't apply, the text comes through ui_edit_set_state. */
+struct ui_view *ui_edit_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);
+enum ui_keyboard {
+	UI_KEYBOARD_TEXT,
+	UI_KEYBOARD_NUMBER,
+	UI_KEYBOARD_DECIMAL,
+	UI_KEYBOARD_PHONE,
+	UI_KEYBOARD_EMAIL,
+	UI_KEYBOARD_URL,
+};
+// the return key of a single-line field; DEFAULT: a plain return
+enum ui_return_key {
+	UI_RETURN_DEFAULT,
+	UI_RETURN_DONE,
+	UI_RETURN_GO,
+	UI_RETURN_SEARCH,
+	UI_RETURN_NEXT,
+	UI_RETURN_SEND,
+};
+enum ui_autocap {
+	UI_AUTOCAP_NONE,
+	UI_AUTOCAP_WORDS,
+	UI_AUTOCAP_SENTENCES,
+	UI_AUTOCAP_CHARACTERS,
+};
+struct ui_edit_config {
+	enum ui_keyboard keyboard;
+	enum ui_return_key return_key;
+	enum ui_autocap autocap;
+	bool secure; // a password: hidden, nothing learned
+	bool multiline;
+	bool autocorrect;
+	const char *hint; // NULL: none
+};
+void ui_edit_set_config(struct ui_view *view, const struct ui_edit_config *config);
+/* Java's state, positions in UTF-16 code units. The field takes it only when ack is the seq of its
+ * last report and no marked text is open; else its newer report makes Java answer again. */
+void ui_edit_set_state(struct ui_view *view, const char *text, int start, int end, uint32_t ack);
+/* The field becomes the keyboard's input target, or stops being it; false: no keyboard shows on
+ * this toolkit (gtk types into the focused widget). */
+bool ui_edit_set_keyboard(struct ui_view *view, bool shown);
 
 /* A Button or a CompoundButton: a text node with a toolkit control. Java owns pressed and checked
  * state and dispatches the control's touches; the control only shows the state. */

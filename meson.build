@@ -99,6 +99,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_view_ViewTreeObserver.c',
 	'src/shared/android_view_Window.c',
 	'src/shared/android_widget_Button.c',
+	'src/shared/android_widget_EditText.c',
 	'src/shared/android_widget_ImageView.c',
 	'src/shared/android_widget_ProgressBar.c',
 	'src/shared/android_widget_ScrollView.c',
@@ -236,7 +237,6 @@ if desktop
     'src/api-impl-jni/widgets/android_view_SurfaceView.c',
     'src/api-impl-jni/widgets/android_webkit_WebView.c',
     'src/api-impl-jni/widgets/android_widget_DatePicker.c',
-    'src/api-impl-jni/widgets/android_widget_EditText.c',
     'src/api-impl-jni/widgets/android_widget_PopupMenu.c',
     'src/api-impl-jni/widgets/android_widget_PopupWindow.c',
     'src/api-impl-jni/widgets/android_widget_Spinner.c',
@@ -281,7 +281,7 @@ endif
 
 records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/ui/records/dump.c'] : [])
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/views.c'])
+  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/edit.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/views.c'])
 elif ui_backend == 'uikit'
   backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/view.m'])
 else
@@ -289,6 +289,7 @@ else
                                    'src/api-impl-jni/views/AndroidLayout.c',
                                    'src/backends/ui/gtk/dialog.c',
                                    'src/backends/ui/gtk/display.c',
+                                   'src/backends/ui/gtk/edit.c',
                                    'src/backends/ui/gtk/input.c',
                                    'src/backends/ui/gtk/text.c',
                                    'src/backends/ui/gtk/view.c',
