@@ -76,6 +76,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.view.getScrollX = _METHOD(handle_cache.view.class, "getScrollX", "()I");
 	handle_cache.view.getScrollY = _METHOD(handle_cache.view.class, "getScrollY", "()I");
 	handle_cache.view.performClick = _METHOD(handle_cache.view.class, "performClick", "()Z");
+	handle_cache.view.isClickable = _METHOD(handle_cache.view.class, "isClickable", "()Z");
 	handle_cache.view.layoutInternal = _METHOD(handle_cache.view.class, "layoutInternal", "(II)V");
 	handle_cache.view.measure = _METHOD(handle_cache.view.class, "measure", "(II)V");
 	handle_cache.view.getId = _METHOD(handle_cache.view.class, "getId", "()I");
@@ -92,7 +93,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.atl_input.key = _STATIC_METHOD(handle_cache.atl_input.class, "key", "(Landroid/view/View;Landroid/view/KeyEvent;)Z");
 
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
-	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)V");
+	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)Z");
 	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Z)V");
 
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));

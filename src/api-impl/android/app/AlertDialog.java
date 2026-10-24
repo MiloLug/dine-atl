@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 
 public class AlertDialog extends Dialog implements DialogInterface {
 
@@ -13,8 +14,10 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	// positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
 	private final CharSequence[] buttonLabels = new CharSequence[3];
 	private final OnClickListener[] buttonListeners = new OnClickListener[3];
+	private final AlertButton[] buttons = new AlertButton[3]; // getButton's, made on demand
 
-	private native void nativeShowAlert(long ptr, String title, String message, String[] items, String[] buttons, boolean cancelable);
+	private native void nativeShowAlert(long ptr, String title, String message, String[] items, String[] buttons, boolean[] disabled, boolean cancelable);
+	private native void nativeSetButton(long ptr, int which, String label, boolean enabled);
 
 	public AlertDialog(Context context) {
 		this(context, 0);
@@ -32,11 +35,85 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	public void setButton(int whichButton, CharSequence text, OnClickListener listener) {
 		buttonLabels[-1 - whichButton] = text;
 		buttonListeners[-1 - whichButton] = listener;
+		AlertButton button = buttons[-1 - whichButton];
+		if (button != null) {
+			button.setText(text);
+			button.setVisibility(text != null ? View.VISIBLE : View.GONE);
+		}
 	}
 
-	// the ui backend draws the buttons: there are no Button views
+	/* AOSP's AlertController buttons: views outside any window whose own click listener is the
+	 * dialog's listener, then dismiss; an app's setOnClickListener replaces that. The ui backend
+	 * draws the alert from their label, visibility and enabled state. */
 	public Button getButton(int whichButton) {
-		return null;
+		int i = -1 - whichButton;
+		if (i < 0 || i >= buttons.length)
+			return null;
+		if (buttons[i] == null)
+			buttons[i] = new AlertButton(this, whichButton);
+		return buttons[i];
+	}
+
+	private static class AlertButton extends Button {
+		private final AlertDialog dialog;
+		private final int which;
+		private boolean bound; // Button's constructor sets state before which is known
+
+		AlertButton(final AlertDialog dialog, final int which) {
+			super(dialog.getContext());
+			this.dialog = dialog;
+			this.which = which;
+			CharSequence label = dialog.buttonLabels[-1 - which];
+			setText(label);
+			setVisibility(label != null ? View.VISIBLE : View.GONE);
+			setOnClickListener(new View.OnClickListener() {
+				public void onClick(View v) {
+					dialog.click(which);
+				}
+			});
+			bound = true;
+		}
+
+		boolean shown() {
+			return getVisibility() == View.VISIBLE;
+		}
+
+		@Override
+		public void setText(CharSequence text, TextView.BufferType type) {
+			super.setText(text, type);
+			changed();
+		}
+
+		@Override
+		public void setEnabled(boolean enabled) {
+			super.setEnabled(enabled);
+			changed();
+		}
+
+		@Override
+		public void setVisibility(int visibility) {
+			super.setVisibility(visibility);
+			changed();
+		}
+
+		private void changed() {
+			if (bound && dialog.drawn())
+				dialog.nativeSetButton(dialog.nativePtr, which, dialog.label(-1 - which), isEnabled());
+		}
+	}
+
+	private String label(int i) {
+		AlertButton button = buttons[i];
+		if (button == null)
+			return string(buttonLabels[i]);
+		return button.shown() ? button.getText().toString() : null;
+	}
+
+	private void click(int which) {
+		OnClickListener listener = buttonListeners[-1 - which];
+		if (listener != null)
+			listener.onClick(this, which);
+		dismiss();
 	}
 
 	public void setView(View view) {
@@ -50,19 +127,31 @@ public class AlertDialog extends Dialog implements DialogInterface {
 
 	@Override
 	void showNative() {
-		nativeShowAlert(nativePtr, string(title), string(message), strings(items), strings(buttonLabels), cancelable);
+		String[] labels = new String[buttons.length];
+		boolean[] disabled = new boolean[buttons.length];
+		for (int i = 0; i < buttons.length; i++) {
+			labels[i] = label(i);
+			disabled[i] = buttons[i] != null && !buttons[i].isEnabled();
+		}
+		nativeShowAlert(nativePtr, string(title), string(message), strings(items), labels, disabled, cancelable);
 	}
 
 	@Override
-	void atlDialogResult(int which) {
-		if (!drawn() || which == RESULT_CANCEL) {
-			super.atlDialogResult(which);
-			return;
+	boolean atlDialogResult(int which) {
+		if (!drawn() || which == RESULT_CANCEL)
+			return super.atlDialogResult(which);
+		if (which >= 0) {
+			if (itemsListener != null)
+				itemsListener.onClick(this, which);
+			dismiss();
+		} else {
+			AlertButton button = buttons[-1 - which];
+			if (button == null)
+				click(which);
+			else if (button.shown() && button.isEnabled()) // else a result from before the change
+				button.performClick();
 		}
-		OnClickListener listener = which >= 0 ? itemsListener : buttonListeners[-1 - which];
-		if (listener != null)
-			listener.onClick(this, which);
-		dismiss();
+		return drawn();
 	}
 
 	private static String string(CharSequence text) {

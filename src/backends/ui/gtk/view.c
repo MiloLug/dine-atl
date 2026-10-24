@@ -5,6 +5,8 @@
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
 #include "src/slots/ui.h"
 
+#include "gtk_ui.h"
+
 /* A view handle is the inner widget of a WrapperWidget: a JavaWidget laid out by AndroidLayout, or
  * a toolkit widget. */
 
@@ -330,6 +332,7 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
 	if (paintable)
 		widget_set_needs_allocation(widget);
+	button_set_has_background(widget, paintable);
 }
 #pragma GCC diagnostic pop
 
@@ -355,5 +358,6 @@ void ui_view_set_background_color(struct ui_view *view, uint32_t color)
 	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
 	if (((color >> 24) & 0xFF) != 0)
 		widget_set_needs_allocation(widget);
+	button_set_has_background(widget, true); // Android's ColorDrawable replaces the button's own
 }
 

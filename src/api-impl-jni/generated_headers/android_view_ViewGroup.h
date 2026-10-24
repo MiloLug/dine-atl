@@ -215,6 +215,12 @@ extern "C" {
 #define android_view_ViewGroup_TEXT_DIRECTION_LTR 3L
 #undef android_view_ViewGroup_TEXT_DIRECTION_RTL
 #define android_view_ViewGroup_TEXT_DIRECTION_RTL 4L
+#undef android_view_ViewGroup_ALIGN_START
+#define android_view_ViewGroup_ALIGN_START 0L
+#undef android_view_ViewGroup_ALIGN_CENTER
+#define android_view_ViewGroup_ALIGN_CENTER 1L
+#undef android_view_ViewGroup_ALIGN_END
+#define android_view_ViewGroup_ALIGN_END 2L
 #undef android_view_ViewGroup_FLAG_CLIP_CHILDREN
 #define android_view_ViewGroup_FLAG_CLIP_CHILDREN 1L
 #undef android_view_ViewGroup_FLAG_INVALIDATE_REQUIRED

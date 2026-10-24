@@ -146,3 +146,78 @@ void ui_progress_set_indeterminate(struct ui_view *view, bool indeterminate)
 	gtk_widget_set_visible(progress_bar, !indeterminate);
 	gtk_widget_set_visible(spinner, indeterminate);
 }
+
+/* A button's handle is the wrapper's child: a GtkButton or GtkToggleButton holding the text box, or
+ * a box holding a GtkCheckButton or GtkSwitch beside the text box. Java dispatches the touches and
+ * keys, so GTK's widgets neither take them nor the focus; they only show Java's state. */
+struct ui_view *ui_button_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, enum ui_button kind)
+{
+	GtkWidget *wrapper = g_object_ref(wrapper_widget_new());
+	GtkWidget *handle;
+	GtkWidget *control;
+	switch (kind) {
+		case UI_BUTTON_PUSH:
+		case UI_BUTTON_TOGGLE:
+			handle = control = kind == UI_BUTTON_PUSH ? gtk_button_new() : gtk_toggle_button_new();
+			gtk_button_set_child(GTK_BUTTON(handle), text_box_new(handle, class_name, ""));
+			// centered, where Android's button style puts its gravity
+			gtk_label_set_xalign(text_get_label(handle), .5f);
+			gtk_label_set_justify(text_get_label(handle), GTK_JUSTIFY_CENTER);
+			break;
+		case UI_BUTTON_CHECK:
+		case UI_BUTTON_RADIO:
+			handle = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+			control = gtk_check_button_new();
+			// a check button in a group draws as a radio; RadioGroup's Java keeps one checked
+			if (kind == UI_BUTTON_RADIO) {
+				GtkWidget *partner = g_object_ref_sink(gtk_check_button_new());
+				gtk_check_button_set_group(GTK_CHECK_BUTTON(control), GTK_CHECK_BUTTON(partner));
+				g_object_set_data_full(G_OBJECT(control), "atl-radio-partner", partner, g_object_unref);
+			}
+			gtk_box_append(GTK_BOX(handle), control);
+			gtk_box_append(GTK_BOX(handle), text_box_new(handle, class_name, ""));
+			break;
+		case UI_BUTTON_SWITCH:
+		default:
+			handle = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+			control = gtk_switch_new();
+			gtk_widget_set_valign(control, GTK_ALIGN_CENTER);
+			gtk_box_append(GTK_BOX(handle), text_box_new(handle, class_name, ""));
+			gtk_box_append(GTK_BOX(handle), control);
+			break;
+	}
+	gtk_widget_set_can_target(control, FALSE);
+	gtk_widget_set_focusable(control, FALSE);
+	g_object_set_data(G_OBJECT(handle), "atl-button-control", control);
+	g_object_set_data(G_OBJECT(handle), "atl-button-kind", GINT_TO_POINTER(kind + 1));
+	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), handle);
+	wrapper_widget_setup(WRAPPER_WIDGET(wrapper), view_ref, traits);
+	return (struct ui_view *)handle;
+}
+
+void ui_button_set_state(struct ui_view *view, bool pressed, bool checked)
+{
+	GtkWidget *control = g_object_get_data(G_OBJECT(view), "atl-button-control");
+	if (pressed)
+		gtk_widget_set_state_flags(control, GTK_STATE_FLAG_ACTIVE, FALSE);
+	else
+		gtk_widget_unset_state_flags(control, GTK_STATE_FLAG_ACTIVE);
+	if (GTK_IS_TOGGLE_BUTTON(control)) {
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(control), checked);
+	} else if (GTK_IS_CHECK_BUTTON(control)) {
+		gtk_check_button_set_active(GTK_CHECK_BUTTON(control), checked);
+	} else if (GTK_IS_SWITCH(control)) {
+		gtk_switch_set_active(GTK_SWITCH(control), checked);
+	}
+}
+
+void button_set_has_background(GtkWidget *handle, bool has_background)
+{
+	enum ui_button kind = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(handle), "atl-button-kind")) - 1;
+	if (kind != UI_BUTTON_PUSH && kind != UI_BUTTON_TOGGLE)
+		return;
+	if (has_background)
+		gtk_widget_add_css_class(handle, "ATL-no-border");
+	else
+		gtk_widget_remove_css_class(handle, "ATL-no-border");
+}

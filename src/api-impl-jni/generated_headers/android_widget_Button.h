@@ -215,37 +215,37 @@ extern "C" {
 #define android_widget_Button_TEXT_DIRECTION_LTR 3L
 #undef android_widget_Button_TEXT_DIRECTION_RTL
 #define android_widget_Button_TEXT_DIRECTION_RTL 4L
+#undef android_widget_Button_ALIGN_START
+#define android_widget_Button_ALIGN_START 0L
+#undef android_widget_Button_ALIGN_CENTER
+#define android_widget_Button_ALIGN_CENTER 1L
+#undef android_widget_Button_ALIGN_END
+#define android_widget_Button_ALIGN_END 2L
+#undef android_widget_Button_KIND_PUSH
+#define android_widget_Button_KIND_PUSH 0L
+#undef android_widget_Button_KIND_TOGGLE
+#define android_widget_Button_KIND_TOGGLE 1L
+#undef android_widget_Button_KIND_CHECK
+#define android_widget_Button_KIND_CHECK 2L
+#undef android_widget_Button_KIND_RADIO
+#define android_widget_Button_KIND_RADIO 3L
+#undef android_widget_Button_KIND_SWITCH
+#define android_widget_Button_KIND_SWITCH 4L
 /*
  * Class:     android_widget_Button
- * Method:    native_constructor
- * Signature: (Landroid/content/Context;Landroid/util/AttributeSet;)J
+ * Method:    native_new
+ * Signature: (I)J
  */
-JNIEXPORT jlong JNICALL Java_android_widget_Button_native_1constructor
-  (JNIEnv *, jobject, jobject, jobject);
+JNIEXPORT jlong JNICALL Java_android_widget_Button_native_1new
+  (JNIEnv *, jobject, jint);
 
 /*
  * Class:     android_widget_Button
- * Method:    native_setText
- * Signature: (JLjava/lang/String;)V
+ * Method:    native_setState
+ * Signature: (JZZ)V
  */
-JNIEXPORT void JNICALL Java_android_widget_Button_native_1setText
-  (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_widget_Button
- * Method:    native_setCompoundDrawables
- * Signature: (JJ)V
- */
-JNIEXPORT void JNICALL Java_android_widget_Button_native_1setCompoundDrawables
-  (JNIEnv *, jobject, jlong, jlong);
-
-/*
- * Class:     android_widget_Button
- * Method:    getText
- * Signature: ()Ljava/lang/CharSequence;
- */
-JNIEXPORT jobject JNICALL Java_android_widget_Button_getText
-  (JNIEnv *, jobject);
+JNIEXPORT void JNICALL Java_android_widget_Button_native_1setState
+  (JNIEnv *, jobject, jlong, jboolean, jboolean);
 
 #ifdef __cplusplus
 }

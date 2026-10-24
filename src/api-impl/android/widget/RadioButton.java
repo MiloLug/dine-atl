@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/widget/RadioButton.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.widget;
 
 import android.content.Context;
@@ -14,25 +19,17 @@ public class RadioButton extends CompoundButton {
 	}
 
 	@Override
-	protected native long native_constructor(Context context, AttributeSet attrs);
+	int kind() {
+		return KIND_RADIO;
+	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
 	@Override
-	public native void setOnCheckedChangeListener(OnCheckedChangeListener listener);
-
-	@Override
-	public native void setChecked(boolean checked);
-
-	@Override
-	public native boolean isChecked();
-
-	@Override
-	public native void setText(CharSequence text);
-
-	// following methods are overridden to prevent calling incompatible methods from superclasses
-	@Override
-	public void setOnClickListener(final OnClickListener l) {}
-	@Override
-	public void setTextColor(int color) {}
-	@Override
-	void setRawTextSize(float size) {}
+	public void toggle() {
+		// we override to prevent toggle when the radio is already
+		// checked (as opposed to check boxes widgets)
+		if (!isChecked()) {
+			super.toggle();
+		}
+	}
 }

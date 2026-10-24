@@ -18,7 +18,7 @@ struct ui_dialog_state;
 
 enum node_kind {
 	NODE_VIEW, // ui_view_new: laid out by Java
-	NODE_TEXT, // ui_text_new: measured by the backend
+	NODE_TEXT, // ui_text_new, ui_button_new: measured by the backend
 	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5
 	NODE_PROGRESS, // ui_progress_new
 	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
@@ -36,10 +36,15 @@ struct ui_view {
 	float text_size; // px
 	int text_style;  // UI_TEXT_BOLD, UI_TEXT_ITALIC
 	bool markup;
+	int alignment;   // UI_TEXT_ALIGN_*
+	bool is_button;  // ui_button_new: button, pressed and checked mean something
+	enum ui_button button;
+	bool pressed, checked;
 	int visibility;  // UI_VIEW_VISIBLE, INVISIBLE or GONE
 	float alpha;
 	bool enabled;
 	struct gfx_drawable *background; // held; nothing draws it before M5
+	bool has_background;             // a color or a drawable: a push button drops its border
 	struct gfx_drawable *image;      // NODE_IMAGE, held
 	int image_width, image_height;   // px, -1: none
 	int scale_type;
@@ -85,7 +90,8 @@ void records_background_changed(struct ui_view *view, uint32_t argb);
 void records_visibility_changed(struct ui_view *view); // visibility, alpha, enabled
 void records_progress_changed(struct ui_view *view);   // NODE_PROGRESS: fraction, indeterminate
 // NODE_TEXT only
-void records_text_changed(struct ui_view *view); // text, size or style
+void records_text_changed(struct ui_view *view); // text, size, style or alignment
+void records_button_changed(struct ui_view *view); // pressed or checked
 void records_text_color_changed(struct ui_view *view, uint32_t argb);
 /* ui_dialog_free's part: the window's observations wait for their ui_window_unobserve. */
 void records_observations_orphan(struct ui_window *window);

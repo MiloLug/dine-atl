@@ -12,10 +12,18 @@ extern "C" {
 /*
  * Class:     android_app_AlertDialog
  * Method:    nativeShowAlert
- * Signature: (JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;Z)V
+ * Signature: (JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[ZZ)V
  */
 JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert
-  (JNIEnv *, jobject, jlong, jstring, jstring, jobjectArray, jobjectArray, jboolean);
+  (JNIEnv *, jobject, jlong, jstring, jstring, jobjectArray, jobjectArray, jbooleanArray, jboolean);
+
+/*
+ * Class:     android_app_AlertDialog
+ * Method:    nativeSetButton
+ * Signature: (JILjava/lang/String;Z)V
+ */
+JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetButton
+  (JNIEnv *, jobject, jlong, jint, jstring, jboolean);
 
 #ifdef __cplusplus
 }

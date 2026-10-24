@@ -6,19 +6,17 @@
 
 #include "gtk_ui.h"
 
-/* A TextView is a GtkLabel in a GtkBox that also holds the compound drawables. */
+/* A TextView is a GtkLabel in a GtkBox that also holds the compound drawables; a button's handle holds
+ * such a box. Handles without a label (an EditText's GtkText, any view for the alignment) skip the
+ * calls that need one. */
 
-GtkLabel *text_box_get_label(GtkWidget *box)
+GtkLabel *text_get_label(GtkWidget *handle)
 {
-	GtkWidget *label = gtk_widget_get_last_child(GTK_WIDGET(box));
-	if (!GTK_IS_LABEL(label))
-		label = gtk_widget_get_prev_sibling(label);
-	return GTK_LABEL(label);
+	return g_object_get_data(G_OBJECT(handle), "atl-label");
 }
 
-struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)
+GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *text)
 {
-	GtkWidget *wrapper = g_object_ref(wrapper_widget_new());
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	GtkWidget *label = gtk_label_new(text);
 	gtk_label_set_wrap(GTK_LABEL(label), TRUE);
@@ -26,21 +24,30 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 	gtk_label_set_yalign(GTK_LABEL(label), 0.f);
 	gtk_widget_set_hexpand(label, TRUE);
 	gtk_box_append(GTK_BOX(box), label);
-	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), box);
-	wrapper_widget_setup(WRAPPER_WIDGET(wrapper), view_ref, traits);
-	g_object_set_data_full(G_OBJECT(box), "atl-class-name", g_strdup(class_name), g_free);
+	g_object_set_data(G_OBJECT(handle ?: box), "atl-label", label);
+	g_object_set_data_full(G_OBJECT(handle ?: box), "atl-class-name", g_strdup(class_name), g_free);
 
 	PangoAttrList *pango_attrs = pango_attr_list_new();
 	pango_attr_list_insert(pango_attrs, pango_attr_font_features_new("tnum"));
 	gtk_label_set_attributes(GTK_LABEL(label), pango_attrs);
 	pango_attr_list_unref(pango_attrs);
+	return box;
+}
 
+struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)
+{
+	GtkWidget *wrapper = g_object_ref(wrapper_widget_new());
+	GtkWidget *box = text_box_new(NULL, class_name, text);
+	wrapper_widget_set_child(WRAPPER_WIDGET(wrapper), box);
+	wrapper_widget_setup(WRAPPER_WIDGET(wrapper), view_ref, traits);
 	return (struct ui_view *)box;
 }
 
 void ui_text_set_text(struct ui_view *view, const char *text)
 {
-	atl_safe_gtk_label_set_text(text_box_get_label(GTK_WIDGET(view)), text);
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (label)
+		atl_safe_gtk_label_set_text(label, text);
 }
 
 /* we kinda need per-widget css */
@@ -69,7 +76,9 @@ void ui_text_set_color(struct ui_view *view, uint32_t color)
 
 void ui_text_set_size(struct ui_view *view, float size)
 {
-	GtkLabel *label = text_box_get_label(GTK_WIDGET(view));
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
 	PangoAttrList *attrs;
 
 	PangoAttrList *old_attrs = gtk_label_get_attributes(label);
@@ -98,5 +107,47 @@ void ui_text_set_style(struct ui_view *view, int style)
 
 void ui_text_set_markup(struct ui_view *view, bool markup)
 {
-	gtk_label_set_use_markup(text_box_get_label(GTK_WIDGET(view)), markup);
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (label)
+		gtk_label_set_use_markup(label, markup);
+}
+
+void ui_text_set_alignment(struct ui_view *view, int alignment)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
+	static const float xalign[] = {[UI_TEXT_ALIGN_START] = 0.f, [UI_TEXT_ALIGN_CENTER] = .5f, [UI_TEXT_ALIGN_END] = 1.f};
+	static const GtkJustification justify[] = {[UI_TEXT_ALIGN_START] = GTK_JUSTIFY_LEFT, [UI_TEXT_ALIGN_CENTER] = GTK_JUSTIFY_CENTER,
+	                                           [UI_TEXT_ALIGN_END] = GTK_JUSTIFY_RIGHT};
+	gtk_label_set_xalign(label, xalign[alignment]);
+	gtk_label_set_justify(label, justify[alignment]);
+}
+
+// pictures before and after the label in its box
+void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, struct gfx_drawable *top, struct gfx_drawable *right, struct gfx_drawable *bottom)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
+	GtkWidget *box = gtk_widget_get_parent(GTK_WIDGET(label));
+	gtk_orientable_set_orientation(GTK_ORIENTABLE(box), (left || right) ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
+
+	GdkPaintable *paintable = (GdkPaintable *)(left ?: top);
+	GtkWidget *picture = gtk_widget_get_first_child(box);
+	if (GTK_IS_PICTURE(picture)) {
+		gtk_picture_set_paintable(GTK_PICTURE(picture), paintable);
+	} else if (paintable) {
+		picture = gtk_picture_new_for_paintable(paintable);
+		gtk_widget_insert_after(picture, box, NULL);
+	}
+
+	paintable = (GdkPaintable *)(right ?: bottom);
+	picture = gtk_widget_get_last_child(box);
+	if (GTK_IS_PICTURE(picture)) {
+		gtk_picture_set_paintable(GTK_PICTURE(picture), paintable);
+	} else if (paintable) {
+		picture = gtk_picture_new_for_paintable(paintable);
+		gtk_widget_insert_before(picture, box, NULL);
+	}
 }

@@ -107,14 +107,33 @@ void atl_upcall_pre_draw(struct atl_ref *observer)
 	call_observer(observer, handle_cache.view_tree_observer.dispatchOnPreDraw);
 }
 
-void atl_upcall_dialog_result(struct atl_ref *dialog, int which)
+bool atl_upcall_dialog_result(struct atl_ref *dialog, int which)
 {
 	JNIEnv *env = get_jni_env();
 	jobject dialog_obj = (*env)->NewLocalRef(env, (jobject)dialog);
 	if (!dialog_obj) // collected after its close
-		return;
-	(*env)->CallVoidMethod(env, dialog_obj, handle_cache.dialog.atlDialogResult, which);
-	if ((*env)->ExceptionCheck(env))
+		return false;
+	bool drawn = (*env)->CallBooleanMethod(env, dialog_obj, handle_cache.dialog.atlDialogResult, which);
+	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+		drawn = false;
+	}
 	(*env)->DeleteLocalRef(env, dialog_obj);
+	return drawn;
+}
+
+void atl_upcall_click(struct atl_ref *view)
+{
+	JNIEnv *env = get_jni_env();
+	jobject view_obj = (*env)->NewLocalRef(env, (jobject)view);
+	if (!view_obj)
+		return;
+	if ((*env)->CallBooleanMethod(env, view_obj, handle_cache.view.isClickable))
+		(*env)->CallBooleanMethod(env, view_obj, handle_cache.view.performClick);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->DeleteLocalRef(env, view_obj);
 }

@@ -13,6 +13,11 @@ public class Switch extends CompoundButton {
 		super(context, attributeSet);
 	}
 
+	@Override
+	int kind() {
+		return KIND_SWITCH;
+	}
+
 	public void setTextOn(CharSequence text) {}
 	public void setTextOff(CharSequence text) {}
 }

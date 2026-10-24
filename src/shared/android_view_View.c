@@ -116,6 +116,11 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1scrollTo(JNIEnv *env, jobj
 	ui_view_scroll_to(_PTR(widget_ptr), x, y, animated);
 }
 
+JNIEXPORT void JNICALL Java_android_view_View_native_1setTextAlignment(JNIEnv *env, jobject this, jlong widget_ptr, jint alignment)
+{
+	ui_text_set_alignment(_PTR(widget_ptr), alignment);
+}
+
 JNIEXPORT void JNICALL Java_android_view_View_native_1setFocused(JNIEnv *env, jobject this, jlong widget_ptr, jboolean focused)
 {
 	ui_view_set_focused(_PTR(widget_ptr), focused);

@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "src/shared/input.h"
@@ -10,12 +11,13 @@
 
 #include "../records/records.h"
 #import "input.h"
+#import "queue.h"
 #import "surface.h"
 
-/* A UIView per view record, an ATLLabel per text record, in the surface the host gave; the shown
- * activity's frame goes to the surface as ATLSurface. Changes queue on the Android main thread and
- * reach UIKit's thread in order, one batch per layout pass. Text measurement waits for UIKit's thread:
- * deadlock-free only while main never waits for the Android thread. */
+/* A UIView per view record, an ATLLabel per text record (an ATLButton per button's), in the surface
+ * the host gave; the shown activity's frame goes to the surface as ATLSurface. Changes queue on the
+ * Android main thread and reach UIKit's thread in order, one batch per layout pass. Text measurement
+ * waits for UIKit's thread: deadlock-free only while main never waits for the Android thread. */
 
 // each node view hands the touches UIKit gives it to input.m
 #define FORWARD_TOUCHES                                                            \
@@ -73,12 +75,37 @@ FORWARD_TOUCHES
 }
 @end
 
-@interface ATLLabel : UILabel
+// a text record's view, ATLLabel or ATLButton
+@protocol ATLText
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment;
+- (void)atlSetColor:(UIColor *)color;
+- (void)atlSetPadding:(UIEdgeInsets)padding;
+@end
+
+@interface ATLLabel : UILabel <ATLText>
 @property(nonatomic) UIEdgeInsets padding;
 @end
 
 @implementation ATLLabel
 FORWARD_TOUCHES
+
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+{
+	self.text = text;
+	self.font = font;
+	self.textAlignment = alignment;
+}
+
+- (void)atlSetColor:(UIColor *)color
+{
+	self.textColor = color;
+}
+
+- (void)atlSetPadding:(UIEdgeInsets)padding
+{
+	self.padding = padding;
+	[self setNeedsDisplay];
+}
 
 // at the top left of the padded bounds, TextView's default gravity; UILabel centers vertically
 - (void)drawTextInRect:(CGRect)rect
@@ -118,6 +145,205 @@ FORWARD_TOUCHES
 	CGFloat height = [_bar sizeThatFits:bounds.size].height;
 	_bar.frame = CGRectMake(0, (bounds.size.height - height) / 2, bounds.size.width, height);
 	_spinner.center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+}
+@end
+
+static void click_post(void *data)
+{
+	struct ui_view *view = data;
+	if (view->ref) // its last free waits behind this post
+		atl_upcall_click(view->ref);
+}
+
+static UIImage *box_image(enum ui_button kind, bool checked)
+{
+	NSString *name = kind == UI_BUTTON_CHECK ? (checked ? @"checkmark.square.fill" : @"square")
+	                                         : (checked ? @"largecircle.fill.circle" : @"circle");
+	UIImage *image = [UIImage systemImageNamed:name];
+	if (!image) {
+		printf("atl: no SF Symbol %s\n", name.UTF8String);
+		fflush(stdout);
+	}
+	return image;
+}
+
+#define SWITCH_SPACING 8 // pt between a switch's text and its UISwitch
+
+/* A button record's view: a UIButton, or a label and a UISwitch, showing Java's state only; the touches
+ * go to input.m as any view's. Accessibility activation (VoiceOver, the debug agent's tap) is a click,
+ * as TalkBack's is. */
+@interface ATLButton : UIView <ATLText>
+@property(nonatomic) bool enabled;
+@property(nonatomic) bool hasBackground; // push and toggle: plain instead of gray
+- (instancetype)initWithRecord:(struct ui_view *)view kind:(enum ui_button)kind;
+- (void)atlSetPressed:(bool)pressed checked:(bool)checked;
+- (void)detachRecord;
+- (CGSize)contentSizeThatFits:(CGFloat)width; // pt, without padding
+@end
+
+@implementation ATLButton {
+	struct ui_view *_record; // NULL for a scratch view, or once freed
+	enum ui_button _kind;
+	UIButton *_button; // all but a switch
+	UILabel *_label;   // a switch's text
+	UISwitch *_toggle;
+	NSString *_text;
+	UIFont *_font;
+	UIColor *_color;
+	UIEdgeInsets _padding;
+	bool _pressed, _checked;
+}
+FORWARD_TOUCHES
+
+- (instancetype)initWithRecord:(struct ui_view *)view kind:(enum ui_button)kind
+{
+	if ((self = [super initWithFrame:CGRectZero])) {
+		_record = view;
+		_kind = kind;
+		_text = @"";
+		_enabled = true;
+		if (kind == UI_BUTTON_SWITCH) {
+			_label = [UILabel new];
+			_label.numberOfLines = 0;
+			_toggle = [UISwitch new];
+			_toggle.userInteractionEnabled = NO;
+			[self addSubview:_label];
+			[self addSubview:_toggle];
+		} else {
+			_button = [UIButton buttonWithConfiguration:[UIButtonConfiguration plainButtonConfiguration] primaryAction:nil];
+			_button.userInteractionEnabled = NO;
+			[self addSubview:_button];
+		}
+		self.isAccessibilityElement = YES;
+		[self update];
+	}
+	return self;
+}
+
+- (void)update
+{
+	UIColor *color = _enabled ? _color : nil; // nil: the control's own, dimmed when disabled
+	if (_toggle) {
+		_label.text = _text;
+		_label.font = _font;
+		_label.textColor = color ?: UIColor.labelColor;
+		[_toggle setOn:_checked animated:YES];
+		_toggle.enabled = _enabled;
+	} else {
+		bool box = _kind == UI_BUTTON_CHECK || _kind == UI_BUTTON_RADIO;
+		UIButtonConfiguration *config;
+		if (box || _hasBackground)
+			config = [UIButtonConfiguration plainButtonConfiguration];
+		else if (_kind == UI_BUTTON_TOGGLE && _checked)
+			config = [UIButtonConfiguration filledButtonConfiguration];
+		else
+			config = [UIButtonConfiguration grayButtonConfiguration];
+		NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
+		if (_font)
+			attributes[NSFontAttributeName] = _font;
+		if (color)
+			attributes[NSForegroundColorAttributeName] = color;
+		config.attributedTitle = [[NSAttributedString alloc] initWithString:_text attributes:attributes];
+		if (box) {
+			config.image = box_image(_kind, _checked);
+			config.imagePadding = 8;
+			config.imagePlacement = NSDirectionalRectEdgeLeading;
+			config.contentInsets = NSDirectionalEdgeInsetsZero;
+			if (_font)
+				config.preferredSymbolConfigurationForImage = [UIImageSymbolConfiguration configurationWithFont:_font];
+		}
+		_button.configuration = config;
+		_button.contentHorizontalAlignment = box ? UIControlContentHorizontalAlignmentLeading : UIControlContentHorizontalAlignmentCenter;
+		_button.highlighted = _pressed;
+		_button.selected = _kind == UI_BUTTON_TOGGLE && _checked;
+		_button.enabled = _enabled;
+	}
+	self.accessibilityLabel = _text;
+	UIAccessibilityTraits traits = UIAccessibilityTraitButton;
+	if (_checked && _kind != UI_BUTTON_PUSH && _kind != UI_BUTTON_SWITCH)
+		traits |= UIAccessibilityTraitSelected;
+	if (!_enabled)
+		traits |= UIAccessibilityTraitNotEnabled;
+	self.accessibilityTraits = traits;
+	self.accessibilityValue = _kind == UI_BUTTON_SWITCH ? (_checked ? @"1" : @"0") : nil;
+}
+
+- (void)layoutSubviews
+{
+	[super layoutSubviews];
+	CGRect inner = UIEdgeInsetsInsetRect(self.bounds, _padding);
+	if (_toggle) {
+		// its drawn size: intrinsicContentSize leaves out an alignment inset
+		CGSize size = [_toggle sizeThatFits:CGSizeZero];
+		_toggle.frame = CGRectMake(CGRectGetMaxX(inner) - size.width, CGRectGetMidY(inner) - size.height / 2, size.width, size.height);
+		_label.frame = CGRectMake(inner.origin.x, inner.origin.y, MAX(0, inner.size.width - size.width - SWITCH_SPACING), inner.size.height);
+	} else {
+		_button.frame = inner;
+	}
+}
+
+- (CGSize)contentSizeThatFits:(CGFloat)width
+{
+	if (_toggle) {
+		CGSize toggle = [_toggle sizeThatFits:CGSizeZero];
+		CGSize label = [_label sizeThatFits:CGSizeMake(MAX(0, width - toggle.width - SWITCH_SPACING), CGFLOAT_MAX)];
+		if (!_text.length)
+			label.height = _label.font.lineHeight;
+		return CGSizeMake(label.width + SWITCH_SPACING + toggle.width, MAX(label.height, toggle.height));
+	}
+	return [_button sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+}
+
+- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+{
+	_text = text;
+	_font = font;
+	[self update];
+	[self setNeedsLayout];
+}
+
+- (void)atlSetColor:(UIColor *)color
+{
+	_color = color;
+	[self update];
+}
+
+- (void)atlSetPadding:(UIEdgeInsets)padding
+{
+	_padding = padding;
+	[self setNeedsLayout];
+}
+
+- (void)atlSetPressed:(bool)pressed checked:(bool)checked
+{
+	_pressed = pressed;
+	_checked = checked;
+	[self update];
+}
+
+- (void)setEnabled:(bool)enabled
+{
+	_enabled = enabled;
+	[self update];
+}
+
+- (void)setHasBackground:(bool)hasBackground
+{
+	_hasBackground = hasBackground;
+	[self update];
+}
+
+- (void)detachRecord
+{
+	_record = NULL;
+}
+
+- (BOOL)accessibilityActivate
+{
+	if (!_enabled || !_record)
+		return NO;
+	loop_main_post(click_post, _record);
+	return YES;
 }
 @end
 
@@ -253,7 +479,7 @@ static void flush_post(void *data)
 	}
 }
 
-static void enqueue(dispatch_block_t op)
+void uikit_enqueue(dispatch_block_t op)
 {
 	if (!pending)
 		pending = [NSMutableArray array];
@@ -274,9 +500,13 @@ void records_view_created(struct ui_view *view)
 	@autoreleasepool {
 		enum node_kind kind = view->kind;
 		bool horizontal = view->horizontal;
-		enqueue(^{
+		bool is_button = view->is_button;
+		enum ui_button button = view->button;
+		uikit_enqueue(^{
 			UIView *created;
-			if (kind == NODE_TEXT) {
+			if (kind == NODE_TEXT && is_button) {
+				created = [[ATLButton alloc] initWithRecord:view kind:button];
+			} else if (kind == NODE_TEXT) {
 				ATLLabel *label = [ATLLabel new];
 				label.numberOfLines = 0;
 				created = label;
@@ -297,7 +527,7 @@ void records_view_created(struct ui_view *view)
 void records_child_added(struct ui_view *parent, struct ui_view *child, size_t index)
 {
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			[native(parent) insertSubview:native(child) atIndex:index];
 		});
 	}
@@ -306,7 +536,7 @@ void records_child_added(struct ui_view *parent, struct ui_view *child, size_t i
 void records_child_removed(struct ui_view *parent, struct ui_view *child)
 {
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			UIView *removed = native(child);
 			if (removed.superview == native(parent)) // UIKit moves a view added to a second parent
 				[removed removeFromSuperview];
@@ -326,13 +556,15 @@ static void free_record(void *data)
 void records_view_freed(struct ui_view *view)
 {
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			UIView *freed = CFBridgingRelease(view->native);
 			struct scroll_report *report = NULL;
 			if ([freed isKindOfClass:[ATLScrollView class]]) {
 				((ATLScrollView *)freed).delegate = nil;
 				report = ((ATLScrollView *)freed).report;
 			}
+			if ([freed isKindOfClass:[ATLButton class]]) // VoiceOver may still hold it
+				[(ATLButton *)freed detachRecord];
 			[freed removeFromSuperview];
 			view->native = report;
 			if (!loop_main_post(free_record, view))
@@ -347,7 +579,7 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 		return;
 	void *target = surface;
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			ATLView *added = (ATLView *)native(root);
 			added.hidden = YES;
 			added.activityRoot = YES;
@@ -363,7 +595,7 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 	void *target = surface;
 	@autoreleasepool {
 		bool visible = root->visibility == UI_VIEW_VISIBLE;
-		enqueue(^{
+		uikit_enqueue(^{
 			UIView *shown = native(root);
 			UIView *surface_view = (__bridge UIView *)target;
 			for (UIView *other in surface_view.subviews)
@@ -379,7 +611,7 @@ void records_root_removed(struct ui_window *window, struct ui_view *root)
 	if (window != app_window)
 		return;
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			[native(root) removeFromSuperview];
 		});
 	}
@@ -392,7 +624,7 @@ void records_frame_changed(struct ui_window *window)
 	struct ui_frame frame = window->frame;
 	void *target = surface;
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			id surface_view = (__bridge id)target;
 			if ([surface_view conformsToProtocol:@protocol(ATLSurface)])
 				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light fullscreen:frame.fullscreen];
@@ -408,7 +640,7 @@ void records_window_closed(struct ui_window *window)
 	void *closed = surface;
 	surface = NULL;
 	@autoreleasepool {
-		enqueue(^{
+		uikit_enqueue(^{
 			CFRelease(closed);
 		});
 		flush();
@@ -422,10 +654,8 @@ void records_padding_changed(struct ui_view *view)
 	CGFloat s = scale();
 	UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 	@autoreleasepool {
-		enqueue(^{
-			ATLLabel *label = (ATLLabel *)native(view);
-			label.padding = padding;
-			[label setNeedsDisplay];
+		uikit_enqueue(^{
+			[(id<ATLText>)native(view) atlSetPadding:padding];
 		});
 	}
 }
@@ -433,8 +663,12 @@ void records_padding_changed(struct ui_view *view)
 void records_background_changed(struct ui_view *view, uint32_t argb)
 {
 	@autoreleasepool {
-		enqueue(^{
-			native(view).backgroundColor = color(argb);
+		bool has_background = view->has_background;
+		uikit_enqueue(^{
+			UIView *changed = native(view);
+			changed.backgroundColor = color(argb);
+			if ([changed isKindOfClass:[ATLButton class]])
+				((ATLButton *)changed).hasBackground = has_background;
 		});
 	}
 }
@@ -444,7 +678,7 @@ void records_progress_changed(struct ui_view *view)
 	@autoreleasepool {
 		float fraction = view->fraction;
 		bool indeterminate = view->indeterminate;
-		enqueue(^{
+		uikit_enqueue(^{
 			ATLProgress *progress = (ATLProgress *)native(view);
 			progress.bar.progress = fraction;
 			progress.bar.hidden = indeterminate;
@@ -464,7 +698,7 @@ void records_visibility_changed(struct ui_view *view)
 		CGFloat alpha = view->alpha;
 		bool enabled = view->enabled;
 		void *target = surface;
-		enqueue(^{
+		uikit_enqueue(^{
 			UIView *changed = native(view);
 			UIView *surface_view = (__bridge UIView *)target;
 			// activity roots: only the front one (records_root_shown) shows
@@ -472,8 +706,15 @@ void records_visibility_changed(struct ui_view *view)
 			changed.hidden = hidden || behind;
 			changed.alpha = alpha;
 			changed.userInteractionEnabled = enabled;
+			if ([changed isKindOfClass:[ATLButton class]])
+				((ATLButton *)changed).enabled = enabled;
 		});
 	}
+}
+
+static NSTextAlignment text_alignment(int alignment)
+{
+	return alignment == UI_TEXT_ALIGN_CENTER ? NSTextAlignmentCenter : alignment == UI_TEXT_ALIGN_END ? NSTextAlignmentRight : NSTextAlignmentNatural;
 }
 
 void records_text_changed(struct ui_view *view)
@@ -482,10 +723,9 @@ void records_text_changed(struct ui_view *view)
 		NSString *text = [NSString stringWithUTF8String:view->text] ?: @"";
 		float size = view->text_size;
 		int style = view->text_style;
-		enqueue(^{
-			ATLLabel *label = (ATLLabel *)native(view);
-			label.text = text;
-			label.font = font(size, style);
+		NSTextAlignment alignment = text_alignment(view->alignment);
+		uikit_enqueue(^{
+			[(id<ATLText>)native(view) atlSetText:text font:font(size, style) alignment:alignment];
 		});
 	}
 }
@@ -493,8 +733,18 @@ void records_text_changed(struct ui_view *view)
 void records_text_color_changed(struct ui_view *view, uint32_t argb)
 {
 	@autoreleasepool {
-		enqueue(^{
-			((ATLLabel *)native(view)).textColor = color(argb);
+		uikit_enqueue(^{
+			[(id<ATLText>)native(view) atlSetColor:color(argb)];
+		});
+	}
+}
+
+void records_button_changed(struct ui_view *view)
+{
+	@autoreleasepool {
+		bool pressed = view->pressed, checked = view->checked;
+		uikit_enqueue(^{
+			[(ATLButton *)native(view) atlSetPressed:pressed checked:checked];
 		});
 	}
 }
@@ -506,9 +756,22 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		float size = view->text_size;
 		int style = view->text_style;
 		CGFloat s = scale();
+		bool is_button = view->is_button, has_background = view->has_background;
+		enum ui_button button = view->button;
 		__block CGSize fit;
-		// a label of its own: the view's label may still wait for queued changes
+		// a view of its own: the record's view may still wait for queued changes
 		dispatch_sync(dispatch_get_main_queue(), ^{
+			CGFloat width = max_width < 0 ? CGFLOAT_MAX : max_width / s;
+			if (is_button) {
+				static ATLButton *scratches[UI_BUTTON_SWITCH + 1];
+				if (!scratches[button])
+					scratches[button] = [[ATLButton alloc] initWithRecord:NULL kind:button];
+				ATLButton *scratch = scratches[button];
+				scratch.hasBackground = has_background;
+				[scratch atlSetText:text font:font(size, style) alignment:NSTextAlignmentNatural];
+				fit = [scratch contentSizeThatFits:width];
+				return;
+			}
 			static ATLLabel *scratch;
 			if (!scratch) {
 				scratch = [ATLLabel new];
@@ -516,7 +779,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 			}
 			scratch.font = font(size, style);
 			scratch.text = text;
-			fit = [scratch sizeThatFits:CGSizeMake(max_width < 0 ? CGFLOAT_MAX : max_width / s, CGFLOAT_MAX)];
+			fit = [scratch sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 			if (!text.length) // a TextView keeps one line's height
 				fit.height = scratch.font.lineHeight;
 		});
@@ -563,7 +826,7 @@ void records_layout_done(struct ui_window *window)
 			size_t count = count_views(window->shown);
 			struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
 			collect_frames(window->shown, scale(), &next);
-			enqueue(^{
+			uikit_enqueue(^{
 				for (size_t i = 0; i < count; i++) {
 					UIView *framed = native(frames[i].view);
 					framed.frame = frames[i].rect;
@@ -584,7 +847,7 @@ void records_scroll_changed(struct ui_view *view, bool animated)
 		CGFloat s = scale();
 		CGPoint offset = CGPointMake(view->scroll_x / s, view->scroll_y / s);
 		bool scroll_node = view->kind == NODE_SCROLL;
-		enqueue(^{
+		uikit_enqueue(^{
 			UIView *scrolled = native(view);
 			if (scroll_node) {
 				[(UIScrollView *)scrolled setContentOffset:offset animated:animated];

@@ -85,6 +85,7 @@ struct ui_alert {
 	const char *const *items;
 	int n_items;
 	const char *buttons[3]; // positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
+	bool disabled[3];
 	bool cancelable;
 };
 /* The result of a cancel (back, a tap outside, a Cancel action), next to buttons and items. */
@@ -95,6 +96,9 @@ struct ui_alert {
 struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor);
 /* Shows the alert instead of the decor view when alert isn't NULL. */
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
+/* A button of the shown alert changed (which: DialogInterface.BUTTON_*; label NULL: hidden). A result
+ * that leaves the dialog drawn means it stays shown: a backend whose toolkit closed it shows it again. */
+void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label, bool enabled);
 void ui_dialog_close(struct ui_window *dialog);
 /* Java dropped the Dialog; it was closed or never shown. */
 void ui_dialog_free(struct ui_window *dialog);
@@ -138,13 +142,31 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 void ui_text_set_text(struct ui_view *view, const char *text);
 void ui_text_set_color(struct ui_view *view, uint32_t argb);
 void ui_text_set_size(struct ui_view *view, float size); // px
-/* Typeface.NORMAL, BOLD, ITALIC or BOLD_ITALIC; any view node, since Button and its subclasses
- * share TextView's code. */
+/* Typeface.NORMAL, BOLD, ITALIC or BOLD_ITALIC; any view node: gtk's EditText widget takes it too. */
 void ui_text_set_style(struct ui_view *view, int style);
 #define UI_TEXT_BOLD   1
 #define UI_TEXT_ITALIC 2
 /* The text holds Pango markup (ATL's Html.fromHtml keeps the tags). */
 void ui_text_set_markup(struct ui_view *view, bool markup);
+/* View.setTextAlignment, resolved in Java; any view node, only text nodes align. */
+#define UI_TEXT_ALIGN_START  0
+#define UI_TEXT_ALIGN_CENTER 1
+#define UI_TEXT_ALIGN_END    2
+void ui_text_set_alignment(struct ui_view *view, int alignment);
+/* TextView's compound drawables, NULL: none. */
+void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, struct gfx_drawable *top, struct gfx_drawable *right, struct gfx_drawable *bottom);
+
+/* A Button or a CompoundButton: a text node with a toolkit control. Java owns pressed and checked
+ * state and dispatches the control's touches; the control only shows the state. */
+enum ui_button {
+	UI_BUTTON_PUSH,
+	UI_BUTTON_TOGGLE,
+	UI_BUTTON_CHECK,
+	UI_BUTTON_RADIO,
+	UI_BUTTON_SWITCH,
+};
+struct ui_view *ui_button_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, enum ui_button kind);
+void ui_button_set_state(struct ui_view *view, bool pressed, bool checked);
 
 /* An ImageView: the toolkit measures it from the drawable's intrinsic size, px. */
 struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);

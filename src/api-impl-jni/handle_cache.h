@@ -75,6 +75,7 @@ struct handle_cache {
 		jmethodID getScrollX;
 		jmethodID getScrollY;
 		jmethodID performClick;
+		jmethodID isClickable;
 		jmethodID layoutInternal;
 		jmethodID measure;
 		jmethodID getId;

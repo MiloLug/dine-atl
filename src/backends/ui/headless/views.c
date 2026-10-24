@@ -25,6 +25,7 @@ void records_background_changed(struct ui_view *view, uint32_t argb) {}
 void records_visibility_changed(struct ui_view *view) {}
 void records_progress_changed(struct ui_view *view) {}
 void records_text_changed(struct ui_view *view) {}
+void records_button_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
 void records_layout_done(struct ui_window *window) {}
 
@@ -60,10 +61,18 @@ static int utf8_length(const char *text)
 	return length;
 }
 
-// greedily wrapped
+// greedily wrapped, with a button's control beside the text
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height)
 {
 	float char_width = CHAR_WIDTH_PER_SIZE * view->text_size;
+	int line_height = ceilf(LINE_HEIGHT_PER_SIZE * view->text_size);
+	int control = 0;
+	if (view->is_button && (view->button == UI_BUTTON_CHECK || view->button == UI_BUTTON_RADIO))
+		control = line_height;
+	else if (view->is_button && view->button == UI_BUTTON_SWITCH)
+		control = 2 * line_height;
+	if (max_width >= 0)
+		max_width = max_width > control ? max_width - control : 0;
 	int length = utf8_length(view->text);
 	int lines = 1;
 	*width = ceilf(length * char_width);
@@ -73,5 +82,6 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 			lines = (length + chars_per_line - 1) / chars_per_line;
 		*width = max_width;
 	}
-	*height = lines * (int)ceilf(LINE_HEIGHT_PER_SIZE * view->text_size);
+	*width += control;
+	*height = lines * line_height;
 }

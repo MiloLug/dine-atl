@@ -29,6 +29,7 @@ import android.view.ActionMode;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import java.util.Locale;
 
 public class TextView extends View {
 	private ColorStateList colors = new ColorStateList(new int[][] {new int[0]}, new int[1]);
@@ -38,6 +39,7 @@ public class TextView extends View {
 	private int break_strategy = 0 /*BREAK_STRATEGY_SIMPLE*/;
 	private int hyphenation_frequency = 0 /*HYPHENATION_FREQUENCY_NONE*/;
 	private int gravity = Gravity.CENTER;
+	private boolean allCaps;
 
 	public TextView(Context context, AttributeSet attrs) {
 		this(context, attrs, 0);
@@ -112,7 +114,7 @@ public class TextView extends View {
 
 	public void setText(CharSequence text, BufferType type) {
 		this.text = text == null ? "" : text;
-		native_setText(text != null ? text.toString() : null);
+		native_setText(shown());
 
 		if (text instanceof android.text.Spanned)
 			native_set_markup(1);
@@ -228,7 +230,7 @@ public class TextView extends View {
 
 	public void setCompoundDrawablePadding(int pad) {}
 
-	protected native void native_setCompoundDrawables(long widget, long left, long top, long right, long bottom);
+	private native void native_setCompoundDrawables(long widget, long left, long top, long right, long bottom);
 
 	// just to prevent garbage collection while native side uses it
 	private Drawable drawableLeft = null;
@@ -249,12 +251,34 @@ public class TextView extends View {
 	}
 
 	public void setAllCaps(boolean allCaps) {
-		String[] classesToRemove = {"ATL-text-uppercase"};
-		native_removeClasses(widget, classesToRemove);
+		this.allCaps = allCaps;
+		native_setText(shown());
+	}
 
-		if (allCaps) {
-			native_addClass(widget, "ATL-text-uppercase");
+	/* What the toolkit shows: AllCapsTransformationMethod's upper case, which getText doesn't see; the
+	 * tags and entities of markup text (ATL's Html.fromHtml) stay as they are */
+	private String shown() {
+		String string = text.toString();
+		if (!allCaps)
+			return string;
+		Locale locale = Locale.getDefault();
+		if (!(text instanceof android.text.Spanned))
+			return string.toUpperCase(locale);
+		StringBuilder shown = new StringBuilder(string.length());
+		int start = 0;
+		while (start < string.length()) {
+			int markup = start;
+			while (markup < string.length() && string.charAt(markup) != '<' && string.charAt(markup) != '&')
+				markup++;
+			shown.append(string.substring(start, markup).toUpperCase(locale));
+			if (markup == string.length())
+				break;
+			int end = string.indexOf(string.charAt(markup) == '<' ? '>' : ';', markup);
+			end = end < 0 ? string.length() : end + 1;
+			shown.append(string, markup, end);
+			start = end;
 		}
+		return shown.toString();
 	}
 
 	public void setSaveEnabled(boolean enabled) {}
@@ -345,9 +369,13 @@ public class TextView extends View {
 
 	public void setHint(CharSequence s) {}
 
-	public Drawable[] getCompoundDrawablesRelative() { return new Drawable[4]; }
+	public Drawable[] getCompoundDrawablesRelative() {
+		return getCompoundDrawables();
+	}
 
-	public Drawable[] getCompoundDrawables() { return new Drawable[4]; }
+	public Drawable[] getCompoundDrawables() {
+		return new Drawable[] {drawableLeft, drawableTop, drawableRight, drawableBottom};
+	}
 
 	public void setTextAppearance(int dummy) {}
 

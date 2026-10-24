@@ -213,10 +213,11 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		return top;
 	}
 
-	// from the ui backend: a button, an item or RESULT_CANCEL
-	void atlDialogResult(int which) {
+	// from the ui backend: a button, an item or RESULT_CANCEL; returns whether it is still drawn
+	boolean atlDialogResult(int which) {
 		if (drawn() && which == RESULT_CANCEL && cancelable)
 			cancel();
+		return drawn();
 	}
 
 	public boolean isShowing() {

@@ -32,6 +32,8 @@ name another project.
 | `widget/ScrollView.java` | `core/java/android/widget/ScrollView.java` | `scrollTo` and `clamp`, scrolling a focused child or a rectangle into view (`computeScrollDeltaToGetChildRectOnScreen`) |
 | `widget/HorizontalScrollView.java` | `core/java/android/widget/HorizontalScrollView.java` | the same across |
 | `graphics/drawable/DrawableContainer.java` | `graphics/java/android/graphics/drawable/DrawableContainer.java` | `getCurrent` |
+| `widget/CompoundButton.java` | `core/java/android/widget/CompoundButton.java` | `toggle`, `performClick`, `setChecked`, `onCreateDrawableState` |
+| `widget/RadioButton.java` | `core/java/android/widget/RadioButton.java` | `toggle` |
 
 Open: Dine's app bundle carries `api-impl.jar` without these notices, `NOTICE-AOSP.txt` or the
 Apache text.

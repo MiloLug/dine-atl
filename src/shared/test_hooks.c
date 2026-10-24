@@ -17,7 +17,7 @@ static bool match(const struct ui_alert *alert, const char *answer, int *which)
 		return true;
 	}
 	for (int i = 0; i < 3; i++) {
-		if (alert->buttons[i] && !strcmp(alert->buttons[i], answer)) {
+		if (alert->buttons[i] && !alert->disabled[i] && !strcmp(alert->buttons[i], answer)) {
 			*which = -1 - i;
 			return true;
 		}

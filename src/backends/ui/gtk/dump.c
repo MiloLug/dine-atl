@@ -23,7 +23,7 @@ static void dump_view(FILE *out, GtkWidget *wrapper, GtkWidget *parent, int dept
 	fprintf(out, "viewtree: %*s%s %ld,%ld %ldx%ld", depth * 2, "", text_class ?: gtk_widget_get_name(inner),
 	        lroundf(bounds.origin.x), lroundf(bounds.origin.y), width, height);
 	if (text_class)
-		fprintf(out, " \"%s\"", gtk_label_get_text(text_box_get_label(inner)));
+		fprintf(out, " \"%s\"", gtk_label_get_text(text_get_label(inner)));
 	fputc('\n', out);
 
 	if (!ATL_IS_ANDROID_LAYOUT(gtk_widget_get_layout_manager(inner)))

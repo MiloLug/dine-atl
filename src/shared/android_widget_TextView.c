@@ -52,3 +52,8 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1set_1markup(JNIEnv *
 {
 	ui_text_set_markup(_PTR(_GET_LONG_FIELD(this, "widget")), markup);
 }
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setCompoundDrawables(JNIEnv *env, jobject this, jlong widget_ptr, jlong left, jlong top, jlong right, jlong bottom)
+{
+	ui_text_set_drawables(_PTR(widget_ptr), _PTR(left), _PTR(top), _PTR(right), _PTR(bottom));
+}

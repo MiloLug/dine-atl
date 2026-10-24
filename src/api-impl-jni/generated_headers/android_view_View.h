@@ -215,6 +215,12 @@ extern "C" {
 #define android_view_View_TEXT_DIRECTION_LTR 3L
 #undef android_view_View_TEXT_DIRECTION_RTL
 #define android_view_View_TEXT_DIRECTION_RTL 4L
+#undef android_view_View_ALIGN_START
+#define android_view_View_ALIGN_START 0L
+#undef android_view_View_ALIGN_CENTER
+#define android_view_View_ALIGN_CENTER 1L
+#undef android_view_View_ALIGN_END
+#define android_view_View_ALIGN_END 2L
 /*
  * Class:     android_view_View
  * Method:    native_constructor
@@ -281,35 +287,11 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved
 
 /*
  * Class:     android_view_View
- * Method:    native_addClass
- * Signature: (JLjava/lang/String;)V
+ * Method:    native_setTextAlignment
+ * Signature: (JI)V
  */
-JNIEXPORT void JNICALL Java_android_view_View_native_1addClass
-  (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_view_View
- * Method:    native_removeClass
- * Signature: (JLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_native_1removeClass
-  (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_view_View
- * Method:    native_addClasses
- * Signature: (J[Ljava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_native_1addClasses
-  (JNIEnv *, jobject, jlong, jobjectArray);
-
-/*
- * Class:     android_view_View
- * Method:    native_removeClasses
- * Signature: (J[Ljava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_native_1removeClasses
-  (JNIEnv *, jobject, jlong, jobjectArray);
+JNIEXPORT void JNICALL Java_android_view_View_native_1setTextAlignment
+  (JNIEnv *, jobject, jlong, jint);
 
 /*
  * Class:     android_view_View

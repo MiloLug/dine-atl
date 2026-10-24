@@ -370,7 +370,7 @@ public class RadioGroup extends LinearLayout {
 					id = View.generateViewId();
 					child.setId(id);
 				}
-				((RadioButton)child).setOnCheckedChangeListener(mChildOnCheckedChangeListener);
+				((RadioButton)child).setOnCheckedChangeWidgetListener(mChildOnCheckedChangeListener);
 			}
 
 			if (mOnHierarchyChangeListener != null) {
@@ -384,7 +384,7 @@ public class RadioGroup extends LinearLayout {
 		@Override
 		public void onChildViewRemoved(View parent, View child) {
 			if (parent == RadioGroup.this && child instanceof RadioButton) {
-				((RadioButton)child).setOnCheckedChangeListener(null);
+				((RadioButton)child).setOnCheckedChangeWidgetListener(null);
 			}
 
 			if (mOnHierarchyChangeListener != null) {

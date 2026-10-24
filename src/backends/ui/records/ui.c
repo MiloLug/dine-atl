@@ -310,12 +310,14 @@ void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb)
 {
 	set_background(view, NULL);
+	view->has_background = true;
 	records_background_changed(view, argb);
 }
 
 void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable)
 {
 	set_background(view, drawable);
+	view->has_background = drawable;
 	records_background_changed(view, 0);
 }
 
@@ -429,6 +431,33 @@ void ui_text_set_style(struct ui_view *view, int style)
 void ui_text_set_markup(struct ui_view *view, bool markup)
 {
 	view->markup = markup;
+}
+
+void ui_text_set_alignment(struct ui_view *view, int alignment)
+{
+	view->alignment = alignment;
+	if (view->kind == NODE_TEXT)
+		records_text_changed(view);
+}
+
+// Java holds the drawables; nothing draws them before M5
+void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, struct gfx_drawable *top, struct gfx_drawable *right, struct gfx_drawable *bottom) {}
+
+struct ui_view *ui_button_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, enum ui_button kind)
+{
+	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name);
+	view->is_button = true;
+	view->button = kind;
+	return created(view);
+}
+
+void ui_button_set_state(struct ui_view *view, bool pressed, bool checked)
+{
+	if (view->pressed == pressed && view->checked == checked)
+		return;
+	view->pressed = pressed;
+	view->checked = checked;
+	records_button_changed(view);
 }
 
 struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)

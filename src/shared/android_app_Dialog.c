@@ -79,7 +79,7 @@ static void free_array(char **chars, int length)
 }
 
 JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env, jobject this, jlong ptr, jstring title, jstring message,
-                                                                    jobjectArray items, jobjectArray buttons, jboolean cancelable)
+                                                                    jobjectArray items, jobjectArray buttons, jbooleanArray disabled, jboolean cancelable)
 {
 	int n_items, n_buttons;
 	char **item_chars = get_array(env, items, &n_items);
@@ -95,6 +95,10 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env,
 	};
 	for (int i = 0; i < n_buttons && i < 3; i++)
 		alert.buttons[i] = button_chars[i];
+	jboolean disabled_flags[3] = {0};
+	(*env)->GetBooleanArrayRegion(env, disabled, 0, 3, disabled_flags);
+	for (int i = 0; i < 3; i++)
+		alert.disabled[i] = disabled_flags[i];
 
 	ui_dialog_show(_PTR(ptr), &alert);
 
@@ -102,4 +106,11 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env,
 	free(message_chars);
 	free_array(item_chars, n_items);
 	free_array(button_chars, n_buttons);
+}
+
+JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetButton(JNIEnv *env, jobject this, jlong ptr, jint which, jstring label_jstr, jboolean enabled)
+{
+	char *label = jstring_to_utf8(env, label_jstr);
+	ui_dialog_set_button(_PTR(ptr), which, label, enabled);
+	free(label);
 }

@@ -1579,11 +1579,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	protected native void native_setBackgroundDrawable(long widget, long paintable);
 	protected native void native_childrenMoved(long widget);
 
-	protected native void native_addClass(long widget, String className);
-	protected native void native_removeClass(long widget, String className);
-
-	protected native void native_addClasses(long widget, String[] classNames);
-	protected native void native_removeClasses(long widget, String[] classNames);
+	private native void native_setTextAlignment(long widget, int alignment);
 
 	protected native void native_drawBackground(long widget, long snapshot);
 	protected native void native_drawContent(long widget, long snapshot);
@@ -3020,23 +3016,25 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public boolean hasOnClickListeners() { return on_click_listener != null; }
 
-	public void setTextAlignment(int textAlignment) {
-		String[] classesToRemove = {"ATL-text-align-left", "ATL-text-align-center", "ATL-text-align-right"};
-		native_removeClasses(widget, classesToRemove);
+	private int textAlignment = TEXT_ALIGNMENT_GRAVITY;
+	// the ui slot's UI_TEXT_ALIGN_*
+	private static final int ALIGN_START = 0;
+	private static final int ALIGN_CENTER = 1;
+	private static final int ALIGN_END = 2;
 
-		switch (textAlignment) {
+	public void setTextAlignment(int textAlignment) {
+		this.textAlignment = textAlignment;
+		int alignment = ALIGN_START; // also GRAVITY's, as ATL's TextView ignores its gravity
+		switch (getTextAlignment()) {
 			case TEXT_ALIGNMENT_CENTER:
-				native_addClass(widget, "ATL-text-align-center");
-				break;
-			case TEXT_ALIGNMENT_TEXT_START:
-			case TEXT_ALIGNMENT_VIEW_START:
-				native_addClass(widget, "ATL-text-align-left");
+				alignment = ALIGN_CENTER;
 				break;
 			case TEXT_ALIGNMENT_TEXT_END:
 			case TEXT_ALIGNMENT_VIEW_END:
-				native_addClass(widget, "ATL-text-align-right");
+				alignment = ALIGN_END;
 				break;
 		}
+		native_setTextAlignment(widget, alignment);
 	}
 
 	public void setHapticFeedbackEnabled(boolean hapticFeedbackEnabled) {}
@@ -3117,7 +3115,12 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 
-	public int getTextAlignment() { return 0; }
+	// resolved: INHERIT takes the parent's
+	public int getTextAlignment() {
+		if (textAlignment != TEXT_ALIGNMENT_INHERIT)
+			return textAlignment;
+		return getParent() instanceof View ? ((View)getParent()).getTextAlignment() : TEXT_ALIGNMENT_GRAVITY;
+	}
 
 	public View findViewWithTag(Object tag) {
 		if (Objects.equals(tag, this.tag))
