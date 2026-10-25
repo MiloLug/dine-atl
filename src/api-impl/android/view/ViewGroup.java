@@ -26,6 +26,8 @@ import java.util.Iterator;
 import java.util.Objects;
 
 public class ViewGroup extends View implements ViewParent, ViewManager {
+	private static final String TAG = "ViewGroup";
+
 	/* clang-format off */
 	static final int FLAG_CLIP_CHILDREN        = (1 << 0);
 	static final int FLAG_INVALIDATE_REQUIRED  = (1 << 2);
@@ -319,7 +321,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected native void native_drawChildren(long widget, long canvas);
 	protected native void native_drawChild(long widget, long child, long canvas);
 	@Override
-	protected void native_drawContent(long widget, long canvas) {}
+	protected boolean native_drawContent(long widget, long canvas) { return true; }
 
 	public View getChildAt(int index) {
 		try {

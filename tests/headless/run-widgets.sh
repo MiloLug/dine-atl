@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Drives the widgets APK (widgets/, built by the superproject's tests/harness/apk.py) through the cli
 # host's -c touch and key lines in the headless build; rows are found by their text in the view-tree
-# dump. A tap clicks and the selector follows the pressed state; a hold long-clicks without a click;
+# dump. A tap clicks and the selector follows the pressed state; a press on "share a" changes only its
+# own background, though "share b" loads the same selector resource; a hold long-clicks without a click;
 # the first Tab leaves touch mode and focuses the first row, the next one moves on, Enter clicks it;
 # a drag scrolls (headless stands in for the toolkit's pan: the touch is canceled) and the "x" row's
 # gesture exclusion follows the scroll and then the translation T gives it; a drag far past the end
@@ -51,7 +52,7 @@ while :; do
     x[$text]=$left y[$text]=$top w[$text]=${BASH_REMATCH[4]} h[$text]=${BASH_REMATCH[5]}
   fi
 done
-for row in tap hold one x; do
+for row in tap hold one x "share a"; do
   [[ -n ${x[$row]:-} ]] || fail "no \"$row\" row in the dump"
 done
 [[ -n ${content_h:-} ]] || fail "no ScrollView with a child in the dump"
@@ -60,7 +61,7 @@ center() { echo "$((x[$1] + w[$1] / 2)) $((y[$1] + h[$1] / 2))"; }
 
 # the next checked line into REPLY, without the log prefix
 next() {
-  local line re='(widgets (click|longclick|selector|scroll|focus|key) .*|^host: (exclusion|task) .*)'
+  local line re='(widgets (click|longclick|selector|shared|scroll|focus|key) .*|^host: (exclusion|task) .*)'
   while IFS= read -r -t 30 line <&"${ATL[0]}"; do
     printf '%s\n' "$line" >>"$work/log"
     if [[ $line =~ $re ]]; then
@@ -99,6 +100,11 @@ read -r tap_x tap_y <<<"$(center tap)"
 send "touch down 0 $tap_x $tap_y"
 send "touch up 0 $tap_x $tap_y"
 expect "widgets selector ff00c000" "widgets click tap" "widgets selector ff808080"
+
+read -r share_x share_y <<<"$(center "share a")"
+send "touch down 0 $share_x $share_y"
+send "touch up 0 $share_x $share_y"
+expect "widgets shared a=ff00c000 b=ff808080" "widgets click share a" "widgets shared a=ff808080 b=ff808080"
 
 read -r hold_x hold_y <<<"$(center hold)"
 send "touch down 0 $hold_x $hold_y"

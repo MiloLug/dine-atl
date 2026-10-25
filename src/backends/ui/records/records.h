@@ -20,7 +20,7 @@ struct ui_dialog_state;
 enum node_kind {
 	NODE_VIEW, // ui_view_new: laid out by Java
 	NODE_TEXT, // ui_text_new, ui_button_new, ui_edit_new: measured by the backend
-	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5b
+	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size
 	NODE_PROGRESS, // ui_progress_new
 	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
 };
@@ -49,17 +49,17 @@ struct ui_view {
 	int visibility;  // UI_VIEW_VISIBLE, INVISIBLE or GONE
 	float alpha;
 	bool enabled;
-	struct gfx_drawable *background; // held; nothing draws it before M5b
+	struct gfx_drawable *background; // held; Java's draw() draws it into the list
 	bool has_background;             // a color or a drawable: a push button drops its border
-	struct gfx_drawable *image;      // NODE_IMAGE, held
+	struct gfx_drawable *image;      // NODE_IMAGE, held; ImageView's draw() draws it
 	int image_width, image_height;   // px, -1: none
 	int scale_type;
 	float fraction; // NODE_PROGRESS
 	bool indeterminate;
 	int scroll_x, scroll_y; // px, View.scrollTo's or the toolkit's
 	bool horizontal;        // NODE_SCROLL's axis
-	bool draws;                 // its class draws (traits): the draw pass runs its draw()
-	bool dirty;                 // draws: new or invalidated since its last draw
+	bool draws;                 // its class draws (traits); a background or image draws too
+	bool dirty;                 // new or invalidated since its last draw
 	int drawn_width, drawn_height;
 	struct gfx_canvas *list;    // what its last draw recorded; NULL before one
 	void *native;    // the backend's object; uikit: a UIView, touched only on UIKit's thread
@@ -120,6 +120,13 @@ void records_observations_orphan(struct ui_window *window);
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
 /* A layout pass ended; the shown root's frames are current. */
 void records_layout_done(struct ui_window *window);
+/* A view was invalidated: the backend runs records_draw_pass once, at once (headless) or at the
+ * next frame (uikit). */
+void records_draw_wanted(struct ui_window *window);
+void records_draw_pass(struct ui_window *window); // ui.c
+/* The view's list is new, or NULL: it shows nothing now. */
+void records_view_drawn(struct ui_view *view);
+void records_draw_done(struct ui_window *window); // a draw pass ended
 /* View.scrollTo moved scroll_x and scroll_y (animated: smoothScrollTo). The backend reports the
  * offsets its toolkit reaches with atl_upcall_scrolled. */
 void records_scroll_changed(struct ui_view *view, bool animated);

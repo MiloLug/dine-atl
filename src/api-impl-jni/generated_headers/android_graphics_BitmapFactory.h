@@ -11,14 +11,6 @@ extern "C" {
 #define android_graphics_BitmapFactory_DECODE_BUFFER_SIZE 16384L
 /*
  * Class:     android_graphics_BitmapFactory
- * Method:    nativeDecodeStream
- * Signature: (Ljava/io/InputStream;[BLandroid/graphics/Rect;Landroid/graphics/BitmapFactory/Options;)J
- */
-JNIEXPORT jlong JNICALL Java_android_graphics_BitmapFactory_nativeDecodeStream
-  (JNIEnv *, jclass, jobject, jbyteArray, jobject, jobject);
-
-/*
- * Class:     android_graphics_BitmapFactory
  * Method:    nativeDecodeFileDescriptor
  * Signature: (Ljava/io/FileDescriptor;Landroid/graphics/Rect;Landroid/graphics/BitmapFactory/Options;)Landroid/graphics/Bitmap;
  */
@@ -36,10 +28,10 @@ JNIEXPORT jobject JNICALL Java_android_graphics_BitmapFactory_nativeDecodeAsset
 /*
  * Class:     android_graphics_BitmapFactory
  * Method:    nativeDecodeByteArray
- * Signature: ([BIILandroid/graphics/BitmapFactory/Options;)Landroid/graphics/Bitmap;
+ * Signature: ([BII)J
  */
-JNIEXPORT jobject JNICALL Java_android_graphics_BitmapFactory_nativeDecodeByteArray
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jobject);
+JNIEXPORT jlong JNICALL Java_android_graphics_BitmapFactory_nativeDecodeByteArray
+  (JNIEnv *, jclass, jbyteArray, jint, jint);
 
 /*
  * Class:     android_graphics_BitmapFactory

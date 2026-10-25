@@ -130,6 +130,8 @@ void gfx_drawable_unref(struct gfx_drawable *drawable)
 	atl_test_drawable_freed("record");
 	if (drawable->selected)
 		gfx_drawable_unref(drawable->selected);
+	if (drawable->bitmap)
+		gfx_bitmap_unref(drawable->bitmap);
 	if (drawable->drawable_ref)
 		atl_ref_free(drawable->drawable_ref);
 	free(drawable);
@@ -142,7 +144,15 @@ struct gfx_drawable *gfx_container_new(void)
 	return gfx_drawable_new(NULL);
 }
 
-// the selection is kept for M5b's drawing
+struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap)
+{
+	struct gfx_drawable *drawable = gfx_drawable_new(NULL);
+	gfx_bitmap_ref(bitmap);
+	drawable->bitmap = bitmap;
+	return drawable;
+}
+
+// a container's draw() records its child; gfx_canvas_draw_drawable reaches it otherwise
 void gfx_container_select(struct gfx_drawable *container, struct gfx_drawable *child)
 {
 	if (child)

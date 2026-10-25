@@ -75,11 +75,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	// --- constants from android source
 
 	/**
-	 * The logging tag used by this class with android.util.Log.
-	 */
-	protected static final String TAG = "View";
-
-	/**
 	 * When set to true, apps will draw debugging information about their layouts.
 	 *
 	 * @hide
@@ -982,6 +977,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	private float alpha = 1.0f;
 	private boolean pressed = false;
 	private Drawable background;
+	private boolean backgroundIsColor; // the toolkit shows it as the view's color
 	private int backgroundTint = 0;
 	private int mForegroundGravity = Gravity.START | Gravity.TOP;
 
@@ -1210,23 +1206,44 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void onDraw(Canvas canvas) {
-		if (canvas instanceof ATLCanvas)
-			native_drawContent(widget, ((ATLCanvas)canvas).handle);
+		if (canvas instanceof ATLCanvas && !native_drawContent(widget, ((ATLCanvas)canvas).handle))
+			atlDrawContent(canvas);
 	}
+
+	// what the toolkit leaves to Java (ui_view_draw_content): ImageView's drawable
+	protected void atlDrawContent(Canvas canvas) {}
 
 	protected void dispatchDraw(Canvas canvas) {
 		if (canvas instanceof ATLCanvas)
 			native_drawChildren(widget, ((ATLCanvas)canvas).handle);
 	}
 	public void draw(Canvas canvas) {
-		if (canvas instanceof ATLCanvas)
-			native_drawBackground(widget, ((ATLCanvas)canvas).handle);
+		if (canvas instanceof ATLCanvas && !native_drawBackground(widget, ((ATLCanvas)canvas).handle))
+			drawBackground(canvas);
 		onDraw(canvas);
 		// HACK: catch non critical exceptions happening in some composeUI apps
 		try {
 			dispatchDraw(canvas);
 		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// without the display list: the background stays put while the content scrolls
+	private void drawBackground(Canvas canvas) {
+		if (background == null || backgroundIsColor)
+			return;
+		Rect bounds = background.getBounds();
+		int width = getWidth(), height = getHeight();
+		if (bounds.left != 0 || bounds.top != 0 || bounds.right != width || bounds.bottom != height)
+			background.setBounds(0, 0, width, height);
+		if ((scrollX | scrollY) == 0) {
+			background.draw(canvas);
+		} else {
+			canvas.translate(scrollX, scrollY);
+			background.draw(canvas);
+			canvas.translate(-scrollX, -scrollY);
 		}
 	}
 
@@ -1581,8 +1598,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	private native void native_setTextAlignment(long widget, int alignment);
 
-	protected native void native_drawBackground(long widget, long canvas);
-	protected native void native_drawContent(long widget, long canvas);
+	protected native boolean native_drawBackground(long widget, long canvas);
+	protected native boolean native_drawContent(long widget, long canvas);
 	protected void native_drawChildren(long widget, long canvas) {} // override in ViewGroup
 
 	// --- stubs
@@ -2022,6 +2039,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	protected native void native_setBackgroundColor(long widget, int color);
 	public void setBackgroundColor(int color) {
 		background = new ColorDrawable(color);
+		backgroundIsColor = true;
 		native_setBackgroundColor(widget, color);
 	}
 
@@ -2433,7 +2451,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public void setBackgroundDrawable(Drawable backgroundDrawable) {
 		this.background = backgroundDrawable;
-		if (backgroundDrawable instanceof ColorDrawable) {
+		backgroundIsColor = backgroundDrawable instanceof ColorDrawable;
+		if (backgroundIsColor) {
 			native_setBackgroundColor(widget, ((ColorDrawable)backgroundDrawable).getColor());
 			return;
 		}

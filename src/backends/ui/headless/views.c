@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "src/shared/input.h"
+#include "src/slots/loop.h"
 
 #include "../records/records.h"
 #include "input.h"
@@ -30,6 +31,19 @@ void records_button_changed(struct ui_view *view) {}
 void records_text_color_changed(struct ui_view *view, uint32_t argb) {}
 void records_selectable_changed(struct ui_view *view) {}
 void records_layout_done(struct ui_window *window) {}
+void records_view_drawn(struct ui_view *view) {}
+void records_draw_done(struct ui_window *window) {}
+
+static void draw_pass(void *window)
+{
+	records_draw_pass(window);
+}
+
+// unpaced: no display to wait for
+void records_draw_wanted(struct ui_window *window)
+{
+	loop_main_post(draw_pass, window);
+}
 
 // no toolkit animates or clamps: the offset is reached at once
 void records_scroll_changed(struct ui_view *view, bool animated)

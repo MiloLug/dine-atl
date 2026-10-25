@@ -8,7 +8,7 @@ option('loop', type: 'combo', choices: ['glib', 'poll', 'cfrunloop'], value: 'gl
        description: 'Android main-thread loop integration')
 option('ui', type: 'combo', choices: ['gtk', 'headless', 'uikit'], value: 'gtk',
        description: 'Windows and view nodes')
-option('gfx', type: 'combo', choices: ['gsk', 'record'], value: 'gsk',
+option('gfx', type: 'combo', choices: ['gsk', 'record', 'coregraphics'], value: 'gsk',
        description: 'Paint, drawables and drawing')
 
 option('test_hooks', type: 'boolean', value: true,

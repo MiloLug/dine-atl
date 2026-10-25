@@ -8,6 +8,7 @@ import android.util.AttributeSet;
 import java.util.ArrayList;
 
 public class SurfaceView extends View {
+	private static final String TAG = "SurfaceView";
 
 	final ArrayList<SurfaceHolder.Callback> mCallbacks = new ArrayList<SurfaceHolder.Callback>();
 

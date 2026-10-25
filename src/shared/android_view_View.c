@@ -99,16 +99,14 @@ JNIEXPORT void JNICALL Java_android_view_View_nativeInvalidate(JNIEnv *env, jcla
 	ui_view_invalidate(_PTR(widget_ptr));
 }
 
-JNIEXPORT void JNICALL Java_android_view_View_native_1drawBackground(JNIEnv *env, jobject this, jlong widget, jlong canvas)
+JNIEXPORT jboolean JNICALL Java_android_view_View_native_1drawBackground(JNIEnv *env, jobject this, jlong widget, jlong canvas)
 {
-	if (canvas)
-		ui_view_draw_background(_PTR(widget), _PTR(canvas));
+	return !canvas || ui_view_draw_background(_PTR(widget), _PTR(canvas));
 }
 
-JNIEXPORT void JNICALL Java_android_view_View_native_1drawContent(JNIEnv *env, jobject this, jlong widget, jlong canvas)
+JNIEXPORT jboolean JNICALL Java_android_view_View_native_1drawContent(JNIEnv *env, jobject this, jlong widget, jlong canvas)
 {
-	if (canvas)
-		ui_view_draw_content(_PTR(widget), _PTR(canvas));
+	return !canvas || ui_view_draw_content(_PTR(widget), _PTR(canvas));
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved(JNIEnv *env, jobject this, jlong widget_ptr)

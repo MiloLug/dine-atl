@@ -74,3 +74,17 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawLines(JNIEnv *env,
 		draw_line(canvas, points[i], points[i + 1], points[i + 2], points[i + 3], paint);
 	(*env)->ReleaseFloatArrayElements(env, points_arr, points, JNI_ABORT);
 }
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap(JNIEnv *env, jclass class, jlong canvas, jlong bitmap, jint left, jint top, jint right, jint bottom, jint src_left, jint src_top, jint src_right, jint src_bottom, jlong paint)
+{
+	if (!canvas || !bitmap)
+		return;
+	struct gfx_rect src = {src_left, src_top, src_right, src_bottom}, dst = {left, top, right, bottom};
+	gfx_canvas_draw_bitmap(_PTR(canvas), _PTR(bitmap), src_right < 0 ? NULL : &src, &dst, _PTR(paint));
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect(JNIEnv *env, jclass class, jlong canvas, jfloat left, jfloat top, jfloat right, jfloat bottom, jboolean difference)
+{
+	if (canvas)
+		gfx_canvas_clip_rect(_PTR(canvas), left, top, right, bottom, difference ? GFX_CLIP_DIFFERENCE : GFX_CLIP_INTERSECT);
+}

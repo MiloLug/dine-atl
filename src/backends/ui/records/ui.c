@@ -86,13 +86,20 @@ static void draw_view(struct ui_view *view)
 	view->list = gfx_canvas_new();
 	atl_upcall_view_draw(view->ref, view->list);
 	records_test_view_drawn(view);
+	records_view_drawn(view);
+}
+
+// its class draws, or Java draws a drawable into it
+static bool draws(const struct ui_view *view)
+{
+	return view->draws || view->background || (view->kind == NODE_IMAGE && view->image);
 }
 
 static void draw_tree(struct ui_view *view)
 {
 	if (view->visibility != UI_VIEW_VISIBLE)
 		return;
-	if (view->draws && (view->dirty || view->right - view->left != view->drawn_width || view->bottom - view->top != view->drawn_height))
+	if (draws(view) && (view->dirty || view->right - view->left != view->drawn_width || view->bottom - view->top != view->drawn_height))
 		draw_view(view);
 	for (size_t i = 0; i < view->n_children; i++)
 		draw_tree(view->children[i]);
@@ -113,12 +120,12 @@ static void layout_pass(void *data)
 	records_layout_done(window);
 }
 
-static void draw_pass(void *data)
+void records_draw_pass(struct ui_window *window)
 {
-	struct ui_window *window = data;
 	window->draw_pending = false;
 	if (!window->layout_pending && window->shown) // else the layout pass draws
 		draw_tree(window->shown);
+	records_draw_done(window);
 }
 
 static void schedule_draw(struct ui_window *window)
@@ -126,7 +133,7 @@ static void schedule_draw(struct ui_window *window)
 	if (window->draw_pending || window->layout_pending)
 		return;
 	window->draw_pending = true;
-	loop_main_post(draw_pass, window);
+	records_draw_wanted(window);
 }
 
 static void schedule_layout(struct ui_window *window)
@@ -319,6 +326,21 @@ static void hold(struct gfx_drawable **held, struct gfx_drawable *drawable)
 	*held = drawable;
 }
 
+// a drawable Java draws came or went: draw the view, or clear what it showed
+static void drawables_changed(struct ui_view *view)
+{
+	if (draws(view)) {
+		view->dirty = true;
+		if (the_window)
+			schedule_draw(the_window);
+	} else if (view->list) {
+		gfx_canvas_free(view->list);
+		view->list = NULL;
+		view->drawn_width = view->drawn_height = 0;
+		records_view_drawn(view);
+	}
+}
+
 static void set_background(struct ui_view *view, struct gfx_drawable *drawable)
 {
 	hold(&view->background, drawable);
@@ -356,6 +378,7 @@ void ui_view_set_background_color(struct ui_view *view, uint32_t argb)
 	set_background(view, NULL);
 	view->has_background = true;
 	records_background_changed(view, argb);
+	drawables_changed(view);
 }
 
 void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable)
@@ -363,6 +386,7 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 	set_background(view, drawable);
 	view->has_background = drawable;
 	records_background_changed(view, 0);
+	drawables_changed(view);
 }
 
 void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled)
@@ -379,15 +403,15 @@ void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, b
 
 void ui_view_invalidate(struct ui_view *view)
 {
-	if (!view->draws)
+	if (!draws(view))
 		return;
 	view->dirty = true;
 	if (the_window)
 		schedule_draw(the_window);
 }
 
-void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas) {}
-void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas) {}
+bool ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas) { return false; }
+bool ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas) { return false; }
 void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas) {}
 void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas) {}
 
@@ -544,6 +568,7 @@ void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, 
 	view->image_width = width;
 	view->image_height = height;
 	ui_view_request_layout(view);
+	drawables_changed(view);
 }
 
 void ui_image_set_scale_type(struct ui_view *view, int scale_type)

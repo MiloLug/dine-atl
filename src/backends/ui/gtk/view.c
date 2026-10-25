@@ -308,17 +308,19 @@ void ui_view_invalidate(struct ui_view *view)
 	wrapper_widget_queue_draw(WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view))));
 }
 
-void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas)
+bool ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas)
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view)));
 	if (wrapper->background)
 		gtk_widget_snapshot_child(&wrapper->parent_instance, wrapper->background, GTK_SNAPSHOT(canvas));
+	return true;
 }
 
-void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas)
+bool ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas)
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view)));
 	gtk_widget_snapshot_child(&wrapper->parent_instance, wrapper->child, GTK_SNAPSHOT(canvas));
+	return true;
 }
 
 void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas)

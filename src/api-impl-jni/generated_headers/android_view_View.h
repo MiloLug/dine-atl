@@ -296,17 +296,17 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setTextAlignment
 /*
  * Class:     android_view_View
  * Method:    native_drawBackground
- * Signature: (JJ)V
+ * Signature: (JJ)Z
  */
-JNIEXPORT void JNICALL Java_android_view_View_native_1drawBackground
+JNIEXPORT jboolean JNICALL Java_android_view_View_native_1drawBackground
   (JNIEnv *, jobject, jlong, jlong);
 
 /*
  * Class:     android_view_View
  * Method:    native_drawContent
- * Signature: (JJ)V
+ * Signature: (JJ)Z
  */
-JNIEXPORT void JNICALL Java_android_view_View_native_1drawContent
+JNIEXPORT jboolean JNICALL Java_android_view_View_native_1drawContent
   (JNIEnv *, jobject, jlong, jlong);
 
 /*

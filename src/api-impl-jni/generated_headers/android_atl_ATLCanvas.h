@@ -12,17 +12,9 @@ extern "C" {
 /*
  * Class:     android_atl_ATLCanvas
  * Method:    native_drawBitmap
- * Signature: (JJIIIIJ)V
- */
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap__JJIIIIJ
-  (JNIEnv *, jobject, jlong, jlong, jint, jint, jint, jint, jlong);
-
-/*
- * Class:     android_atl_ATLCanvas
- * Method:    native_drawBitmap
  * Signature: (JJIIIIIIIIJ)V
  */
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap__JJIIIIIIIIJ
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap
   (JNIEnv *, jobject, jlong, jlong, jint, jint, jint, jint, jint, jint, jint, jint, jlong);
 
 /*
@@ -124,10 +116,10 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1concat
 /*
  * Class:     android_atl_ATLCanvas
  * Method:    native_clipRect
- * Signature: (JFFFF)V
+ * Signature: (JFFFFZ)V
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect
-  (JNIEnv *, jobject, jlong, jfloat, jfloat, jfloat, jfloat);
+  (JNIEnv *, jobject, jlong, jfloat, jfloat, jfloat, jfloat, jboolean);
 
 /*
  * Class:     android_atl_ATLCanvas
@@ -136,14 +128,6 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipPath
   (JNIEnv *, jobject, jlong, jlong, jint);
-
-/*
- * Class:     android_atl_ATLCanvas
- * Method:    native_pop
- * Signature: (JI)V
- */
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1pop
-  (JNIEnv *, jobject, jlong, jint);
 
 /*
  * Class:     android_atl_ATLCanvas

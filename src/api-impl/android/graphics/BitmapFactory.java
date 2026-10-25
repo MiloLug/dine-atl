@@ -23,6 +23,7 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -592,7 +593,14 @@ public class BitmapFactory {
 			tempStorage = opts.inTempStorage;
 		if (tempStorage == null)
 			tempStorage = new byte[DECODE_BUFFER_SIZE];
-		final long texture = nativeDecodeStream(is, tempStorage, outPadding, opts);
+		ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+		try {
+			for (int n; (n = is.read(tempStorage)) > 0;)
+				encoded.write(tempStorage, 0, n);
+		} catch (IOException e) {
+			return null;
+		}
+		final long texture = nativeDecodeByteArray(encoded.toByteArray(), 0, encoded.size());
 		if (texture == 0)
 			return null;
 		Bitmap decoded = new Bitmap(texture);
@@ -682,12 +690,9 @@ public class BitmapFactory {
 		return decodeFileDescriptor(fd, null, null);
 	}
 
-	private static native long nativeDecodeStream(InputStream is, byte[] storage,
-	                                              Rect padding, Options opts);
 	private static native Bitmap nativeDecodeFileDescriptor(FileDescriptor fd,
 	                                                        Rect padding, Options opts);
 	private static native Bitmap nativeDecodeAsset(int asset, Rect padding, Options opts);
-	private static native Bitmap nativeDecodeByteArray(byte[] data, int offset,
-	                                                   int length, Options opts);
+	private static native long nativeDecodeByteArray(byte[] data, int offset, int length);
 	private static native boolean nativeIsSeekable(FileDescriptor fd);
 }

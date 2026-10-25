@@ -5,6 +5,9 @@
 #include "gdk/gdk.h"
 #include "glib.h"
 
+#include "src/backends/gfx/gsk/memory_format.h"
+#include "src/slots/gfx.h"
+
 #include "../generated_headers/android_graphics_Bitmap.h"
 
 JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1snapshot(JNIEnv *env, jclass class, jlong texture_ptr)
@@ -20,12 +23,12 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1snapshot(JN
 
 extern GThread *main_thread_id;
 
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1texture(JNIEnv *env, jclass class, jlong snapshot_ptr, jint width, jint height, jint stride, jint format)
+JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1texture(JNIEnv *env, jclass class, jlong snapshot_ptr, jint width, jint height)
 {
 	static GType renderer_type = 0;
 	static GdkDisplay *off_screen_display;
 	GtkSnapshot *snapshot = _PTR(snapshot_ptr);
-	GskRenderNode *node = snapshot ? gtk_snapshot_free_to_node(snapshot) : NULL;
+	GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
 	GdkTexture *texture = NULL;
 	if (node) {
 		graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, width, height);
@@ -54,27 +57,11 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1texture(JNI
 		gsk_render_node_unref(node);
 		gsk_renderer_unrealize(renderer);
 		g_object_unref(renderer);
-	} else {
-		if (format == -1) {
-			format = GDK_MEMORY_R8G8B8A8;
-			stride = width * 4;
-		}
-		GBytes *bytes = g_bytes_new_take(g_malloc0(height * stride), height * stride);
-		texture = gdk_memory_texture_new(width, height, format, bytes, stride);
-		g_bytes_unref(bytes);
+	} else { // nothing drawn
+		texture = GDK_TEXTURE(gfx_bitmap_new(width, height, GFX_BITMAP_ARGB_8888));
 	}
 
 	return _INTPTR(texture);
-}
-
-JNIEXPORT jint JNICALL Java_android_graphics_Bitmap_native_1get_1width(JNIEnv *env, jclass class, jlong texture_ptr)
-{
-	return gdk_texture_get_width(GDK_TEXTURE(_PTR(texture_ptr)));
-}
-
-JNIEXPORT jint JNICALL Java_android_graphics_Bitmap_native_1get_1height(JNIEnv *env, jclass class, jlong texture_ptr)
-{
-	return gdk_texture_get_height(GDK_TEXTURE(_PTR(texture_ptr)));
 }
 
 JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1erase_1color(JNIEnv *env, jclass class, jint color, jint width, jint height)
@@ -91,19 +78,6 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1erase_1color(JNIEnv
 	return _INTPTR(snapshot);
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1recycle(JNIEnv *env, jclass class, jlong texture_ptr, jlong snapshot_ptr)
-{
-	if (texture_ptr)
-		g_object_unref(GDK_TEXTURE(_PTR(texture_ptr)));
-	if (snapshot_ptr)
-		g_object_unref(GTK_SNAPSHOT(_PTR(snapshot_ptr)));
-}
-
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1ref_1texture(JNIEnv *env, jclass class, jlong texture_ptr)
-{
-	return _INTPTR(g_object_ref(GDK_TEXTURE(_PTR(texture_ptr))));
-}
-
 JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1get_1pixels(JNIEnv *env, jclass class, jlong texture_ptr, jintArray pixels, jint offset, jint stride, jint x, jint y, jint width, jint height)
 {
 	GdkTexture *texture = GDK_TEXTURE(_PTR(texture_ptr));
@@ -116,11 +90,11 @@ JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1get_1pixels(JNIEnv *
 	(*env)->ReleaseIntArrayElements(env, pixels, array, 0);
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1copy_1to_1buffer(JNIEnv *env, jclass class, jlong texture_ptr, jobject buffer, jint memory_format, jint stride)
+JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1copy_1to_1buffer(JNIEnv *env, jclass class, jlong texture_ptr, jobject buffer, jint config, jint stride)
 {
 	GdkTexture *texture = GDK_TEXTURE(_PTR(texture_ptr));
 	GdkTextureDownloader *downloader = gdk_texture_downloader_new(texture);
-	gdk_texture_downloader_set_format(downloader, memory_format);
+	gdk_texture_downloader_set_format(downloader, gsk_memory_format(config));
 	jarray array_ref;
 	jbyte *array;
 	guchar *data = get_nio_buffer(env, buffer, &array_ref, &array);

@@ -1,14 +1,18 @@
+#import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
+#include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "../../gfx/coregraphics/coregraphics.h"
 #include "../records/records.h"
 #import "input.h"
 #import "queue.h"
@@ -17,8 +21,8 @@
 /* A UIView per view record, an ATLLabel per text record (an ATLButton per button's, a UITextField or
  * UITextView per edit record's), in the surface the host gave; the shown activity's frame goes to
  * the surface as ATLSurface. Changes queue on the Android main thread and reach UIKit's thread in
- * order, one batch per layout pass. Text measurement waits for UIKit's thread: deadlock-free only
- * while main never waits for the Android thread. */
+ * order, one batch per layout or draw pass. Text measurement waits for UIKit's thread:
+ * deadlock-free only while main never waits for the Android thread. */
 
 // each node view hands the touches UIKit gives it to input.m
 #define FORWARD_TOUCHES                                                            \
@@ -120,12 +124,72 @@ FORWARD_TOUCHES
 @property(nonatomic) ATLEditState *atlState; // moves to the view that replaces this one
 @end
 
+static CGFloat scale(void);
+
+// a node's display list (background, onDraw) under its subviews, drawn asynchronously by CA
+@interface ATLDrawLayer : CALayer
+@property(nonatomic) struct gfx_canvas *list; // a ref of its own
+@end
+
+@implementation ATLDrawLayer
++ (id<CAAction>)defaultActionForKey:(NSString *)event
+{
+	return (id<CAAction>)[NSNull null];
+}
+
+- (void)setList:(struct gfx_canvas *)list
+{
+	if (list)
+		cg_list_ref(list);
+	if (_list)
+		gfx_canvas_free(_list);
+	_list = list;
+}
+
+- (void)dealloc
+{
+	if (_list)
+		gfx_canvas_free(_list);
+}
+
+- (void)drawInContext:(CGContextRef)context
+{
+	if (_list)
+		cg_list_draw(_list, context, self.contentsScale);
+}
+@end
+
+// a label's text is its own layer's contents, which every sublayer covers: it draws its list itself
 @interface ATLLabel : UILabel <ATLText>
 @property(nonatomic) UIEdgeInsets padding;
+@property(nonatomic) struct gfx_canvas *list; // a ref of its own
 @end
 
 @implementation ATLLabel
 FORWARD_TOUCHES
+
+- (void)setList:(struct gfx_canvas *)list
+{
+	if (list)
+		cg_list_ref(list);
+	if (_list)
+		gfx_canvas_free(_list);
+	_list = list;
+	[self setNeedsDisplay];
+}
+
+- (void)dealloc
+{
+	if (_list)
+		gfx_canvas_free(_list);
+}
+
+- (void)drawRect:(CGRect)rect
+{
+	if (_list)
+		cg_list_draw(_list, UIGraphicsGetCurrentContext(), scale());
+	[super drawRect:rect];
+}
 
 - (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
@@ -465,6 +529,7 @@ static void *surface; // a retained UIView; blocks capture it when queued, the w
 
 static NSMutableArray<dispatch_block_t> *pending;
 static bool flush_posted;
+static atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
 
 // the surface's points: hosts pass density 160 × screen scale
 static CGFloat scale(void)
@@ -501,9 +566,11 @@ static void flush(void)
 		return;
 	NSArray<dispatch_block_t> *ops = pending;
 	pending = nil;
+	atomic_fetch_add(&batches_in_flight, 1);
 	dispatch_async(dispatch_get_main_queue(), ^{
 		for (dispatch_block_t op in ops)
 			op();
+		atomic_fetch_sub(&batches_in_flight, 1);
 	});
 }
 
@@ -930,6 +997,116 @@ void records_layout_done(struct ui_window *window)
 	}
 }
 
+/* Draw passes run at most once per frame: a CADisplayLink on UIKit's thread, paused while no view
+ * waits, posts the pass to the Android thread. A frame whose last batch UIKit hasn't run is skipped,
+ * so UIKit's thread never waits and batches don't pile up behind it. */
+
+static CADisplayLink *frame_link; // UIKit's thread
+
+static void frame_post(void *data)
+{
+	@autoreleasepool {
+		if (app_window)
+			records_draw_pass(app_window);
+	}
+}
+
+@interface ATLFrameTarget : NSObject
+@end
+
+@implementation ATLFrameTarget
+- (void)tick:(CADisplayLink *)link
+{
+	if (atomic_load(&batches_in_flight))
+		return;
+	link.paused = YES;
+	loop_main_post(frame_post, NULL);
+}
+@end
+
+void records_draw_wanted(struct ui_window *window)
+{
+	@autoreleasepool {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!frame_link) {
+				frame_link = [CADisplayLink displayLinkWithTarget:[ATLFrameTarget new] selector:@selector(tick:)];
+				[frame_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+			}
+			frame_link.paused = NO;
+		});
+	}
+}
+
+// UIKit's thread
+static ATLDrawLayer *draw_layer(UIView *view, bool create)
+{
+	for (CALayer *sublayer in view.layer.sublayers) {
+		if ([sublayer isKindOfClass:[ATLDrawLayer class]])
+			return (ATLDrawLayer *)sublayer;
+	}
+	if (!create)
+		return nil;
+	ATLDrawLayer *layer = [ATLDrawLayer layer];
+	layer.zPosition = -1; // under the subviews, whatever index UIKit gives them
+	layer.drawsAsynchronously = YES;
+	[view.layer insertSublayer:layer atIndex:0];
+	return layer;
+}
+
+/* UIKit's thread: what the view's last draw recorded (NULL: nothing), size in points, s px per
+ * point; at the bounds' origin, so it scrolls with the view's subviews as Android's content does */
+static void show_list(UIView *view, struct gfx_canvas *list, CGSize size, CGFloat s)
+{
+	if ([view isKindOfClass:[ATLLabel class]]) {
+		((ATLLabel *)view).list = list;
+		return;
+	}
+	ATLDrawLayer *layer = draw_layer(view, list != NULL);
+	if (!layer)
+		return;
+	layer.list = list;
+	if (!list) {
+		[layer removeFromSuperlayer];
+		return;
+	}
+	layer.contentsScale = s;
+	layer.frame = CGRectMake(0, 0, size.width, size.height);
+	[layer setNeedsDisplay];
+}
+
+static struct gfx_canvas *shown_list(UIView *view, CGSize *size)
+{
+	if ([view isKindOfClass:[ATLLabel class]]) {
+		*size = view.bounds.size;
+		return ((ATLLabel *)view).list;
+	}
+	ATLDrawLayer *layer = draw_layer(view, false);
+	*size = layer.bounds.size;
+	return layer.list;
+}
+
+void records_view_drawn(struct ui_view *view)
+{
+	@autoreleasepool {
+		struct gfx_canvas *list = view->list ? cg_list_ref(view->list) : NULL;
+		CGFloat s = scale();
+		CGSize size = CGSizeMake(view->drawn_width / s, view->drawn_height / s);
+		uikit_enqueue(^{
+			show_list(native(view), list, size, s);
+			if (list)
+				gfx_canvas_free(list);
+		});
+	}
+}
+
+void records_draw_done(struct ui_window *window)
+{
+	@autoreleasepool {
+		if (!window->layout_pending) // else the layout pass flushes, with its frames
+			flush();
+	}
+}
+
 // a scroll node's UIScrollView animates and reports; another view's bounds shift its subviews
 void records_scroll_changed(struct ui_view *view, bool animated)
 {
@@ -1342,6 +1519,9 @@ static void replace_native(struct ui_view *view, UIView *replacement, bool enabl
 	bool responder = old.isFirstResponder;
 	if (old.superview)
 		[old.superview insertSubview:replacement aboveSubview:old];
+	CGSize drawn;
+	struct gfx_canvas *list = shown_list(old, &drawn);
+	show_list(replacement, list, drawn, scale());
 	// the old editor's end of editing and the new one's start are the swap's, not the user's
 	ATLEditState *state = [old conformsToProtocol:@protocol(ATLEditor)] ? ((id<ATLEditor>)old).atlState : nil;
 	state.javaFocus = true;

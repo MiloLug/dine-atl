@@ -11,5 +11,6 @@
 		<activity android:name=".ControlsActivity"/>
 		<activity android:name=".TextActivity"/>
 		<activity android:name=".DrawActivity"/>
+		<activity android:name=".DrawStayActivity"/>
 	</application>
 </manifest>

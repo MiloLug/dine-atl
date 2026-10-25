@@ -2,42 +2,12 @@
 #include <gtk/gtk.h>
 #include <pango/pango.h>
 
+#include "src/backends/gfx/gsk/canvas.h"
+
 #include "../defines.h"
 #include "AndroidPaint.h"
 
 #include "../generated_headers/android_atl_ATLCanvas.h"
-
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap__JJIIIIJ(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong texture_ptr, jint x, jint y, jint width, jint height, jlong paint_ptr)
-{
-	GdkSnapshot *snapshot = (GdkSnapshot *)_PTR(snapshot_ptr);
-	GdkTexture *texture = GDK_TEXTURE(_PTR(texture_ptr));
-	struct AndroidPaint *paint = _PTR(paint_ptr);
-	if (paint->use_color_filter) {
-		gtk_snapshot_push_color_matrix(snapshot, &paint->color_matrix, &paint->color_offset);
-	}
-	gtk_snapshot_append_texture(snapshot, texture, &GRAPHENE_RECT_INIT(x, y, width, height));
-	if (paint->use_color_filter)
-		gtk_snapshot_pop(snapshot);
-}
-
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap__JJIIIIIIIIJ(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong texture_ptr, jint x, jint y, jint width, jint height, jint src_x, jint src_y, jint src_width, jint src_height, jlong paint_ptr)
-{
-	GdkSnapshot *snapshot = (GdkSnapshot *)_PTR(snapshot_ptr);
-	GdkTexture *texture = GDK_TEXTURE(_PTR(texture_ptr));
-	struct AndroidPaint *paint = _PTR(paint_ptr);
-	if (paint->use_color_filter) {
-		gtk_snapshot_push_color_matrix(snapshot, &paint->color_matrix, &paint->color_offset);
-	}
-	gtk_snapshot_push_clip(snapshot, &GRAPHENE_RECT_INIT(x, y, width, height));
-	float xscale = width / (float)src_width;
-	float yscale = height / (float)src_height;
-	float scaled_width = gdk_texture_get_width(texture) * xscale;
-	float scaled_height = gdk_texture_get_height(texture) * yscale;
-	gtk_snapshot_append_texture(snapshot, texture, &GRAPHENE_RECT_INIT(x - src_x * xscale, y - src_y * yscale, scaled_width, scaled_height));
-	gtk_snapshot_pop(snapshot);
-	if (paint->use_color_filter)
-		gtk_snapshot_pop(snapshot);
-}
 
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawPath(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong path_ptr, jint fill_rule, jlong paint_ptr)
 {
@@ -84,19 +54,6 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawText(JNIEnv *env, 
 	g_object_unref(layout);
 }
 
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jfloat left, jfloat top, jfloat right, jfloat bottom)
-{
-	GdkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
-	gtk_snapshot_push_clip(snapshot, &GRAPHENE_RECT_INIT(left, top, right - left, bottom - top));
-}
-
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1pop(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jint count)
-{
-	GdkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
-	while (count--)
-		gtk_snapshot_pop(snapshot);
-}
-
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawRenderNode(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong node_ptr)
 {
 	GdkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
@@ -111,4 +68,5 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipPath(JNIEnv *env, 
 	gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
 	gtk_snapshot_append_fill(snapshot, path, fill_rule, &(GdkRGBA){1, 1, 1, 1});
 	gtk_snapshot_pop(snapshot);
+	gsk_canvas_pushed(snapshot);
 }

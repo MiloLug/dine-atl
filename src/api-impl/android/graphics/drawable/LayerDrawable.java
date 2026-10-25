@@ -684,10 +684,14 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 				for (int i = 0; i < N; i++) {
 					final ChildDrawable r = mChildren[i] = new ChildDrawable();
 					final ChildDrawable or = origChildDrawable[i];
-					if (res != null) {
-						r.mDrawable = or.mDrawable.getConstantState().newDrawable(res);
+					// AOSP 10's ChildDrawable copy: a child without a constant state is shared
+					final ConstantState cs = or.mDrawable.getConstantState();
+					if (cs == null) {
+						r.mDrawable = or.mDrawable;
+					} else if (res != null) {
+						r.mDrawable = cs.newDrawable(res);
 					} else {
-						r.mDrawable = or.mDrawable.getConstantState().newDrawable();
+						r.mDrawable = cs.newDrawable();
 					}
 					r.mDrawable.setCallback(owner);
 					//r.mDrawable.setLayoutDirection(or.mDrawable.getLayoutDirection());

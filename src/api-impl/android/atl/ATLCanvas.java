@@ -3,7 +3,6 @@ package android.atl;
 import android.graphics.*;
 import android.view.DisplayListCanvas;
 import android.view.RenderNode;
-import java.util.Arrays;
 import java.util.Stack;
 
 /**
@@ -12,7 +11,6 @@ import java.util.Stack;
  */
 public class ATLCanvas extends DisplayListCanvas {
 	public long handle;
-	private int[] push_history = null;
 	private Stack<Matrix> state_stack = new Stack<>();
 
 	private static Paint default_paint = new Paint();
@@ -34,10 +32,6 @@ public class ATLCanvas extends DisplayListCanvas {
 		int save_count = getSaveCount();
 		if (save_count <= 1)
 			throw new IllegalStateException("No more saves to restore");
-		if (push_history != null && push_history.length > save_count && push_history[save_count] > 0) {
-			native_pop(handle, push_history[save_count]);
-			push_history[save_count] = 0;
-		}
 		state_stack.pop();
 		native_restore(handle);
 	}
@@ -80,25 +74,19 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	@Override
 	public boolean clipRect(float left, float top, float right, float bottom) {
-		native_clipRect(handle, left, top, right, bottom);
-		int save_count = getSaveCount();
-		if (push_history == null)
-			push_history = new int[save_count + 1];
-		else if (push_history.length <= save_count)
-			push_history = Arrays.copyOf(push_history, save_count + 1);
-		push_history[save_count]++;
+		return clipRect(left, top, right, bottom, Region.Op.INTERSECT);
+	}
+
+	// ops other than DIFFERENCE intersect
+	@Override
+	public boolean clipRect(float left, float top, float right, float bottom, Region.Op op) {
+		native_clipRect(handle, left, top, right, bottom, op == Region.Op.DIFFERENCE);
 		return right > left && bottom > top;
 	}
 
 	@Override
 	public boolean clipPath(Path path) {
 		native_clipPath(handle, path.getGskPath(), path.getFillType().fill_rule);
-		int save_count = getSaveCount();
-		if (push_history == null)
-			push_history = new int[save_count + 1];
-		else if (push_history.length <= save_count)
-			push_history = Arrays.copyOf(push_history, save_count + 1);
-		push_history[save_count]++;
 		RectF bounds = new RectF();
 		path.computeBounds(bounds, true);
 		return !bounds.isEmpty();
@@ -106,10 +94,11 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	@Override
 	public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
+		long native_paint = paint != null ? paint.paint : default_paint.paint;
 		if (src == null)
-			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.width(), dst.height(), paint != null ? paint.paint : default_paint.paint);
+			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.right, dst.bottom, 0, 0, -1, -1, native_paint);
 		else
-			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.width(), dst.height(), src.left, src.top, src.width(), src.height(), paint != null ? paint.paint : default_paint.paint);
+			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.right, dst.bottom, src.left, src.top, src.right, src.bottom, native_paint);
 	}
 
 	@Override
@@ -167,8 +156,8 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_drawRenderNode(handle, node.getGskNode());
 	}
 
-	protected native void native_drawBitmap(long handle, long texture, int x, int y, int width, int height, long paint);
-	protected native void native_drawBitmap(long handle, long texture, int x, int y, int width, int height, int src_x, int src_y, int src_width, int src_height, long paint);
+	// src_right -1: the whole bitmap
+	protected native void native_drawBitmap(long handle, long bitmap, int left, int top, int right, int bottom, int src_left, int src_top, int src_right, int src_bottom, long paint);
 	protected native void native_drawRect(long handle, float left, float top, float right, float bottom, long paint);
 	protected native void native_drawPath(long handle, long path, int fill_rule, long paint);
 	protected native void native_translate(long handle, float dx, float dy);
@@ -181,8 +170,7 @@ public class ATLCanvas extends DisplayListCanvas {
 	protected native void native_drawRoundRect(long handle, float left, float top, float right, float bottom, float rx, float ry, long paint);
 	protected native void native_scale(long handle, float sx, float sy);
 	protected native void native_concat(long handle, long matrix);
-	protected native void native_clipRect(long handle, float left, float top, float right, float bottom);
+	protected native void native_clipRect(long handle, float left, float top, float right, float bottom, boolean difference);
 	protected native void native_clipPath(long handle, long path, int fill_rule);
-	protected native void native_pop(long handle, int pop_count);
 	protected native void native_drawRenderNode(long handle, long render_node);
 }

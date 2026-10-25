@@ -576,10 +576,7 @@ public class Canvas {
 	}
 
 	public boolean clipRect(float left, float top, float right, float bottom) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
-			return atl_canvas.clipRect(left, top, right, bottom);
-		}
+		return clipRect(left, top, right, bottom, Region.Op.INTERSECT);
 	}
 
 	public boolean clipRect(Rect rect) {
@@ -587,7 +584,7 @@ public class Canvas {
 	}
 
 	public boolean clipRect(Rect rect, Region.Op op) {
-		return clipRect((float)rect.left, rect.top, rect.right, rect.bottom);
+		return clipRect((float)rect.left, rect.top, rect.right, rect.bottom, op);
 	}
 
 	public boolean clipPath(Path path) {
@@ -610,11 +607,14 @@ public class Canvas {
 	}
 
 	public boolean clipRect(float left, float top, float right, float bottom, Region.Op op) {
-		return clipRect(left, top, right, bottom);
+		synchronized (bitmap) {
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.clipRect(left, top, right, bottom, op);
+		}
 	}
 
 	public boolean clipRect(RectF rect, Region.Op op) {
-		return clipRect(rect.left, rect.top, rect.right, rect.bottom);
+		return clipRect(rect.left, rect.top, rect.right, rect.bottom, op);
 	}
 
 	public void drawArc(float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean includeCenter, Paint paint) {

@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/widget/ImageView.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.widget;
 
 import android.content.Context;
@@ -5,20 +10,26 @@ import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Matrix;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RectF;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
 
 public class ImageView extends View {
 
-	private Bitmap bitmap = null;
 	private ScaleType scaleType = ScaleType.FIT_CENTER;
 	private Drawable drawable = null;
 	private ColorFilter colorFilter = null;
+	private final Matrix matrix = new Matrix();
+	private Matrix drawMatrix = null;
+	private final RectF tempSrc = new RectF();
+	private final RectF tempDst = new RectF();
 
 	public ImageView(Context context) {
 		this(context, null);
@@ -57,8 +68,7 @@ public class ImageView extends View {
 			setImageDrawable(getContext().getDrawable(resid));
 			return;
 		}
-		bitmap = BitmapFactory.decodeResource(this.getResources(), resid);
-		setNativeBitmap(bitmap);
+		setImageBitmap(BitmapFactory.decodeResource(this.getResources(), resid));
 	}
 	public void setAdjustViewBounds(boolean adjustViewBounds) {}
 
@@ -93,17 +103,98 @@ public class ImageView extends View {
 			native_setDrawable(widget, 0, -1, -1);
 	}
 
-	public void setImageMatrix(Matrix matrix) {}
-
-	public void setImageBitmap(Bitmap bitmap) {
-		setNativeBitmap(bitmap);
+	public void setImageMatrix(Matrix matrix) {
+		if (matrix == null)
+			this.matrix.reset();
+		else
+			this.matrix.set(matrix);
+		invalidate();
 	}
 
-	private void setNativeBitmap(Bitmap bitmap) {
-		if (bitmap != null)
-			native_setDrawable(widget, bitmap.getTexture(), bitmap.getWidth(), bitmap.getHeight());
-		else
-			native_setDrawable(widget, 0, -1, -1);
+	public void setImageBitmap(Bitmap bitmap) {
+		setImageDrawable(bitmap != null ? new BitmapDrawable(getResources(), bitmap) : null);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	@Override
+	protected void drawableStateChanged() {
+		super.drawableStateChanged();
+		if (drawable != null && drawable.isStateful() && drawable.setState(getDrawableState()))
+			invalidateDrawable(drawable);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// onDraw's; bounds are configured per draw, as ATL has no setFrame
+	@Override
+	protected void atlDrawContent(Canvas canvas) {
+		if (drawable == null)
+			return;
+		int dwidth = drawable.getIntrinsicWidth();
+		int dheight = drawable.getIntrinsicHeight();
+		if (dwidth == 0 || dheight == 0)
+			return;
+		configureBounds(dwidth, dheight);
+		if (drawMatrix == null && getPaddingTop() == 0 && getPaddingLeft() == 0) {
+			drawable.draw(canvas);
+		} else {
+			int saveCount = canvas.getSaveCount();
+			canvas.save();
+			canvas.translate(getPaddingLeft(), getPaddingTop());
+			if (drawMatrix != null)
+				canvas.concat(drawMatrix);
+			drawable.draw(canvas);
+			canvas.restoreToCount(saveCount);
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void configureBounds(int dwidth, int dheight) {
+		int vwidth = getWidth() - getPaddingLeft() - getPaddingRight();
+		int vheight = getHeight() - getPaddingTop() - getPaddingBottom();
+		boolean fits = (dwidth < 0 || vwidth == dwidth) && (dheight < 0 || vheight == dheight);
+		if (dwidth <= 0 || dheight <= 0 || ScaleType.FIT_XY == scaleType) {
+			drawable.setBounds(0, 0, vwidth, vheight);
+			drawMatrix = null;
+			return;
+		}
+		drawable.setBounds(0, 0, dwidth, dheight);
+		if (ScaleType.MATRIX == scaleType) {
+			drawMatrix = matrix.isIdentity() ? null : matrix;
+		} else if (fits) {
+			drawMatrix = null;
+		} else if (ScaleType.CENTER == scaleType) {
+			drawMatrix = matrix;
+			drawMatrix.setTranslate(Math.round((vwidth - dwidth) * 0.5f), Math.round((vheight - dheight) * 0.5f));
+		} else if (ScaleType.CENTER_CROP == scaleType) {
+			drawMatrix = matrix;
+			float scale;
+			float dx = 0, dy = 0;
+			if (dwidth * vheight > vwidth * dheight) {
+				scale = (float)vheight / (float)dheight;
+				dx = (vwidth - dwidth * scale) * 0.5f;
+			} else {
+				scale = (float)vwidth / (float)dwidth;
+				dy = (vheight - dheight * scale) * 0.5f;
+			}
+			drawMatrix.setScale(scale, scale);
+			drawMatrix.postTranslate(Math.round(dx), Math.round(dy));
+		} else if (ScaleType.CENTER_INSIDE == scaleType) {
+			drawMatrix = matrix;
+			float scale;
+			if (dwidth <= vwidth && dheight <= vheight)
+				scale = 1.0f;
+			else
+				scale = Math.min((float)vwidth / (float)dwidth, (float)vheight / (float)dheight);
+			float dx = Math.round((vwidth - dwidth * scale) * 0.5f);
+			float dy = Math.round((vheight - dheight * scale) * 0.5f);
+			drawMatrix.setScale(scale, scale);
+			drawMatrix.postTranslate(dx, dy);
+		} else {
+			tempSrc.set(0, 0, dwidth, dheight);
+			tempDst.set(0, 0, vwidth, vheight);
+			drawMatrix = matrix;
+			drawMatrix.setRectToRect(tempSrc, tempDst, scaleType == ScaleType.FIT_START ? Matrix.ScaleToFit.START : scaleType == ScaleType.FIT_END ? Matrix.ScaleToFit.END : Matrix.ScaleToFit.CENTER);
+		}
 	}
 
 	/**
@@ -210,7 +301,7 @@ public class ImageView extends View {
 	public void setColorFilter(ColorFilter cf) {}
 
 	public Matrix getImageMatrix() {
-		return Matrix.IDENTITY_MATRIX;
+		return drawMatrix == null ? new Matrix(Matrix.IDENTITY_MATRIX) : drawMatrix;
 	}
 
 	public void clearColorFilter() {

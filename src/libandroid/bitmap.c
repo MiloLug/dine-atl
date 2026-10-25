@@ -4,6 +4,7 @@
 
 // FIXME: put the header in a common place
 #include "../api-impl-jni/defines.h"
+#include "../backends/gfx/gsk/memory_format.h"
 #include "bitmap.h"
 
 #define ANDROID_BITMAP_RESULT_SUCCESS 0
@@ -31,7 +32,7 @@ int AndroidBitmap_lockPixels(JNIEnv *env, jobject bitmap, void **pixels)
 	printf("AndroidBitmap_lockPixels\n");
 	GdkTexture *texture = _PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J")));
 	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = config_int(env, bitmap, "gdk_memory_format");
+	int format = gsk_memory_format(config_int(env, bitmap, "nativeInt"));
 	if (format == -1) {
 		printf("AndroidBitmap_lockPixels: format not implemented\n");
 		exit(1);
@@ -69,7 +70,7 @@ int AndroidBitmap_unlockPixels(JNIEnv *env, jobject bitmap)
 	int width = _GET_INT_FIELD(bitmap, "width");
 	int height = _GET_INT_FIELD(bitmap, "height");
 	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = config_int(env, bitmap, "gdk_memory_format");
+	int format = gsk_memory_format(config_int(env, bitmap, "nativeInt"));
 	if (format == -1) {
 		printf("AndroidBitmap_lockPixels: format not implemented\n");
 		exit(1);

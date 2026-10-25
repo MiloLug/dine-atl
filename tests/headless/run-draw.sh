@@ -2,8 +2,8 @@
 # Runs the widgets APK's DrawActivity (widgets/, built by the superproject's tests/harness/apk.py):
 # a view drawn through Canvas, invalidated once, then laid out again at the same size.
 # --headless: no display; the display list of each draw and the draw lines must match
-# draw.displaylist (--update rewrites it). Without it (gtk): the view draws twice and no Canvas
-# native is missing.
+# draw.displaylist (--update rewrites it). Without it (gtk): the view draws twice, no Canvas
+# native is missing and GTK reports no unbalanced snapshot pushes.
 # Usage: run-draw.sh [--headless] [--update] <build dir> <widgets.apk>
 set -euo pipefail
 
@@ -34,6 +34,7 @@ rc=0
 fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 grep -q "widgets draw done" "$log" || fail "no \"widgets draw done\" (exit status $rc)"
 grep -q "UnsatisfiedLinkError" "$log" && fail "a native is missing"
+grep -qE "Gtk-CRITICAL|Gsk-CRITICAL|gtk_snapshot_(push|pop)" "$log" && fail "unbalanced snapshot pushes or a GTK critical"
 if ((headless)); then
   grep -oE '^displaylist:.*|widgets draw .*' "$log" >"$work/displaylist" || true
   if ((update)); then

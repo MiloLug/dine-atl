@@ -17,11 +17,19 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1snapshot
 
 /*
  * Class:     android_graphics_Bitmap
+ * Method:    native_new
+ * Signature: (III)J
+ */
+JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1new
+  (JNIEnv *, jclass, jint, jint, jint);
+
+/*
+ * Class:     android_graphics_Bitmap
  * Method:    native_create_texture
- * Signature: (JIIII)J
+ * Signature: (JII)J
  */
 JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1texture
-  (JNIEnv *, jclass, jlong, jint, jint, jint, jint);
+  (JNIEnv *, jclass, jlong, jint, jint);
 
 /*
  * Class:     android_graphics_Bitmap

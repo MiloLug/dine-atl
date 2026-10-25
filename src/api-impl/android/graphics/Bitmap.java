@@ -7,26 +7,26 @@ import java.io.OutputStream;
 import java.nio.Buffer;
 
 /*
- * Bitmap is implemented as GdkTexture or GtkSnapshot. It can only be one of the two at a time.
- * The methods getTexture() and getSnapshot() automatically convert between the two as needed.
+ * texture is a gfx-slot bitmap (gsk: a GdkTexture). On gsk a Canvas(Bitmap) draws into a GtkSnapshot
+ * instead; the Bitmap is one of the two at a time, and getTexture() and getSnapshot() convert.
  */
 public final class Bitmap implements Parcelable {
 
 	public enum Config {
-		RGB_565(2, -1, /*ANDROID_BITMAP_FORMAT_RGB_565*/ 4),
-		ARGB_8888(4, /*GDK_MEMORY_R8G8B8A8*/ 5, /**ANDROID_BITMAP_FORMAT_RGBA_8888*/ 1),
-		ARGB_4444(2, -1, /*ANDROID_BITMAP_FORMAT_RGBA_4444*/ 7),
-		ALPHA_8(1, /*GDK_MEMORY_A8*/ 24, /*ANDROID_BITMAP_FORMAT_A_8*/ 8),
-		RGBA_F16(8, /*GDK_MEMORY_R16G16B16A16_FLOAT*/ 14, /*ANDROID_BITMAP_FORMAT_RGBA_F16*/ 9),
-		HARDWARE(4, /*GDK_MEMORY_R8G8B8A8*/ 5, /*ANDROID_BITMAP_FORMAT_RGBA_8888*/ 1);
+		RGB_565(2, 3, /*ANDROID_BITMAP_FORMAT_RGB_565*/ 4),
+		ARGB_8888(4, 5, /**ANDROID_BITMAP_FORMAT_RGBA_8888*/ 1),
+		ARGB_4444(2, 4, /*ANDROID_BITMAP_FORMAT_RGBA_4444*/ 7),
+		ALPHA_8(1, 1, /*ANDROID_BITMAP_FORMAT_A_8*/ 8),
+		RGBA_F16(8, 6, /*ANDROID_BITMAP_FORMAT_RGBA_F16*/ 9),
+		HARDWARE(4, 7, /*ANDROID_BITMAP_FORMAT_RGBA_8888*/ 1);
 
 		private int bytes_per_pixel;
-		private int gdk_memory_format;
+		final int nativeInt; // AOSP's, the gfx slot's enum gfx_bitmap_config; libandroid reads it
 		int android_memory_format; // used by native function AndroidBitmap_getInfo()
 
-		private Config(int bytes_per_pixel, int gdk_memory_format, int android_memory_format) {
+		private Config(int bytes_per_pixel, int nativeInt, int android_memory_format) {
 			this.bytes_per_pixel = bytes_per_pixel;
-			this.gdk_memory_format = gdk_memory_format;
+			this.nativeInt = nativeInt;
 			this.android_memory_format = android_memory_format;
 		}
 	}
@@ -119,7 +119,7 @@ public final class Bitmap implements Parcelable {
 
 	public synchronized long getTexture() {
 		if (texture == 0) {
-			texture = native_create_texture(snapshot, width, height, stride, config.gdk_memory_format);
+			texture = snapshot != 0 ? native_create_texture(snapshot, width, height) : native_new(width, height, config.nativeInt);
 			snapshot = 0;
 		}
 		return texture;
@@ -220,11 +220,11 @@ public final class Bitmap implements Parcelable {
 	}
 
 	public void copyPixelsToBuffer(Buffer buffer) {
-		if (config.gdk_memory_format == -1) {
+		if (config == Config.RGB_565 || config == Config.ARGB_4444) {
 			System.out.println("copyPixelsToBuffer: format " + config.name() + " not implemented");
 			System.exit(1);
 		}
-		native_copy_to_buffer(getTexture(), buffer, config.gdk_memory_format, getRowBytes());
+		native_copy_to_buffer(getTexture(), buffer, config.nativeInt, getRowBytes());
 		buffer.position(buffer.position() + getAllocationByteCount());
 	}
 
@@ -274,7 +274,8 @@ public final class Bitmap implements Parcelable {
 	}
 
 	private static native long native_create_snapshot(long texture);
-	private static native long native_create_texture(long snapshot, int width, int height, int stride, int format);
+	private static native long native_new(int width, int height, int config);
+	private static native long native_create_texture(long snapshot, int width, int height);
 	private static native int native_get_width(long texture);
 	private static native int native_get_height(long texture);
 	private static native long native_erase_color(int color, int width, int height);

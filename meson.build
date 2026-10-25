@@ -41,6 +41,9 @@ endif
 if (loop_backend == 'cfrunloop') != apple
   error('loop=cfrunloop is the loop for Apple targets, and only for them')
 endif
+if (ui_backend == 'uikit') != (gfx_backend == 'coregraphics')
+  error('ui=uikit draws with gfx=coregraphics, and only it does')
+endif
 if ui_backend == 'uikit'
   if not apple
     error('ui=uikit is for Apple targets')
@@ -92,8 +95,11 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_app_Dialog.c',
 	'src/shared/android_atl_ATLCanvas.c',
 	'src/shared/android_content_Context.c',
+	'src/shared/android_graphics_Bitmap.c',
+	'src/shared/android_graphics_BitmapFactory.c',
 	'src/shared/android_graphics_Matrix.c',
 	'src/shared/android_graphics_Paint.c',
+	'src/shared/android_graphics_drawable_BitmapDrawable.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
 	'src/shared/android_graphics_drawable_DrawableContainer.c',
 	'src/shared/android_view_View.c',
@@ -214,7 +220,6 @@ if desktop
     'src/api-impl-jni/graphics/NinePatchPaintable.c',
     'src/api-impl-jni/graphics/android_atl_ATLCanvas.c',
     'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
-    'src/api-impl-jni/graphics/android_graphics_BitmapFactory.c',
     'src/api-impl-jni/graphics/android_graphics_Paint.c',
     'src/api-impl-jni/graphics/android_graphics_Path.c',
     'src/api-impl-jni/graphics/android_graphics_Region.c',
@@ -300,11 +305,18 @@ else
                                  dependencies: [dependency('gtk4'), dependency('libportal'), dependency('jni')])
 endif
 
+record_srcs = ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c']
 if gfx_backend == 'record'
-  backend_libs += static_library('atl_gfx_record', ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c'],
+  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c'],
+                                 dependencies: [graphene_dep, dependency('libpng')])
+elif gfx_backend == 'coregraphics'
+  # record's lists, replayed by uikit's layers
+  backend_libs += static_library('atl_gfx_coregraphics', record_srcs + ['src/backends/gfx/coregraphics/bitmap.c',
+                                                                        'src/backends/gfx/coregraphics/draw.c'],
                                  dependencies: graphene_dep)
 else
-  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c', 'src/backends/gfx/gsk/paint.c'],
+  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/bitmap.c', 'src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c',
+                                  'src/backends/gfx/gsk/paint.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

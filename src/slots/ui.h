@@ -125,9 +125,9 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled);
 void ui_view_invalidate(struct ui_view *view);
 /* The toolkit's parts of View.draw and ViewGroup.drawChild, into the view's canvas: gtk snapshots
- * its widgets; the records backends draw nothing, a display list holds only what Java draws. */
-void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas);
-void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas);
+ * its widgets; records draw nothing. false: Java draws that part (background, ImageView's image). */
+bool ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas);
+bool ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas);
 void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas);
 void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas);
 /* A child's translation changed: its frame moves. */

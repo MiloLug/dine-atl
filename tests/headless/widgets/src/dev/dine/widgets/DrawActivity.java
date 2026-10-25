@@ -2,23 +2,32 @@ package dev.dine.widgets;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
+import android.graphics.Region;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewTreeObserver;
+import android.widget.FrameLayout;
 
 /* A view drawn through Canvas, for run-draw.sh: headless compares its display lists with
  * draw.displaylist, gtk draws it. It redraws after invalidate(), not after a layout at the same
- * size, and after showing again from INVISIBLE with an invalidate() while hidden; then it finishes. */
+ * size, and after showing again from INVISIBLE with an invalidate() while hidden; then it finishes.
+ * Beside it, a view scrolled by 10 px keeps its selector background in place. */
 public class DrawActivity extends Activity {
-	private static final String TAG = "widgets";
+	static final String TAG = "widgets";
+	protected FrameLayout root;
 
 	private class DrawView extends View {
+		private final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
 		private int draws;
 
 		DrawView(Context context) {
@@ -50,6 +59,18 @@ public class DrawActivity extends Activity {
 			fill.setColor(0xff00ff00);
 			canvas.drawRect(120, 10, 170, 60, copy);
 
+			Paint blue = new Paint();
+			blue.setColor(0xff0000ff);
+			canvas.save();
+			canvas.clipRect(180, 10, 200, 30);
+			canvas.drawRect(170, 0, 210, 40, blue);
+			canvas.restore();
+			canvas.save();
+			canvas.clipRect(220, 10, 240, 30, Region.Op.DIFFERENCE);
+			canvas.drawRect(210, 0, 250, 40, blue);
+			canvas.restore();
+			canvas.drawBitmap(photo, null, new Rect(260, 0, 324, 64), null);
+
 			// a paint with an xfermode draws no rect (ATLCanvas.drawRect), its copy neither
 			Paint clear = new Paint(fill);
 			clear.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
@@ -77,7 +98,7 @@ public class DrawActivity extends Activity {
 				post(new Runnable() {
 					public void run() {
 						Log.i(TAG, "widgets draw done");
-						finish();
+						done();
 					}
 				});
 			}
@@ -107,9 +128,19 @@ public class DrawActivity extends Activity {
 		}
 	}
 
+	protected void done() {
+		finish();
+	}
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		setContentView(new DrawView(this));
+		root = new FrameLayout(this);
+		root.addView(new DrawView(this));
+		View scrolled = new View(this);
+		scrolled.setBackgroundResource(R.drawable.shared_selector);
+		scrolled.scrollTo(0, 10);
+		root.addView(scrolled, new FrameLayout.LayoutParams(40, 40, Gravity.BOTTOM));
+		setContentView(root);
 	}
 }

@@ -3,6 +3,7 @@ package dev.dine.widgets;
 import android.app.Activity;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,11 +20,39 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import java.util.Collections;
 
-/* Stays open for checks by eye; the ImageView's drawable doesn't draw yet, only its grey background.
- * The scrolling rows take input and log what nothing draws before M5 (run-widgets.sh). */
+/* Stays open for checks by eye: the ImageView shows a PNG resource on its grey background. The
+ * scrolling rows and the two rows below them, which share a selector resource, take input and log
+ * what they show (run-widgets.sh). */
 public class MainActivity extends Activity {
 	private static final String TAG = "widgets";
 	private TextView excluded;
+	private SharedRow shareA, shareB;
+
+	// each press or release logs the child both rows' backgrounds show: a press shows in its own only
+	private class SharedRow extends TextView {
+		private boolean pressed;
+
+		SharedRow(String name) {
+			super(MainActivity.this);
+			setText(name);
+			setBackgroundResource(R.drawable.shared_selector);
+			setOnClickListener(clickLogger(name));
+		}
+
+		@Override
+		protected void drawableStateChanged() {
+			super.drawableStateChanged();
+			if (isPressed() != pressed && shareA != null && shareB != null) {
+				pressed = isPressed();
+				Log.i(TAG, "widgets shared a=" + shown(shareA) + " b=" + shown(shareB));
+			}
+		}
+	}
+
+	private static String shown(View row) {
+		Drawable current = row.getBackground().getCurrent();
+		return current instanceof ColorDrawable ? Integer.toHexString(((ColorDrawable)current).getColor()) : "none";
+	}
 
 	private int dp(int value) {
 		return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()));
@@ -48,9 +77,15 @@ public class MainActivity extends Activity {
 		column.addView(bar, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 		ImageView image = new ImageView(this);
 		image.setBackgroundColor(0xFF808080);
-		image.setImageDrawable(new ColorDrawable(0xFF00C000));
+		image.setImageResource(R.drawable.photo);
 		column.addView(image, new LinearLayout.LayoutParams(dp(96), dp(96)));
 		column.addView(rows(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200)));
+		LinearLayout shared = new LinearLayout(this);
+		shareA = new SharedRow("share a");
+		shareB = new SharedRow("share b");
+		shared.addView(shareA, new LinearLayout.LayoutParams(0, dp(48), 1));
+		shared.addView(shareB, new LinearLayout.LayoutParams(0, dp(48), 1));
+		column.addView(shared, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
 		setContentView(column);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
@@ -67,9 +102,9 @@ public class MainActivity extends Activity {
 			@Override
 			protected void onScrollChanged(int l, int t, int oldl, int oldt) {
 				super.onScrollChanged(l, t, oldl, oldt);
-				Log.i(MainActivity.TAG, "widgets scroll " + l + " " + t);
+				Log.i(TAG, "widgets scroll " + l + " " + t);
 				if (t == getChildAt(0).getHeight() + getPaddingTop() + getPaddingBottom() - getHeight())
-					Log.i(MainActivity.TAG, "widgets scroll end");
+					Log.i(TAG, "widgets scroll end");
 			}
 		};
 		// run-widgets.sh checks that a drag stops at Java's end, padding included

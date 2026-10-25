@@ -77,7 +77,7 @@ import org.xmlpull.v1.XmlPullParserException;
  * @attr ref android.R.styleable#AnimationDrawableItem_drawable
  */
 public class AnimationDrawable extends DrawableContainer implements Runnable, Animatable {
-	private final AnimationState mAnimationState;
+	private AnimationState mAnimationState;
 	private int mCurFrame = -1;
 	private boolean mMutated;
 
@@ -306,6 +306,18 @@ public class AnimationDrawable extends DrawableContainer implements Runnable, An
 			mMutated = true;
 		}
 		return this;
+	}
+
+	@Override
+	AnimationState cloneConstantState() {
+		return new AnimationState(mAnimationState, this, null);
+	}
+
+	@Override
+	protected void setConstantState(DrawableContainerState state) {
+		super.setConstantState(state);
+		if (state instanceof AnimationState)
+			mAnimationState = (AnimationState)state;
 	}
 
 	private final static class AnimationState extends DrawableContainerState {

@@ -227,6 +227,11 @@ public class StateListDrawable extends DrawableContainer {
 		return this;
 	}
 
+	@Override
+	StateListState cloneConstantState() {
+		return new StateListState(mStateListState, this, null);
+	}
+
 	static class StateListState extends DrawableContainerState {
 		int[] mThemeAttrs;
 		int[][] mStateSets;
@@ -277,6 +282,16 @@ public class StateListDrawable extends DrawableContainer {
 			final int[][] newStateSets = new int[newSize][];
 			System.arraycopy(mStateSets, 0, newStateSets, 0, oldSize);
 			mStateSets = newStateSets;
+		}
+
+		@Override
+		public Drawable newDrawable() {
+			return new StateListDrawable(this, null);
+		}
+
+		@Override
+		public Drawable newDrawable(Resources res) {
+			return new StateListDrawable(this, res);
 		}
 	}
 

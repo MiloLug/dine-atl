@@ -6,6 +6,16 @@ displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
 displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist:   clip 180,10 200,30
+displaylist:   rect 170,0 210,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   clip 220,10 240,30 difference
+displaylist:   rect 210,0 250,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist: end
+displaylist: android.view.View 40x40
+displaylist:   rect 0,0 40,40 #ff808080 fill matrix [1,0,0;0,1,10;0,0,1]
 displaylist: end
 widgets draw 2
 displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
@@ -15,6 +25,13 @@ displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
 displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist:   clip 180,10 200,30
+displaylist:   rect 170,0 210,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   clip 220,10 240,30 difference
+displaylist:   rect 210,0 250,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
 displaylist: end
 widgets draw hidden
 widgets draw shown
@@ -26,5 +43,12 @@ displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
 displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
 displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist:   clip 180,10 200,30
+displaylist:   rect 170,0 210,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   clip 220,10 240,30 difference
+displaylist:   rect 210,0 250,40 #ff0000ff fill
+displaylist:   unclip 1
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
 displaylist: end
 widgets draw done

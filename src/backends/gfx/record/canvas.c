@@ -7,40 +7,28 @@
 
 #include "record.h"
 
-/* A display list of plain data: each op holds a copy of its paint and the matrix it was drawn
- * under, since Paint and Matrix free their native state on the FinalizerDaemon. */
-
-enum op_kind {
-	OP_RECT,       // left, top, right, bottom
-	OP_ROUND_RECT, // left, top, right, bottom, rx, ry
-	OP_LINE,       // x0, y0, x1, y1
-	OP_DRAWABLE,   // width, height; no paint
-};
-
-struct op {
-	graphene_matrix_t matrix;
-	struct gfx_paint paint;
-	enum op_kind kind;
-	float args[6];
-};
-
-struct gfx_canvas {
-	graphene_matrix_t matrix;
-	graphene_matrix_t *saved; // save()'s stack
-	size_t n_saved, saved_size;
-	struct op *ops;
-	size_t n_ops, ops_size;
-};
-
 struct gfx_canvas *gfx_canvas_new(void)
 {
 	struct gfx_canvas *canvas = calloc(1, sizeof(*canvas));
-	graphene_matrix_init_identity(&canvas->matrix);
+	canvas->refs = 1;
+	graphene_matrix_init_identity(&canvas->state.matrix);
+	return canvas;
+}
+
+struct gfx_canvas *record_canvas_ref(struct gfx_canvas *canvas)
+{
+	atomic_fetch_add(&canvas->refs, 1);
 	return canvas;
 }
 
 void gfx_canvas_free(struct gfx_canvas *canvas)
 {
+	if (atomic_fetch_sub(&canvas->refs, 1) != 1)
+		return;
+	for (size_t i = 0; i < canvas->n_ops; i++) {
+		if (canvas->ops[i].bitmap)
+			gfx_bitmap_unref(canvas->ops[i].bitmap);
+	}
 	free(canvas->saved);
 	free(canvas->ops);
 	free(canvas);
@@ -52,19 +40,31 @@ void gfx_canvas_save(struct gfx_canvas *canvas)
 		canvas->saved_size = canvas->saved_size ? canvas->saved_size * 2 : 4;
 		canvas->saved = realloc(canvas->saved, canvas->saved_size * sizeof(*canvas->saved));
 	}
-	canvas->saved[canvas->n_saved++] = canvas->matrix;
+	canvas->saved[canvas->n_saved++] = canvas->state;
+	canvas->state.clips = 0;
 }
+
+static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args);
 
 void gfx_canvas_restore(struct gfx_canvas *canvas)
 {
-	if (canvas->n_saved)
-		canvas->matrix = canvas->saved[--canvas->n_saved];
+	if (!canvas->n_saved)
+		return;
+	if (canvas->state.clips)
+		add(canvas, OP_UNCLIP, NULL, (float[]){canvas->state.clips}, 1);
+	canvas->state = canvas->saved[--canvas->n_saved];
+}
+
+void gfx_canvas_clip_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, enum gfx_clip_op op)
+{
+	add(canvas, OP_CLIP, NULL, (float[]){left, top, right, bottom, op}, 5);
+	canvas->state.clips++;
 }
 
 // row-vector form: `m` applies first, then the current matrix
 static void pre_concat(struct gfx_canvas *canvas, const graphene_matrix_t *m)
 {
-	graphene_matrix_multiply(m, &canvas->matrix, &canvas->matrix);
+	graphene_matrix_multiply(m, &canvas->state.matrix, &canvas->state.matrix);
 }
 
 void gfx_canvas_translate(struct gfx_canvas *canvas, float dx, float dy)
@@ -90,7 +90,7 @@ void gfx_canvas_concat(struct gfx_canvas *canvas, const graphene_matrix_t *matri
 	pre_concat(canvas, matrix);
 }
 
-static void add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args)
+static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args)
 {
 	if (canvas->n_ops == canvas->ops_size) {
 		canvas->ops_size = canvas->ops_size ? canvas->ops_size * 2 : 8;
@@ -98,11 +98,12 @@ static void add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_p
 	}
 	struct op *op = &canvas->ops[canvas->n_ops++];
 	memset(op, 0, sizeof(*op));
-	op->matrix = canvas->matrix;
+	op->matrix = canvas->state.matrix;
 	if (paint)
 		op->paint = *paint;
 	op->kind = kind;
 	memcpy(op->args, args, n_args * sizeof(*args));
+	return op;
 }
 
 void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, const struct gfx_paint *paint)
@@ -120,10 +121,24 @@ void gfx_canvas_draw_line(struct gfx_canvas *canvas, float x0, float y0, float x
 	add(canvas, OP_LINE, paint, (float[]){x0, y0, x1, y1}, 4);
 }
 
+void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, const struct gfx_paint *paint)
+{
+	struct gfx_rect all = {0, 0, gfx_bitmap_get_width(bitmap), gfx_bitmap_get_height(bitmap)};
+	if (!src)
+		src = &all;
+	gfx_bitmap_ref(bitmap);
+	add(canvas, OP_BITMAP, paint, (float[]){src->left, src->top, src->right, src->bottom, dst->left, dst->top, dst->right, dst->bottom}, 8)->bitmap = bitmap;
+}
+
+// a Java-drawn one recorded itself in its draw(); a container draws its child
 void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *drawable, int width, int height)
 {
-	if (!drawable->drawable_ref) // only containers here: the others draw through Java's draw()
-		add(canvas, OP_DRAWABLE, NULL, (float[]){width, height}, 2);
+	if (drawable->bitmap) {
+		struct gfx_paint opaque = {.color = 0xff000000, .filter_mode = -1};
+		gfx_canvas_draw_bitmap(canvas, drawable->bitmap, NULL, &(struct gfx_rect){0, 0, width, height}, &opaque);
+	} else if (!drawable->drawable_ref && drawable->selected) {
+		gfx_canvas_draw_drawable(canvas, drawable->selected, width, height);
+	}
 }
 
 #ifdef ATL_TEST_HOOKS
@@ -211,12 +226,31 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			print_numbers(out, op->args + 2, 2, ",");
 			print_paint(out, &op->paint);
 			break;
-		case OP_DRAWABLE:
-			fputs("drawable ", out);
-			print_numbers(out, op->args, 2, "x");
+		case OP_CLIP:
+			fputs("clip ", out);
+			print_numbers(out, op->args, 2, ",");
+			fputc(' ', out);
+			print_numbers(out, op->args + 2, 2, ",");
+			if (op->args[4] == GFX_CLIP_DIFFERENCE)
+				fputs(" difference", out);
+			break;
+		case OP_UNCLIP:
+			fprintf(out, "unclip %d", (int)op->args[0]);
+			break;
+		case OP_BITMAP:
+			fprintf(out, "bitmap %dx%d src ", gfx_bitmap_get_width(op->bitmap), gfx_bitmap_get_height(op->bitmap));
+			print_numbers(out, op->args, 2, ",");
+			fputc(' ', out);
+			print_numbers(out, op->args + 2, 2, ",");
+			fputs(" dst ", out);
+			print_numbers(out, op->args + 4, 2, ",");
+			fputc(' ', out);
+			print_numbers(out, op->args + 6, 2, ",");
+			fprintf(out, " #%08x", op->paint.color);
 			break;
 		}
-		print_matrix(out, &op->matrix);
+		if (op->kind != OP_UNCLIP)
+			print_matrix(out, &op->matrix);
 		fputc('\n', out);
 	}
 }

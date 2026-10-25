@@ -25,13 +25,13 @@ public class BitmapDrawable extends Drawable {
 	public BitmapDrawable(Resources res, Bitmap bitmap) {
 		this.bitmap = bitmap;
 		if (bitmap != null)
-			setPaintable(bitmap.getTexture());
+			adoptPaintable(native_paintable(bitmap.getTexture()));
 	}
 
 	public BitmapDrawable(Bitmap bitmap) {
 		this.bitmap = bitmap;
 		if (bitmap != null)
-			setPaintable(bitmap.getTexture());
+			adoptPaintable(native_paintable(bitmap.getTexture()));
 	}
 
 	public Bitmap getBitmap() {
@@ -56,7 +56,7 @@ public class BitmapDrawable extends Drawable {
 		a.recycle();
 		if (bitmap == null)
 			throw new XmlPullParserException("<bitmap> needs a valid `src' attribute");
-		setPaintable(bitmap.getTexture());
+		adoptPaintable(native_paintable(bitmap.getTexture()));
 	}
 
 	@Override
@@ -80,4 +80,35 @@ public class BitmapDrawable extends Drawable {
 	}
 
 	public void setGravity(int g) {}
+
+	@Override
+	public ConstantState getConstantState() {
+		return bitmap != null ? new BitmapState(bitmap) : null;
+	}
+
+	private static native long native_paintable(long bitmap);
+
+	// drawables made from it share the Bitmap: a resource decodes once
+	static final class BitmapState extends ConstantState {
+		final Bitmap bitmap;
+
+		BitmapState(Bitmap bitmap) {
+			this.bitmap = bitmap;
+		}
+
+		@Override
+		public Drawable newDrawable() {
+			return new BitmapDrawable(bitmap);
+		}
+
+		@Override
+		public Drawable newDrawable(Resources res) {
+			return new BitmapDrawable(res, bitmap);
+		}
+
+		@Override
+		public int getChangingConfigurations() {
+			return 0;
+		}
+	}
 }
