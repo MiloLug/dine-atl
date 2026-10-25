@@ -2,7 +2,8 @@
 
 `android.*` API tests against ATL's api-impl, run in-VM on the headless build:
 `tools/dine test framework` (after `tools/dine linux build`; engine `tests/harness/framework.py`).
-`--gtk` runs them on the gtk build instead, one suite at a time; it needs a display.
+`--gtk` runs them on the gtk build instead, one suite at a time; it needs a display, and
+`tools/dine test framework --gtk` gives it a hidden one.
 
 - Each `<suite>/` is a test APK (`AndroidManifest.xml`, `src/**/*.java`) built by
   `tests/harness/apk.py` against `test_runner.jar` and ART's JUnit 3 jars.

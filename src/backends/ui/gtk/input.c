@@ -162,6 +162,29 @@ static gboolean pointer_down(GdkEvent *event, GtkNative *native, GdkEventSequenc
 	return gesture.claimed;
 }
 
+bool input_tap(GtkWidget *view)
+{
+	GtkNative *native = gtk_widget_get_native(view);
+	WrapperWidget *root = native ? root_wrapper(native) : NULL;
+	if (!root || gesture.touch.count)
+		return false;
+	// wrappers laid out from Java get allocated 0x0 and keep their size in real_width and real_height
+	WrapperWidget *wrapper = WRAPPER_WIDGET(view);
+	float width = wrapper->real_width ?: gtk_widget_get_width(view);
+	float height = wrapper->real_height ?: gtk_widget_get_height(view);
+	graphene_point_t point;
+	if (!gtk_widget_compute_point(view, GTK_WIDGET(root), &GRAPHENE_POINT_INIT(width / 2, height / 2), &point))
+		return false;
+	struct atl_touch touch = {.action = ATL_ACTION_DOWN, .down_time = atl_uptime_ms(), .count = 1};
+	touch.time = touch.down_time;
+	touch.pointers[0] = (struct atl_pointer){.id = 0, .x = point.x, .y = point.y};
+	bool claimed = atl_upcall_touch((struct atl_ref *)root->jobj, &touch);
+	touch.action = ATL_ACTION_UP;
+	touch.time = atl_uptime_ms();
+	atl_upcall_touch((struct atl_ref *)root->jobj, &touch);
+	return claimed;
+}
+
 static gboolean on_pointer_event(GtkEventControllerLegacy *controller, GdkEvent *event, gpointer data)
 {
 	int action;

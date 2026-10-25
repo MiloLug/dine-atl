@@ -12,6 +12,7 @@
 #include "../api-impl-jni/content/android_content_Context.h"
 #include "../shared/host_linux.h"
 #include "../shared/startup.h"
+#include "../backends/ui/gtk/gtk_ui.h"
 #include "../slots/ui.h"
 
 #include "actions.h"
@@ -67,6 +68,9 @@ gboolean hacky_on_window_focus_changed_callback(JNIEnv *env)
 {
 	if (gtk_widget_get_width(window) != 0) {
 		activity_window_ready();
+#ifdef ATL_TEST_HOOKS
+		agent_start();
+#endif
 		return G_SOURCE_REMOVE;
 	}
 

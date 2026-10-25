@@ -17,6 +17,8 @@ if apple
   jni_dep = declare_dependency()
   sqlite3_dep = cc.find_library('sqlite3', has_headers: 'sqlite3.h')
 else
+  # before jni: meson finds JNI through the Java compiler
+  add_languages('java')
   libart_dep = dependency('art-standalone')
   art_incdir_dep = declare_dependency(include_directories: libart_dep.get_variable(pkgconfig: 'includedir'))
   jni_dep = dependency('jni')
@@ -66,7 +68,6 @@ endif
 # hax.jar's javac writes src/api-impl-jni/generated_headers, which the C natives include
 jni_headers_dep = declare_dependency()
 if not meson.is_cross_build()
-  add_languages('java')
   bootclasspath_dir = libart_dep.get_variable(pkgconfig: 'libdir') / 'java'
   bootclasspath = bootclasspath_dir / 'core-all_classes.jar' + ':' + bootclasspath_dir / 'core-junit_classes.jar' + ':' + bootclasspath_dir / 'junit-runner_classes.jar'
   subdir('src/api-impl')
@@ -295,7 +296,7 @@ else
                                    'src/backends/ui/gtk/view.c',
                                    'src/backends/ui/gtk/widgets.c',
                                    'src/backends/ui/gtk/window.c',
-                                 ] + (test_hooks ? ['src/backends/ui/gtk/dump.c'] : []),
+                                 ] + (test_hooks ? ['src/backends/ui/gtk/agent.c', 'src/backends/ui/gtk/dump.c'] : []),
                                  dependencies: [dependency('gtk4'), dependency('libportal'), dependency('jni')])
 endif
 

@@ -23,5 +23,11 @@ void input_take_native(GtkWidget *widget);
 void input_return_native(GtkWidget *widget);
 /* No pointer is down; hover exits wait for it. */
 bool input_pointers_up(void);
+/* One pointer's DOWN and UP at the view's centre, through its window's root view as a press there
+ * goes; whether Java took the DOWN. */
+bool input_tap(GtkWidget *view);
+
+/* ATL_DBG_AGENT: the debug agent's socket (agent.c, test hooks); once. */
+void agent_start(void);
 
 #endif

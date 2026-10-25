@@ -12,4 +12,4 @@ option('gfx', type: 'combo', choices: ['gsk', 'record'], value: 'gsk',
        description: 'Paint, drawables and drawing')
 
 option('test_hooks', type: 'boolean', value: true,
-       description: 'Hooks for test scripts: ATL_DIALOG_ANSWERS, ATL_DUMP_VIEWTREE and ATL_DUMP_DISPLAYLIST')
+       description: 'Hooks for test scripts: ATL_DIALOG_ANSWERS, ATL_DUMP_VIEWTREE, ATL_DUMP_DISPLAYLIST and (gtk) ATL_DBG_AGENT')
