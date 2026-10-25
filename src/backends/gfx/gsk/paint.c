@@ -10,6 +10,7 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->color.alpha = 1.f;
 	paint->gsk_stroke = gsk_stroke_new(1);
 	paint->font = pango_font_description_new();
+	pango_font_description_set_absolute_size(paint->font, 12 * PANGO_SCALE); // Android's default
 	paint->is_fill = true;
 	return (struct gfx_paint *)paint;
 }
@@ -122,6 +123,18 @@ float gfx_paint_get_text_size(const struct gfx_paint *gfx_paint)
 void gfx_paint_set_text_align(struct gfx_paint *gfx_paint, int align)
 {
 	((struct AndroidPaint *)gfx_paint)->alignment = align;
+}
+
+// sans: the context's, GTK's font
+void gfx_paint_set_typeface(struct gfx_paint *gfx_paint, enum gfx_font_family family, int style)
+{
+	PangoFontDescription *font = ((struct AndroidPaint *)gfx_paint)->font;
+	if (family == GFX_FONT_SANS)
+		pango_font_description_unset_fields(font, PANGO_FONT_MASK_FAMILY);
+	else
+		pango_font_description_set_family(font, family == GFX_FONT_SERIF ? "Serif" : "Monospace");
+	pango_font_description_set_weight(font, style & GFX_FONT_BOLD ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL);
+	pango_font_description_set_style(font, style & GFX_FONT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
 void gfx_paint_set_color_filter(struct gfx_paint *gfx_paint, int mode, uint32_t color)

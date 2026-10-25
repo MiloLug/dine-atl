@@ -221,6 +221,10 @@ extern "C" {
 #define android_widget_EditText_ALIGN_CENTER 1L
 #undef android_widget_EditText_ALIGN_END
 #define android_widget_EditText_ALIGN_END 2L
+#undef android_widget_EditText_LINES
+#define android_widget_EditText_LINES 1L
+#undef android_widget_EditText_PIXELS
+#define android_widget_EditText_PIXELS 2L
 #undef android_widget_EditText_CHANGE_WATCHER_PRIORITY
 #define android_widget_EditText_CHANGE_WATCHER_PRIORITY 100L
 #undef android_widget_EditText_KEYBOARD_TEXT

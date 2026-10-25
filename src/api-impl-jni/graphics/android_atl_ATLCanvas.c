@@ -1,6 +1,5 @@
 #include <graphene.h>
 #include <gtk/gtk.h>
-#include <pango/pango.h>
 
 #include "src/backends/gfx/gsk/canvas.h"
 
@@ -24,34 +23,6 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawPath(JNIEnv *env, 
 	}
 	if (paint->use_color_filter)
 		gtk_snapshot_pop(snapshot);
-}
-
-extern GtkWidget *window;
-
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawText(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jstring text, jfloat x, jfloat y, jlong paint_ptr)
-{
-	GdkSnapshot *snapshot = GTK_SNAPSHOT(_PTR(snapshot_ptr));
-	struct AndroidPaint *paint = _PTR(paint_ptr);
-	PangoLayout *layout = pango_layout_new(gtk_widget_get_pango_context(window));
-	pango_layout_set_font_description(layout, paint->font);
-	const char *str = (*env)->GetStringUTFChars(env, text, NULL);
-	pango_layout_set_text(layout, str, -1);
-	(*env)->ReleaseStringUTFChars(env, text, str);
-	PangoRectangle rect;
-	pango_layout_get_pixel_extents(layout, NULL, &rect);
-	y -= (float)pango_layout_get_baseline(layout) / PANGO_SCALE;
-	if (paint->alignment == PANGO_ALIGN_CENTER)
-		x -= rect.width / 2.f;
-	else if (paint->alignment == PANGO_ALIGN_RIGHT)
-		x -= rect.width;
-	if (paint->use_color_filter)
-		gtk_snapshot_push_color_matrix(snapshot, &paint->color_matrix, &paint->color_offset);
-	gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(x, y));
-	gtk_snapshot_append_layout(snapshot, layout, &paint->color);
-	gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(-x, -y));
-	if (paint->use_color_filter)
-		gtk_snapshot_pop(snapshot);
-	g_object_unref(layout);
 }
 
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawRenderNode(JNIEnv *env, jclass this_class, jlong snapshot_ptr, jlong node_ptr)

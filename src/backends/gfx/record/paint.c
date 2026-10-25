@@ -104,6 +104,12 @@ void gfx_paint_set_text_align(struct gfx_paint *paint, int align)
 	paint->text_align = align;
 }
 
+void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family, int style)
+{
+	paint->font_family = family;
+	paint->font_style = style;
+}
+
 void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb)
 {
 	paint->filter_mode = mode;

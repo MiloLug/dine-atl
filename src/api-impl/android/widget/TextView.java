@@ -57,6 +57,10 @@ public class TextView extends View {
 	OnEditorActionListener editorActionListener;
 	// Editor's InputContentType exists: an action listener or IME options were set
 	boolean inputContentType;
+	// AOSP's mMaximum and mMinimum, in lines or pixels: maxLines and maxHeight share one
+	private static final int LINES = 1, PIXELS = 2;
+	private int maximum = Integer.MAX_VALUE, maxMode = LINES;
+	private int minimum = 0, minMode = LINES;
 
 	public TextView(Context context, AttributeSet attrs) {
 		this(context, attrs, 0);
@@ -72,6 +76,9 @@ public class TextView extends View {
 
 	public TextView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
 		super(context, attrs, defStyleAttr, defStyleRes);
+		float size = native_getTextSize();
+		if (size > 0) // a text node: the toolkit's default
+			paint.setTextSize(size);
 
 		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.TextView, defStyleAttr, 0);
 		try {
@@ -89,7 +96,7 @@ public class TextView extends View {
 					setTextColor(aa.getColorStateList(com.android.internal.R.styleable.TextAppearance_textColor));
 				}
 				if (aa.hasValue(com.android.internal.R.styleable.TextAppearance_textSize)) {
-					setRawTextSize(aa.getDimensionPixelSize(com.android.internal.R.styleable.TextAppearance_textSize, 10));
+					applyTextSize(aa.getDimensionPixelSize(com.android.internal.R.styleable.TextAppearance_textSize, 10));
 				}
 				aa.recycle();
 			}
@@ -97,7 +104,7 @@ public class TextView extends View {
 				setTextColor(a.getColorStateList(com.android.internal.R.styleable.TextView_textColor));
 			}
 			if (a.hasValue(com.android.internal.R.styleable.TextView_textSize)) {
-				setRawTextSize(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_textSize, 10));
+				applyTextSize(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_textSize, 10));
 			}
 
 			if (a.hasValue(com.android.internal.R.styleable.TextView_textStyle)) {
@@ -111,6 +118,23 @@ public class TextView extends View {
 			}
 			if (a.getBoolean(com.android.internal.R.styleable.TextView_textIsSelectable, false))
 				setTextIsSelectable(true);
+
+			if (a.hasValue(com.android.internal.R.styleable.TextView_minHeight))
+				setMinHeight(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_minHeight, 0));
+			if (a.hasValue(com.android.internal.R.styleable.TextView_minLines))
+				setMinLines(a.getInt(com.android.internal.R.styleable.TextView_minLines, 0));
+			if (a.hasValue(com.android.internal.R.styleable.TextView_maxHeight))
+				setMaxHeight(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_maxHeight, Integer.MAX_VALUE));
+			if (a.hasValue(com.android.internal.R.styleable.TextView_maxLines))
+				setMaxLines(a.getInt(com.android.internal.R.styleable.TextView_maxLines, Integer.MAX_VALUE));
+			if (a.hasValue(com.android.internal.R.styleable.TextView_lines))
+				setLines(a.getInt(com.android.internal.R.styleable.TextView_lines, 1));
+			// an input type overrides the deprecated singleLine flag
+			int inputType = a.getInt(com.android.internal.R.styleable.TextView_inputType, EditorInfo.TYPE_NULL);
+			boolean singleLine = inputType != EditorInfo.TYPE_NULL ? !EditText.isMultilineInputType(inputType)
+			                                                       : a.getBoolean(com.android.internal.R.styleable.TextView_singleLine, false);
+			if (singleLine)
+				applySingleLine(true);
 		} catch (java.lang.Exception e) {
 			System.out.println("exception while inflating TextView:");
 			e.printStackTrace();
@@ -158,16 +182,22 @@ public class TextView extends View {
 	public native final void native_setText(String text);
 
 	public void setTextSize(int unit, float size) {
-		setRawTextSize(TypedValue.applyDimension(unit, size, getResources().getDisplayMetrics()));
+		applyTextSize(TypedValue.applyDimension(unit, size, getResources().getDisplayMetrics()));
 	}
 	public void setTextSize(float size) {
 		setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+	}
+	// the paint first: a subclass's setRawTextSize may not call this one
+	private void applyTextSize(float size) {
+		paint.setTextSize(size);
+		setRawTextSize(size);
 	}
 	// px; package-private so that subclasses whose widget isn't a text node override it
 	void setRawTextSize(float size) {
 		native_setTextSize(size);
 	}
 	private native final void native_setTextSize(float size);
+	private native final float native_getTextSize();
 
 	public native final void native_setTextColor(int color);
 	public void setTextColor(int color) {
@@ -179,11 +209,16 @@ public class TextView extends View {
 			native_setTextColor(colors.getDefaultColor()); // TODO: do this properly
 		}
 	}
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// without fake bold and skew: a family without the style shows the regular face
 	public void setTypeface(Typeface tf, int style) {
-		native_setTextStyle(style);
+		setTypeface(style > 0 ? Typeface.create(tf, style) : tf);
 	}
 	private native final void native_setTextStyle(int style);
-	public void setTypeface(Typeface tf) {}
+	public void setTypeface(Typeface tf) {
+		paint.setTypeface(tf);
+		native_setTextStyle(tf != null ? tf.getStyle() : Typeface.NORMAL);
+	}
 	public void setLineSpacing(float add, float mult) {}
 	public final void setLinksClickable(boolean whether) {}
 
@@ -263,7 +298,9 @@ public class TextView extends View {
 	public void setHintTextColor(int i) {}
 	public void setLinkTextColor(ColorStateList colorStateList) {}
 
-	public void setSingleLine() {}
+	public void setSingleLine() {
+		setSingleLine(true);
+	}
 	public void setSelection(int i) {}
 	public void setSelection(int i, int j) {}
 
@@ -279,14 +316,107 @@ public class TextView extends View {
 
 	public void setTextAppearance(Context context, int appearance) {}
 
-	public void setMaxLines(int maxLines) {}
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setMaxLines(int maxLines) {
+		maximum = maxLines;
+		maxMode = LINES;
+		linesChanged();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setMaxHeight(int maxPixels) {
+		maximum = maxPixels;
+		maxMode = PIXELS;
+		linesChanged();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setMinLines(int minLines) {
+		minimum = minLines;
+		minMode = LINES;
+		linesChanged();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setMinHeight(int minPixels) {
+		minimum = minPixels;
+		minMode = PIXELS;
+		linesChanged();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setLines(int lines) {
+		maximum = minimum = lines;
+		maxMode = minMode = LINES;
+		linesChanged();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setHeight(int pixels) {
+		maximum = minimum = pixels;
+		maxMode = minMode = PIXELS;
+		linesChanged();
+	}
+
+	public int getMaxLines() {
+		return maxMode == LINES ? maximum : -1;
+	}
+
+	public int getMaxHeight() {
+		return maxMode == PIXELS ? maximum : -1;
+	}
+
+	public int getMinLines() {
+		return minMode == LINES ? minimum : -1;
+	}
+
+	public int getMinHeight() {
+		return minMode == PIXELS ? minimum : -1;
+	}
+
+	// the toolkit knows its line height: line counts go to it, pixels apply in onMeasure
+	private void linesChanged() {
+		native_setLines(minMode == LINES ? minimum : 0, maxMode == LINES && maximum != Integer.MAX_VALUE ? maximum : -1);
+		requestLayout();
+		invalidate();
+	}
+	private native void native_setLines(int min, int max);
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// applySingleLine without the transformation and horizontal scrolling
+	void applySingleLine(boolean singleLine) {
+		if (singleLine)
+			setLines(1);
+		else
+			setMaxLines(Integer.MAX_VALUE);
+	}
+
+	// the toolkit's size, within maxHeight and minHeight unless the spec is exact
+	@Override
+	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+		if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY || (maxMode != PIXELS && minMode != PIXELS))
+			return;
+		int height = getMeasuredHeight();
+		if (maxMode == PIXELS)
+			height = Math.min(height, maximum);
+		if (minMode == PIXELS)
+			height = Math.max(height, minimum);
+		if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.AT_MOST)
+			height = Math.min(height, MeasureSpec.getSize(heightMeasureSpec));
+		setMeasuredDimension(getMeasuredWidth(), height);
+	}
 
 	public void setMinWidth(int minWidth) {}
 	public void setMaxWidth(int maxWidth) {}
 
-	public Typeface getTypeface() { return null; }
+	public Typeface getTypeface() {
+		return paint.getTypeface();
+	}
 
-	public float getTextSize() { return 10; }
+	public float getTextSize() {
+		return paint.getTextSize();
+	}
 
 	public int getGravity() {
 		return gravity;
@@ -372,8 +502,6 @@ public class TextView extends View {
 
 	public InputFilter[] getFilters() { return new InputFilter[0]; }
 
-	public int getMaxLines() { return -1; }
-
 	public void setCompoundDrawablesRelative(Drawable start, Drawable top, Drawable end, Drawable bottom) {
 		setCompoundDrawables(start, top, end, bottom);
 	}
@@ -398,10 +526,7 @@ public class TextView extends View {
 		return hint;
 	}
 
-	public int getMinHeight() { return 0; }
 	public int getMinWidth() { return 0; }
-	public void setMinHeight(int minHeight) {}
-	public void setMaxHeight(int maxHeight) {}
 
 	public void setHorizontallyScrolling(boolean whether) {}
 	public boolean getHorizontallyScrolling() {
@@ -426,7 +551,9 @@ public class TextView extends View {
 		return Color.CYAN;
 	}
 
-	public void setSingleLine(boolean singleLine) {}
+	public void setSingleLine(boolean singleLine) {
+		applySingleLine(singleLine);
+	}
 
 	public int getCompoundPaddingLeft() { return 0; }
 
@@ -490,13 +617,6 @@ public class TextView extends View {
 
 	public TextUtils.TruncateAt getEllipsize() { return null; }
 
-	public void setLines(int lines) {}
-
-	public int getMinLines() {
-		return -1;
-	}
-
-	public void setMinLines(int lines) {}
 
 	public void setSelectAllOnFocus(boolean selectAllOnFocus) {}
 
@@ -506,12 +626,9 @@ public class TextView extends View {
 
 	public void setPaintFlags(int flags) {}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public int getLineHeight() {
-		return 10; // FIXME
-	}
-
-	public int getMaxHeight() {
-		return -1;
+		return paint.getFontMetricsInt(null);
 	}
 
 	public boolean isAllCaps() { return false; }
@@ -581,7 +698,6 @@ public class TextView extends View {
 	public int getAutoLinkMask() { return 0; }
 
 	public void setWidth(int width) {}
-	public void setHeight(int height) {}
 
 	public void setFreezesText(boolean freezesText) {}
 

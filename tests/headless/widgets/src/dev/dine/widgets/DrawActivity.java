@@ -11,17 +11,22 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.Region;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
-/* A view drawn through Canvas, for run-draw.sh: headless compares its display lists with
- * draw.displaylist, gtk draws it. It redraws after invalidate(), not after a layout at the same
- * size, and after showing again from INVISIBLE with an invalidate() while hidden; then it finishes.
- * Beside it, a view scrolled by 10 px keeps its selector background in place. */
+/* A view drawn through Canvas, text and a Layout included, for run-draw.sh: headless compares its
+ * display lists with draw.displaylist, gtk draws it. It redraws after invalidate(), not after a
+ * layout at the same size, and after showing again from INVISIBLE with an invalidate() while
+ * hidden; then it finishes. Beside it, a view scrolled by 10 px keeps its selector background in
+ * place. */
 public class DrawActivity extends Activity {
 	static final String TAG = "widgets";
 	protected FrameLayout root;
@@ -76,7 +81,29 @@ public class DrawActivity extends Activity {
 			clear.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
 			canvas.drawRect(0, 140, 10, 150, new Paint(clear));
 
+			Paint text = new Paint();
+			text.setTextSize(30);
+			text.setTypeface(Typeface.DEFAULT_BOLD);
+			canvas.drawText("Dine bold", 10, 190, text);
+			Paint serif = new Paint(text);
+			serif.setTypeface(Typeface.create(Typeface.SERIF, Typeface.ITALIC));
+			canvas.drawText("serif italic", 10, 230, serif);
+			Paint mono = new Paint(text);
+			mono.setTypeface(Typeface.MONOSPACE);
+			mono.setTextAlign(Paint.Align.CENTER);
+			canvas.drawText("mono, centered", 160, 270, mono);
+			Paint outline = new Paint(stroke);
+			outline.setStrokeWidth(1);
+			outline.setTextSize(30);
+			canvas.drawText("outline", 10, 310, outline);
+			StaticLayout layout = new StaticLayout("two lines from a Layout", new TextPaint(text), 300, Layout.Alignment.ALIGN_NORMAL, 1, 0, false);
+			canvas.save();
+			canvas.translate(330, 160);
+			layout.draw(canvas);
+			canvas.restore();
+
 			draws++;
+			Log.i(TAG, "widgets draw layout lines " + layout.getLineCount());
 			Log.i(TAG, "widgets draw " + draws);
 			if (draws == 1) {
 				post(new Runnable() {

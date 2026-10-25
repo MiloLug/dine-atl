@@ -221,6 +221,10 @@ extern "C" {
 #define android_widget_TextView_ALIGN_CENTER 1L
 #undef android_widget_TextView_ALIGN_END
 #define android_widget_TextView_ALIGN_END 2L
+#undef android_widget_TextView_LINES
+#define android_widget_TextView_LINES 1L
+#undef android_widget_TextView_PIXELS
+#define android_widget_TextView_PIXELS 2L
 /*
  * Class:     android_widget_TextView
  * Method:    native_constructor
@@ -255,6 +259,14 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextSize
 
 /*
  * Class:     android_widget_TextView
+ * Method:    native_getTextSize
+ * Signature: ()F
+ */
+JNIEXPORT jfloat JNICALL Java_android_widget_TextView_native_1getTextSize
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     android_widget_TextView
  * Method:    native_setTextColor
  * Signature: (I)V
  */
@@ -268,6 +280,14 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextColor
  */
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle
   (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     android_widget_TextView
+ * Method:    native_setLines
+ * Signature: (II)V
+ */
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setLines
+  (JNIEnv *, jobject, jint, jint);
 
 /*
  * Class:     android_widget_TextView

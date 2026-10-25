@@ -22,6 +22,7 @@ public class Paint {
 	private Shader shader;
 	private Align align = Align.LEFT;
 	private ColorFilter color_filter;
+	private Typeface typeface;
 
 	public Paint() {
 		paint = native_create();
@@ -42,6 +43,7 @@ public class Paint {
 		shader = src.shader;
 		align = src.align;
 		color_filter = src.color_filter;
+		typeface = src.typeface;
 	}
 
 	@Override
@@ -93,20 +95,43 @@ public class Paint {
 	}
 
 	public Typeface setTypeface(Typeface typeface) {
+		this.typeface = typeface;
+		Typeface font = typeface != null ? typeface : Typeface.DEFAULT;
+		native_set_typeface(paint, font.family, font.getStyle());
 		return typeface;
 	}
+
+	private static void checkRange(int length, int start, int end) {
+		if ((start | end | (end - start) | (length - end)) < 0)
+			throw new IndexOutOfBoundsException();
+	}
+
 	public void getTextBounds(String text, int start, int end, Rect bounds) {
-		if (end > text.length())
-			end = text.length();
-		native_get_text_bounds(paint, text.substring(start, end), bounds);
+		checkRange(text.length(), start, end);
+		native_get_text_bounds(paint, text, start, end, bounds);
+	}
+	public void getTextBounds(CharSequence text, int start, int end, Rect bounds) {
+		getTextBounds(text.toString(), start, end, bounds);
 	}
 	public void getTextBounds(char[] text, int index, int count, Rect bounds) {
-		native_get_text_bounds(paint, new String(text, index, count), bounds);
+		getTextBounds(new String(text, index, count), 0, count, bounds);
 	}
+
 	public int getTextWidths(String text, int start, int end, float[] widths) {
-		Rect bounds = new Rect();
-		native_get_text_bounds(paint, text.substring(start, end), bounds);
-		return bounds.width();
+		checkRange(text.length(), start, end);
+		if (end - start > widths.length)
+			throw new ArrayIndexOutOfBoundsException();
+		native_get_text_widths(paint, text, start, end, widths);
+		return end - start;
+	}
+	public int getTextWidths(String text, float[] widths) {
+		return getTextWidths(text, 0, text.length(), widths);
+	}
+	public int getTextWidths(CharSequence text, int start, int end, float[] widths) {
+		return getTextWidths(text.toString(), start, end, widths);
+	}
+	public int getTextWidths(char[] text, int index, int count, float[] widths) {
+		return getTextWidths(new String(text, index, count), 0, count, widths);
 	}
 	public void setFilterBitmap(boolean filter) {}
 
@@ -120,12 +145,15 @@ public class Paint {
 	}
 
 	public float ascent() {
-		return -getTextSize();
+		return getFontMetrics().ascent;
 	}
 
-	public float measureText(char[] text, int index, int count) { return 10; }
+	public float measureText(char[] text, int index, int count) {
+		return measureText(new String(text, index, count));
+	}
 	public float measureText(String text, int start, int end) {
-		return (end - start) * getTextSize() * .6f;
+		checkRange(text.length(), start, end);
+		return native_measure_text(paint, text, start, end);
 	}
 	public float measureText(String text) {
 		return measureText(text, 0, text.length());
@@ -246,7 +274,9 @@ public class Paint {
 	public /*native*/ float getTextSkewX() { return 0; }
 	public /*native*/ void setTextSkewX(float skewX) {}
 
-	public /*native*/ float descent() { return 0; }
+	public float descent() {
+		return getFontMetrics().descent;
+	}
 	public float getFontMetrics(FontMetrics metrics) {
 		return native_get_font_metrics(paint, metrics);
 	}
@@ -329,7 +359,7 @@ public class Paint {
 	}
 
 	public Typeface getTypeface() {
-		return new Typeface();
+		return typeface;
 	}
 
 	public void setTextAlign(Align align) {
@@ -349,9 +379,34 @@ public class Paint {
 		return effect;
 	}
 
-	public int breakText(char[] text, int index, int count, float maxWidth, float[] measuredWidth) { return 10; }
-	public int breakText(String text, boolean measureForwards, float maxWidth, float[] measuredWidth) { return 10; }
-	public int breakText(CharSequence text, int start, int end, boolean measureForwards, float maxWidth, float[] measuredWidth) { return 10; }
+	// count < 0: backwards from the end of [index, index - count)
+	public int breakText(char[] text, int index, int count, float maxWidth, float[] measuredWidth) {
+		if (index < 0 || text.length - index < Math.abs(count))
+			throw new ArrayIndexOutOfBoundsException();
+		return breakText(new String(text, index, Math.abs(count)), count >= 0, maxWidth, measuredWidth);
+	}
+	public int breakText(String text, boolean measureForwards, float maxWidth, float[] measuredWidth) {
+		return breakText(text, 0, text.length(), measureForwards, maxWidth, measuredWidth);
+	}
+	public int breakText(CharSequence text, int start, int end, boolean measureForwards, float maxWidth, float[] measuredWidth) {
+		int count = end - start;
+		float[] widths = new float[count];
+		getTextWidths(text, start, end, widths);
+		float width = 0;
+		int n = 0;
+		for (; n < count; n++) {
+			int i = measureForwards ? n : count - 1 - n;
+			if (width + widths[i] > maxWidth)
+				break;
+			width += widths[i];
+		}
+		// a pair whose low surrogate (width 0) fit without its high one
+		if (!measureForwards && n > 0 && n < count && Character.isLowSurrogate(text.charAt(start + count - n)))
+			n--;
+		if (measuredWidth != null && measuredWidth.length > 0)
+			measuredWidth[0] = width;
+		return n;
+	}
 
 	public void clearShadowLayer() {}
 
@@ -424,6 +479,7 @@ public class Paint {
 		shader = null;
 		align = Align.LEFT;
 		color_filter = null;
+		typeface = null;
 	}
 
 	private static native long native_create();
@@ -444,7 +500,10 @@ public class Paint {
 	private static native void native_set_text_size(long paint, float size);
 	private static native float native_get_text_size(long paint);
 	private static native void native_set_color_filter(long paint, int mode, int color);
-	private static native void native_get_text_bounds(long paint, String text, Rect bounds);
+	private static native void native_set_typeface(long paint, int family, int style);
+	private static native float native_measure_text(long paint, String text, int start, int end);
+	private static native void native_get_text_widths(long paint, String text, int start, int end, float[] widths);
+	private static native void native_get_text_bounds(long paint, String text, int start, int end, Rect bounds);
 	private static native void native_set_text_align(long paint, int align);
 	private static native float native_get_font_metrics(long paint, FontMetrics metrics);
 	private static native int native_get_font_metrics_int(long paint, FontMetricsInt metrics);

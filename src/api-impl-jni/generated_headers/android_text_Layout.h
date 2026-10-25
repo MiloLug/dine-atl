@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     android_text_Layout
  * Method:    native_constructor
- * Signature: (Ljava/lang/String;JI)J
+ * Signature: (Ljava/lang/String;JII)J
  */
 JNIEXPORT jlong JNICALL Java_android_text_Layout_native_1constructor
-  (JNIEnv *, jclass, jstring, jlong, jint);
+  (JNIEnv *, jclass, jstring, jlong, jint, jint);
 
 /*
  * Class:     android_text_Layout
@@ -142,6 +142,14 @@ JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1for_1vertical
  */
 JNIEXPORT void JNICALL Java_android_text_Layout_native_1set_1ellipsize
   (JNIEnv *, jobject, jlong, jint, jfloat);
+
+/*
+ * Class:     android_text_Layout
+ * Method:    native_get_ellipsis_start
+ * Signature: (JI)I
+ */
+JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1ellipsis_1start
+  (JNIEnv *, jobject, jlong, jint);
 
 /*
  * Class:     android_text_Layout

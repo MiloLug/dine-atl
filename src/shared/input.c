@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/util.h"
@@ -168,4 +169,25 @@ int atl_utf16_length(const char *text, size_t bytes)
 	for (size_t offset = 0; offset < bytes && text[offset]; offset += utf8_size(text[offset]))
 		length += utf8_units(text[offset]);
 	return length;
+}
+
+uint16_t *atl_utf16_from_utf8(const char *text, size_t bytes, size_t *len)
+{
+	uint16_t *units = malloc((bytes ?: 1) * sizeof(*units));
+	*len = 0;
+	for (size_t offset = 0; offset < bytes && text[offset];) {
+		const unsigned char *bytes_at = (const unsigned char *)text + offset;
+		int size = utf8_size(*bytes_at);
+		uint32_t c = size == 1 ? *bytes_at : *bytes_at & (0x7F >> size);
+		for (int i = 1; i < size; i++)
+			c = c << 6 | (bytes_at[i] & 0x3F);
+		if (c >= 0x10000) {
+			units[(*len)++] = 0xD800 + ((c - 0x10000) >> 10);
+			units[(*len)++] = 0xDC00 + ((c - 0x10000) & 0x3FF);
+		} else {
+			units[(*len)++] = c;
+		}
+		offset += size;
+	}
+	return units;
 }

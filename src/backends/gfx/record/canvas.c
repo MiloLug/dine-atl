@@ -28,6 +28,7 @@ void gfx_canvas_free(struct gfx_canvas *canvas)
 	for (size_t i = 0; i < canvas->n_ops; i++) {
 		if (canvas->ops[i].bitmap)
 			gfx_bitmap_unref(canvas->ops[i].bitmap);
+		free(canvas->ops[i].text);
 	}
 	free(canvas->saved);
 	free(canvas->ops);
@@ -130,6 +131,14 @@ void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap
 	add(canvas, OP_BITMAP, paint, (float[]){src->left, src->top, src->right, src->bottom, dst->left, dst->top, dst->right, dst->bottom}, 8)->bitmap = bitmap;
 }
 
+void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_t len, float x, float y, const struct gfx_paint *paint)
+{
+	struct op *op = add(canvas, OP_TEXT, paint, (float[]){x, y}, 2);
+	op->text = malloc((len ? len : 1) * sizeof(*text));
+	memcpy(op->text, text, len * sizeof(*text));
+	op->text_len = len;
+}
+
 // a Java-drawn one recorded itself in its draw(); a container draws its child
 void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *drawable, int width, int height)
 {
@@ -143,6 +152,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 
 #ifdef ATL_TEST_HOOKS
 static const char *const style_names[] = {"fill", "stroke", "fill_and_stroke"};
+static const char *const family_names[] = {"", " serif", " mono"};
 
 // 3 decimals without trailing zeros; rounding noise around 0 prints as 0
 static void print_number(FILE *out, float value)
@@ -180,6 +190,30 @@ static void print_paint(FILE *out, const struct gfx_paint *paint)
 	}
 	if (paint->filter_mode != -1)
 		fprintf(out, " filter %d #%08x", paint->filter_mode, paint->filter_color);
+}
+
+// quoted UTF-8; quotes, backslashes and controls escaped
+static void print_text(FILE *out, const uint16_t *text, size_t len)
+{
+	fputc('"', out);
+	for (size_t i = 0; i < len; i++) {
+		uint32_t c = text[i];
+		if (c >= 0xD800 && c < 0xDC00 && i + 1 < len && text[i + 1] >= 0xDC00 && text[i + 1] < 0xE000)
+			c = 0x10000 + ((c - 0xD800) << 10) + (text[++i] - 0xDC00);
+		if (c == '"' || c == '\\')
+			fprintf(out, "\\%c", (char)c);
+		else if (c < 0x20)
+			fprintf(out, "\\u%04x", c);
+		else if (c < 0x80)
+			fputc(c, out);
+		else if (c < 0x800)
+			fprintf(out, "%c%c", 0xC0 | c >> 6, 0x80 | (c & 0x3F));
+		else if (c < 0x10000)
+			fprintf(out, "%c%c%c", 0xE0 | c >> 12, 0x80 | (c >> 6 & 0x3F), 0x80 | (c & 0x3F));
+		else
+			fprintf(out, "%c%c%c%c", 0xF0 | c >> 18, 0x80 | (c >> 12 & 0x3F), 0x80 | (c >> 6 & 0x3F), 0x80 | (c & 0x3F));
+	}
+	fputc('"', out);
 }
 
 // Android's 3x3, in getValues' order
@@ -247,6 +281,22 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			fputc(' ', out);
 			print_numbers(out, op->args + 6, 2, ",");
 			fprintf(out, " #%08x", op->paint.color);
+			break;
+		case OP_TEXT:
+			fputs("text ", out);
+			print_text(out, op->text, op->text_len);
+			fputc(' ', out);
+			print_numbers(out, op->args, 2, ",");
+			print_paint(out, &op->paint);
+			fputs(" size ", out);
+			print_number(out, op->paint.text_size);
+			fputs(family_names[op->paint.font_family], out);
+			if (op->paint.font_style & GFX_FONT_BOLD)
+				fputs(" bold", out);
+			if (op->paint.font_style & GFX_FONT_ITALIC)
+				fputs(" italic", out);
+			if (op->paint.text_align)
+				fprintf(out, " align %d", op->paint.text_align);
 			break;
 		}
 		if (op->kind != OP_UNCLIP)

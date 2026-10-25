@@ -1,1 +1,6 @@
-{}
+{
+  "dev.dine.framework.graphics.InkBoundsTest#testBoundsAreInk": {
+    "expect": "fail",
+    "reason": "headless measures in fixed metrics, which have no ink"
+  }
+}

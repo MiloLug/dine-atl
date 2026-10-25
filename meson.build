@@ -102,6 +102,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_graphics_drawable_BitmapDrawable.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
 	'src/shared/android_graphics_drawable_DrawableContainer.c',
+	'src/shared/android_text_Layout.c',
 	'src/shared/android_view_View.c',
 	'src/shared/android_view_ViewGroup.c',
 	'src/shared/android_view_ViewTreeObserver.c',
@@ -115,6 +116,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/input.c',
 	'src/shared/insets.c',
 	'src/shared/startup.c',
+	'src/shared/text.c',
 	'src/shared/upcall.c',
 ] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],
    c_args: ['-D_LARGEFILE64_SOURCE'])
@@ -220,7 +222,6 @@ if desktop
     'src/api-impl-jni/graphics/NinePatchPaintable.c',
     'src/api-impl-jni/graphics/android_atl_ATLCanvas.c',
     'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
-    'src/api-impl-jni/graphics/android_graphics_Paint.c',
     'src/api-impl-jni/graphics/android_graphics_Path.c',
     'src/api-impl-jni/graphics/android_graphics_Region.c',
     'src/api-impl-jni/graphics/android_view_RenderNode.c',
@@ -235,7 +236,6 @@ if desktop
     'src/api-impl-jni/os/android_atl_GVariantIterParcel.c',
     'src/api-impl-jni/security/android_security_keystore_AndroidKeyStore.c',
     'src/api-impl-jni/sensors/android_hardware_SensorManager.c',
-    'src/api-impl-jni/text/android_text_Layout.c',
     'src/api-impl-jni/views/android_view_inputmethod_InputMethodManager.c',
     'src/api-impl-jni/views/android_view_View.c',
     'src/api-impl-jni/views/android_view_WindowManagerImpl.c',
@@ -307,16 +307,17 @@ endif
 
 record_srcs = ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c']
 if gfx_backend == 'record'
-  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c'],
+  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c', 'src/backends/gfx/record/text.c'],
                                  dependencies: [graphene_dep, dependency('libpng')])
 elif gfx_backend == 'coregraphics'
   # record's lists, replayed by uikit's layers
   backend_libs += static_library('atl_gfx_coregraphics', record_srcs + ['src/backends/gfx/coregraphics/bitmap.c',
-                                                                        'src/backends/gfx/coregraphics/draw.c'],
+                                                                        'src/backends/gfx/coregraphics/draw.c',
+                                                                        'src/backends/gfx/coregraphics/text.c'],
                                  dependencies: graphene_dep)
 else
   backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/bitmap.c', 'src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c',
-                                  'src/backends/gfx/gsk/paint.c'],
+                                  'src/backends/gfx/gsk/paint.c', 'src/backends/gfx/gsk/text.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

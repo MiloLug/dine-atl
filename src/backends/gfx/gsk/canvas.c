@@ -7,6 +7,7 @@
 #include "src/slots/gfx.h"
 
 #include "canvas.h"
+#include "text.h"
 
 /* A canvas is a GtkSnapshot: the widget's snapshot during a draw, a Bitmap's or a RenderNode's. */
 
@@ -176,6 +177,28 @@ void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap
 		gtk_snapshot_pop(snapshot);
 	}
 	pop_color_filter(snapshot, paint);
+}
+
+// filled whatever the paint's style: GSK has no stroked text
+void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_t len, float x, float y, const struct gfx_paint *gfx_paint)
+{
+	GtkSnapshot *snapshot = GTK_SNAPSHOT(canvas);
+	const struct AndroidPaint *paint = (const struct AndroidPaint *)gfx_paint;
+	PangoLayout *layout = gsk_text_layout(gfx_paint, text, len, NULL);
+	PangoRectangle logical;
+	pango_layout_get_extents(layout, NULL, &logical);
+	y -= (float)pango_layout_get_baseline(layout) / PANGO_SCALE;
+	if (paint->alignment == PANGO_ALIGN_CENTER)
+		x -= (float)logical.width / PANGO_SCALE / 2;
+	else if (paint->alignment == PANGO_ALIGN_RIGHT)
+		x -= (float)logical.width / PANGO_SCALE;
+	push_color_filter(snapshot, paint);
+	gtk_snapshot_save(snapshot);
+	gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(x, y));
+	gtk_snapshot_append_layout(snapshot, layout, &paint->color);
+	gtk_snapshot_restore(snapshot);
+	pop_color_filter(snapshot, paint);
+	g_object_unref(layout);
 }
 
 #ifdef ATL_TEST_HOOKS

@@ -5,12 +5,15 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.SystemClock;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 /* DrawActivity for a look on the phone: it stays, and a bar then redraws itself for 2 s and logs how
- * many draws ran, which the display's frame rate bounds. */
+ * many draws ran, which the display's frame rate bounds. It also logs Paint's widths and line
+ * spacing beside a TextView's measured size for the same texts. */
 public class DrawStayActivity extends DrawActivity {
 	private static class SpinView extends View {
 		private final Paint paint = new Paint();
@@ -36,8 +39,25 @@ public class DrawStayActivity extends DrawActivity {
 		}
 	}
 
+	private void logMetrics() {
+		String[] texts = {"Hello world", "The quick brown fox", "0123456789", "WWWWW iiiii"};
+		for (int sp : new int[] {14, 18}) {
+			for (String text : texts) {
+				TextView label = new TextView(this);
+				label.setTextSize(sp);
+				label.setText(text);
+				label.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+				Paint paint = new Paint();
+				paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, getResources().getDisplayMetrics()));
+				Log.i(TAG, "widgets metric \"" + text + "\" " + sp + "sp paint " + (int)Math.ceil(paint.measureText(text)) + " " + paint.getFontMetrics(null)
+				               + " label " + label.getMeasuredWidth() + "x" + label.getMeasuredHeight());
+			}
+		}
+	}
+
 	@Override
 	protected void done() {
+		logMetrics();
 		int height = (int)(40 * getResources().getDisplayMetrics().density);
 		root.addView(new SpinView(this), new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, height, Gravity.BOTTOM));
 	}

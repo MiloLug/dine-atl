@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdlib.h>
 
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_atl_ATLCanvas.h"
@@ -87,4 +88,15 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect(JNIEnv *env, 
 {
 	if (canvas)
 		gfx_canvas_clip_rect(_PTR(canvas), left, top, right, bottom, difference ? GFX_CLIP_DIFFERENCE : GFX_CLIP_INTERSECT);
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawText(JNIEnv *env, jclass class, jlong canvas, jstring text, jfloat x, jfloat y, jlong paint)
+{
+	if (!canvas)
+		return;
+	jsize len = (*env)->GetStringLength(env, text);
+	jchar *units = malloc((len ?: 1) * sizeof(*units));
+	(*env)->GetStringRegion(env, text, 0, len, units);
+	gfx_canvas_draw_text(_PTR(canvas), units, len, x, y, _PTR(paint));
+	free(units);
 }

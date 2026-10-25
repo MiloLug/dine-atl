@@ -150,6 +150,11 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 void ui_text_set_text(struct ui_view *view, const char *text);
 void ui_text_set_color(struct ui_view *view, uint32_t argb);
 void ui_text_set_size(struct ui_view *view, float size); // px
+/* The size ui_text_set_size set, else the toolkit's default, in the same unit. */
+float ui_text_get_size(struct ui_view *view);
+/* TextView's line counts, in the measured height and in what shows: min pads, max cuts the lines
+ * past it off, as Android does without an ellipsize. 0: no min, -1: no max. */
+void ui_text_set_lines(struct ui_view *view, int min, int max);
 /* Typeface.NORMAL, BOLD, ITALIC or BOLD_ITALIC; any view node: gtk's EditText widget takes it too. */
 void ui_text_set_style(struct ui_view *view, int style);
 #define UI_TEXT_BOLD   1

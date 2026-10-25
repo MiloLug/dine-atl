@@ -179,11 +179,35 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color_1filter
 
 /*
  * Class:     android_graphics_Paint
+ * Method:    native_set_typeface
+ * Signature: (JII)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1typeface
+  (JNIEnv *, jclass, jlong, jint, jint);
+
+/*
+ * Class:     android_graphics_Paint
+ * Method:    native_measure_text
+ * Signature: (JLjava/lang/String;II)F
+ */
+JNIEXPORT jfloat JNICALL Java_android_graphics_Paint_native_1measure_1text
+  (JNIEnv *, jclass, jlong, jstring, jint, jint);
+
+/*
+ * Class:     android_graphics_Paint
+ * Method:    native_get_text_widths
+ * Signature: (JLjava/lang/String;II[F)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1get_1text_1widths
+  (JNIEnv *, jclass, jlong, jstring, jint, jint, jfloatArray);
+
+/*
+ * Class:     android_graphics_Paint
  * Method:    native_get_text_bounds
- * Signature: (JLjava/lang/String;Landroid/graphics/Rect;)V
+ * Signature: (JLjava/lang/String;IILandroid/graphics/Rect;)V
  */
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1get_1text_1bounds
-  (JNIEnv *, jclass, jlong, jstring, jobject);
+  (JNIEnv *, jclass, jlong, jstring, jint, jint, jobject);
 
 /*
  * Class:     android_graphics_Paint

@@ -74,11 +74,79 @@ void ui_text_set_color(struct ui_view *view, uint32_t color)
 }
 #pragma GCC diagnostic pop
 
+static int line_height(GtkLabel *label)
+{
+	PangoLayout *layout = gtk_widget_create_pango_layout(GTK_WIDGET(label), "X");
+	pango_layout_set_attributes(layout, gtk_label_get_attributes(label));
+	int height;
+	pango_layout_get_pixel_size(layout, NULL, &height);
+	g_object_unref(layout);
+	return height;
+}
+
+// min lines as the label's least height
+static void apply_min_lines(GtkLabel *label)
+{
+	int min = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-min-lines"));
+	gtk_widget_set_size_request(GTK_WIDGET(label), -1, min > 0 ? min * line_height(label) : -1);
+}
+
+/* GtkLabel's own line limit counts per paragraph: the measured height drops the lines past max,
+ * which the box clips. The label's width is taken as the whole for_width. */
+int text_cap_height(GtkWidget *handle, int for_width, int height)
+{
+	GtkLabel *label = text_get_label(handle);
+	int max = label ? GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-max-lines")) - 1 : -1;
+	if (max < 0)
+		return height;
+	PangoLayout *layout = pango_layout_copy(gtk_label_get_layout(label));
+	pango_layout_set_width(layout, for_width >= 0 ? for_width * PANGO_SCALE : -1);
+	if (pango_layout_get_line_count(layout) > max) {
+		PangoLayoutIter *iter = pango_layout_get_iter(layout);
+		for (int i = 0; i < max; i++)
+			pango_layout_iter_next_line(iter);
+		int cut, end;
+		pango_layout_iter_get_line_yrange(iter, &cut, &end);
+		pango_layout_iter_free(iter);
+		PangoRectangle logical;
+		pango_layout_get_extents(layout, NULL, &logical);
+		// rounded up, as GtkLabel rounds its layout's size
+		height -= PANGO_PIXELS_CEIL(logical.height) - PANGO_PIXELS_CEIL(cut);
+	}
+	g_object_unref(layout);
+	return height;
+}
+
+// the size set, else the label's font's; points, as ui_text_set_size's size attribute takes it
+float ui_text_get_size(struct ui_view *view)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return 0;
+	float *size = g_object_get_data(G_OBJECT(label), "atl-text-size");
+	if (size)
+		return *size;
+	const PangoFontDescription *font = pango_context_get_font_description(gtk_widget_get_pango_context(GTK_WIDGET(label)));
+	return (float)pango_font_description_get_size(font) / PANGO_SCALE;
+}
+
+void ui_text_set_lines(struct ui_view *view, int min, int max)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
+	g_object_set_data(G_OBJECT(label), "atl-max-lines", GINT_TO_POINTER(max + 1)); // 0: unset
+	gtk_widget_set_overflow(GTK_WIDGET(view), max >= 0 ? GTK_OVERFLOW_HIDDEN : GTK_OVERFLOW_VISIBLE);
+	g_object_set_data(G_OBJECT(label), "atl-min-lines", GINT_TO_POINTER(min));
+	apply_min_lines(label);
+}
+
 void ui_text_set_size(struct ui_view *view, float size)
 {
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
 	if (!label)
 		return;
+	g_object_set_data_full(G_OBJECT(label), "atl-text-size", g_memdup2(&size, sizeof(size)), g_free);
 	PangoAttrList *attrs;
 
 	PangoAttrList *old_attrs = gtk_label_get_attributes(label);
@@ -92,6 +160,7 @@ void ui_text_set_size(struct ui_view *view, float size)
 	gtk_label_set_attributes(label, attrs);
 
 	pango_attr_list_unref(attrs);
+	apply_min_lines(label);
 }
 
 void ui_text_set_style(struct ui_view *view, int style)
@@ -103,6 +172,9 @@ void ui_text_set_style(struct ui_view *view, int style)
 		gtk_widget_add_css_class(widget, "ATL-font-bold");
 	if (style & UI_TEXT_ITALIC)
 		gtk_widget_add_css_class(widget, "ATL-font-italic");
+	GtkLabel *label = text_get_label(widget);
+	if (label)
+		apply_min_lines(label);
 }
 
 void ui_text_set_markup(struct ui_view *view, bool markup)

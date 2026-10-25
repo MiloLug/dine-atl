@@ -1,3 +1,4 @@
+widgets draw layout lines 2
 widgets draw 1
 displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
 displaylist:   rect 10,10 110,60 #ffff0000 fill
@@ -13,10 +14,17 @@ displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
 displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
+displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic
+displaylist:   text "mono, centered" 160,270 #ff000000 fill size 30 mono align 1
+displaylist:   text "outline" 10,310 #ff0000ff stroke width 1 cap 0 join 0 size 30
+displaylist:   text "two lines from a " 0,28 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
+displaylist:   text "Layout" 0,64 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
 displaylist: end
 displaylist: android.view.View 40x40
 displaylist:   rect 0,0 40,40 #ff808080 fill matrix [1,0,0;0,1,10;0,0,1]
 displaylist: end
+widgets draw layout lines 2
 widgets draw 2
 displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
 displaylist:   rect 10,10 110,60 #ffff0000 fill
@@ -32,9 +40,16 @@ displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
 displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
+displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic
+displaylist:   text "mono, centered" 160,270 #ff000000 fill size 30 mono align 1
+displaylist:   text "outline" 10,310 #ff0000ff stroke width 1 cap 0 join 0 size 30
+displaylist:   text "two lines from a " 0,28 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
+displaylist:   text "Layout" 0,64 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
 displaylist: end
 widgets draw hidden
 widgets draw shown
+widgets draw layout lines 2
 widgets draw 3
 displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
 displaylist:   rect 10,10 110,60 #ffff0000 fill
@@ -50,5 +65,11 @@ displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
 displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
+displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic
+displaylist:   text "mono, centered" 160,270 #ff000000 fill size 30 mono align 1
+displaylist:   text "outline" 10,310 #ff0000ff stroke width 1 cap 0 join 0 size 30
+displaylist:   text "two lines from a " 0,28 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
+displaylist:   text "Layout" 0,64 #ff000000 fill size 30 bold matrix [1,0,330;0,1,160;0,0,1]
 displaylist: end
 widgets draw done

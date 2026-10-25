@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Drives the widgets APK's TextActivity (widgets/, built by the superproject's tests/harness/apk.py)
-# through the cli host's -c touch and text lines in the headless build. The fields (name, notes, pin)
-# are the dump's EditTexts in order, the buttons are found by their text. The field applies a text
-# line at once ("edit:" lines) and reports it; Java's filters and watchers answer, a state that
-# differs comes back as a snapshot the field takes unless it holds a newer report or marked text
-# ("edit: drop"). The checked lines must come in order.
+# through the cli host's -c touch and text lines in the headless build. The fields (name, notes, pin,
+# enter, capped) are the dump's EditTexts in order, the buttons are found by their text. The field
+# applies a text line at once ("edit:" lines) and reports it; Java's filters and watchers answer, a
+# state that differs comes back as a snapshot the field takes unless it holds a newer report or
+# marked text ("edit: drop"). The checked lines must come in order.
 # Usage: run-text.sh <headless build dir> <widgets.apk>
 set -euo pipefail
 
@@ -27,7 +27,7 @@ fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
 origin_x=() origin_y=()
-fields=(name notes pin enter)
+fields=(name notes pin enter capped)
 field=0
 dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
 while :; do
@@ -50,13 +50,13 @@ while :; do
     x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]}
   fi
 done
-for control in name notes pin enter fill show; do
+for control in name notes pin enter capped fill show size; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
 
 # the next checked line into REPLY, without the log prefix
 next() {
-  local line re='(text (before|on|after|focus|action|show|name|notes|pin|enter) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*)'
+  local line re='(text (before|on|after|focus|action|show|name|notes|pin|enter|capped) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*)'
   while IFS= read -r -t 30 line <&"${ATL[0]}"; do
     printf '%s\n' "$line" >>"$work/log"
     if [[ $line =~ $re ]]; then
@@ -141,8 +141,8 @@ expect "text action name 5" "text focus name false" "text focus notes true" "$(k
 # a tap the toolkit takes itself moves Java's focus
 send "text tap $(center pin)"
 expect "$(keyboard off notes)" "$(keyboard on pin)" "text focus notes false" "text focus pin true"
-send "text commit 12345"
-expect 'edit: "12345" 5,5' 'text pin "1234"' 'edit: "1234" 4,4'
+send "text commit 1a2345"
+expect 'edit: "1a2345" 6,6' 'text pin "123"' 'edit: "123" 3,3'
 
 # Done hides the keyboard, focus stays
 send "text action"
@@ -156,9 +156,29 @@ expect "$(keyboard on enter)" "text focus pin false" "text focus enter true"
 send "text action"
 expect "text action enter 0 key 0" "text action enter 0 key 1"
 
+# maxLines 2: the capped field grows to two lines, then keeps its height
+send "text tap $(center capped)"
+expect "$(keyboard off enter)" "$(keyboard on capped)" "text focus enter false" "text focus capped true"
+capped_height() {
+  tap size
+  next
+  [[ $REPLY =~ ^text\ capped\ ([0-9]+)$ ]] || fail "got \"$REPLY\", want \"text capped <height>\""
+  REPLY=${BASH_REMATCH[1]}
+}
+capped_height
+one=$REPLY
+send 'text commit 1\n2'
+expect 'edit: "1\n2" 3,3' 'text capped "1\n2"'
+capped_height
+two=$REPLY
+send 'text commit \n3\n4'
+expect 'edit: "1\n2\n3\n4" 7,7' 'text capped "1\n2\n3\n4"'
+capped_height
+((one < two && REPLY == two)) || fail "capped heights $one, $two, $REPLY: want growth to two lines, then the same"
+
 # a bare EditText is multi-line: return is a newline (it grows: taps below it use old frames)
 send "text tap $(center notes)"
-expect "$(keyboard off enter)" "$(keyboard on notes)" "text focus enter false" "text focus notes true"
+expect "$(keyboard off capped)" "$(keyboard on notes)" "text focus capped false" "text focus notes true"
 send 'text commit a\nb'
 expect 'edit: "a\nb" 3,3' 'text notes "a\nb"'
 send "text action"

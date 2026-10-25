@@ -262,6 +262,7 @@ static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, c
 	if (kind == NODE_TEXT) {
 		view->text = strdup("");
 		view->text_size = DEFAULT_TEXT_SIZE_SP * atl_window_get()->density_dpi / 160;
+		view->max_lines = -1;
 	}
 	return view;
 }
@@ -503,6 +504,19 @@ void ui_text_set_color(struct ui_view *view, uint32_t argb)
 void ui_text_set_size(struct ui_view *view, float size)
 {
 	view->text_size = size;
+	if (view->kind == NODE_TEXT)
+		records_text_changed(view);
+}
+
+float ui_text_get_size(struct ui_view *view)
+{
+	return view->text_size;
+}
+
+void ui_text_set_lines(struct ui_view *view, int min, int max)
+{
+	view->min_lines = min;
+	view->max_lines = max;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
 }

@@ -16,6 +16,9 @@ import android.text.Spannable;
 import android.text.Spanned;
 import android.text.SpannedString;
 import android.text.TextWatcher;
+import android.text.method.DialerKeyListener;
+import android.text.method.DigitsKeyListener;
+import android.text.method.KeyListener;
 import android.text.method.PasswordTransformationMethod;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
@@ -39,6 +42,7 @@ public class EditText extends TextView {
 	private ArrayList<TextWatcher> listeners;
 	private ChangeWatcher changeWatcher;
 	private InputFilter[] filters;
+	private KeyListener keyListener;
 	private int inputType;
 	private int imeOptions;
 	private boolean showSoftInputOnFocus;
@@ -93,6 +97,7 @@ public class EditText extends TextView {
 		boolean singleLine = a.getBoolean(com.android.internal.R.styleable.TextView_singleLine, false);
 		boolean password = a.getBoolean(com.android.internal.R.styleable.TextView_password, false);
 		int maxLength = a.getInt(com.android.internal.R.styleable.TextView_maxLength, -1);
+		CharSequence digits = a.getText(com.android.internal.R.styleable.TextView_digits);
 		if (a.hasValue(com.android.internal.R.styleable.TextView_imeOptions))
 			setImeOptions(a.getInt(com.android.internal.R.styleable.TextView_imeOptions, EditorInfo.IME_NULL));
 		a.recycle();
@@ -111,6 +116,7 @@ public class EditText extends TextView {
 			setTransformationMethod(PasswordTransformationMethod.getInstance());
 		if (maxLength >= 0)
 			setFilters(new InputFilter[] {new InputFilter.LengthFilter(maxLength)});
+		setKeyListenerOnly(digits != null ? DigitsKeyListener.getInstance(digits.toString()) : keyListenerFor(inputType));
 		setInputTypeSingleLine(singleLine);
 	}
 
@@ -152,7 +158,7 @@ public class EditText extends TextView {
 		sendBeforeTextChanged(old, 0, oldlen, text.length());
 
 		Editable t = Editable.Factory.getInstance().newEditable(text);
-		t.setFilters(filters);
+		t.setFilters(editableFilters());
 		// ATL: the old Editable stops reporting, so an app's stale reference doesn't drive this view
 		if (old instanceof Spannable && changeWatcher != null)
 			((Spannable)old).removeSpan(changeWatcher);
@@ -277,7 +283,7 @@ public class EditText extends TextView {
 		this.filters = filters;
 		CharSequence text = super.getText();
 		if (text instanceof Editable)
-			((Editable)text).setFilters(filters);
+			((Editable)text).setFilters(editableFilters());
 	}
 
 	@Override
@@ -286,7 +292,63 @@ public class EditText extends TextView {
 	}
 
 	/* Copyright (C) 2006 The Android Open Source Project */
-	private static boolean isMultilineInputType(int type) {
+	// TextView.setFilters(Editable, InputFilter[]): the key listener filters after the app's own
+	// filters, on the Editable only, so setText doesn't run it
+	private InputFilter[] editableFilters() {
+		InputFilter[] filters = getFilters();
+		if (!(keyListener instanceof InputFilter))
+			return filters;
+		InputFilter[] all = new InputFilter[filters.length + 1];
+		System.arraycopy(filters, 0, all, 0, filters.length);
+		all[filters.length] = (InputFilter)keyListener;
+		return all;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// TextView.setInputType's choice; text fields get none (no TextKeyListener)
+	private static KeyListener keyListenerFor(int type) {
+		switch (type & EditorInfo.TYPE_MASK_CLASS) {
+		case EditorInfo.TYPE_CLASS_NUMBER:
+			return DigitsKeyListener.getInstance(null, (type & EditorInfo.TYPE_NUMBER_FLAG_SIGNED) != 0, (type & EditorInfo.TYPE_NUMBER_FLAG_DECIMAL) != 0);
+		case EditorInfo.TYPE_CLASS_PHONE:
+			return DialerKeyListener.getInstance();
+		default:
+			return null;
+		}
+	}
+
+	private void setKeyListenerOnly(KeyListener input) {
+		keyListener = input;
+		CharSequence text = super.getText();
+		if (text instanceof Editable)
+			((Editable)text).setFilters(editableFilters());
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	@Override
+	public void setKeyListener(KeyListener input) {
+		boolean singleLine = !isMultilineInputType(inputType);
+		setKeyListenerOnly(input);
+		if (input != null) {
+			try {
+				inputType = input.getInputType();
+			} catch (IncompatibleClassChangeError e) {
+				inputType = EditorInfo.TYPE_CLASS_TEXT;
+			}
+			setInputTypeSingleLine(singleLine);
+		} else {
+			inputType = EditorInfo.TYPE_NULL;
+		}
+		atlSendConfig();
+	}
+
+	@Override
+	public KeyListener getKeyListener() {
+		return keyListener;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	static boolean isMultilineInputType(int type) {
 		return (type & (EditorInfo.TYPE_MASK_CLASS | EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE))
 		    == (EditorInfo.TYPE_CLASS_TEXT | EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE);
 	}
@@ -313,7 +375,11 @@ public class EditText extends TextView {
 	@Override
 	public void setInputType(int type) {
 		boolean wasPassword = isPasswordInputType(inputType);
+		boolean wasMultiline = isMultilineInputType(inputType);
 		inputType = type;
+		setKeyListenerOnly(keyListenerFor(type));
+		if (isMultilineInputType(type) != wasMultiline)
+			applySingleLine(!isMultilineInputType(type));
 		if (isPasswordInputType(type))
 			setTransformationMethod(PasswordTransformationMethod.getInstance());
 		else if (wasPassword && getTransformationMethod() == PasswordTransformationMethod.getInstance())
@@ -340,6 +406,7 @@ public class EditText extends TextView {
 	@Override
 	public void setSingleLine(boolean singleLine) {
 		setInputTypeSingleLine(singleLine);
+		applySingleLine(singleLine);
 		atlSendConfig();
 	}
 

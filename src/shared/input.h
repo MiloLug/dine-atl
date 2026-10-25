@@ -80,5 +80,7 @@ void atl_upcall_edit_focus(struct atl_ref *view, bool focused, bool keyboard);
 size_t atl_utf8_offset(const char *text, int utf16);
 /* The UTF-16 length of text's first bytes. */
 int atl_utf16_length(const char *text, size_t bytes);
+/* Valid UTF-8 as UTF-16; free() it. */
+uint16_t *atl_utf16_from_utf8(const char *text, size_t bytes, size_t *len);
 
 #endif

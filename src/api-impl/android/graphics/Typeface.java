@@ -3,30 +3,8 @@ package android.graphics;
 import android.content.res.AssetManager;
 import java.io.File;
 
+/* A family the gfx slot knows (enum gfx_font_family) and a style; fonts from files are DEFAULT. */
 public class Typeface {
-
-	/**
-	 * The default NORMAL typeface object
-	 */
-	public static final Typeface DEFAULT = create((String)null, 0);
-	/**
-	 * The default BOLD typeface object. Note: this may be not actually be
-	 * bold, depending on what fonts are installed. Call getStyle() to know
-	 * for sure.
-	 */
-	public static final Typeface DEFAULT_BOLD = create((String)null, 0);
-	/**
-	 * The NORMAL style of the default sans serif typeface.
-	 */
-	public static final Typeface SANS_SERIF = create((String)null, 0);
-	/**
-	 * The NORMAL style of the default serif typeface.
-	 */
-	public static final Typeface SERIF = create((String)null, 0);
-	/**
-	 * The NORMAL style of the default monospace typeface.
-	 */
-	public static final Typeface MONOSPACE = create((String)null, 0);
 
 	// Style
 	public static final int NORMAL = 0;
@@ -34,19 +12,56 @@ public class Typeface {
 	public static final int ITALIC = 2;
 	public static final int BOLD_ITALIC = 3;
 
+	static final int FAMILY_SANS = 0;
+	static final int FAMILY_SERIF = 1;
+	static final int FAMILY_MONOSPACE = 2;
+
+	// one instance per family and style, as AOSP caches them: apps compare typefaces with ==
+	private static final Typeface[][] instances = new Typeface[3][4];
+
+	public static final Typeface DEFAULT = of(FAMILY_SANS, NORMAL);
+	public static final Typeface DEFAULT_BOLD = of(FAMILY_SANS, BOLD);
+	public static final Typeface SANS_SERIF = of(FAMILY_SANS, NORMAL);
+	public static final Typeface SERIF = of(FAMILY_SERIF, NORMAL);
+	public static final Typeface MONOSPACE = of(FAMILY_MONOSPACE, NORMAL);
+
 	public long native_instance = 0; // directly accessed by androidx
+
+	final int family;
+	private final int style;
+
+	private Typeface(int family, int style) {
+		this.family = family;
+		this.style = style;
+	}
+
+	private static synchronized Typeface of(int family, int style) {
+		style &= BOLD_ITALIC;
+		if (instances[family][style] == null)
+			instances[family][style] = new Typeface(family, style);
+		return instances[family][style];
+	}
+
+	// Android's family names: "serif-monospace" is a monospace one
+	private static int familyOf(String name) {
+		if (name == null)
+			return FAMILY_SANS;
+		name = name.toLowerCase();
+		if (name.contains("monospace"))
+			return FAMILY_MONOSPACE;
+		return name.startsWith("serif") ? FAMILY_SERIF : FAMILY_SANS;
+	}
 
 	public static Typeface createFromAsset(AssetManager mgr, String path) {
 		return DEFAULT;
 	}
 
 	public static Typeface create(String family_name, int style) {
-		Typeface ret = new Typeface();
-		return ret;
+		return of(familyOf(family_name), style);
 	}
 
 	public static Typeface create(Typeface typeface, int style) {
-		return typeface != null ? typeface : DEFAULT;
+		return of(typeface != null ? typeface.family : FAMILY_SANS, style);
 	}
 
 	public static Typeface createFromFile(String path) {
@@ -58,8 +73,21 @@ public class Typeface {
 	}
 
 	public int getStyle() {
-		return 0;
+		return style;
 	}
+
+	public boolean isBold() {
+		return (style & BOLD) != 0;
+	}
+
+	public boolean isItalic() {
+		return (style & ITALIC) != 0;
+	}
+
+	public int getWeight() {
+		return isBold() ? 700 : 400;
+	}
+
 
 	public static Typeface defaultFromStyle(int style) {
 		return create((String)null, style);

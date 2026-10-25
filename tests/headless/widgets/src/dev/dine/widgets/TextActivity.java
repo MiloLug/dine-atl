@@ -70,6 +70,10 @@ public class TextActivity extends Activity {
 			}
 		});
 
+		// a bare EditText is multi-line; two lines cap its height
+		final EditText capped = field(column, "capped");
+		capped.setMaxLines(2);
+
 		TextView copy = new TextView(this);
 		copy.setText("copy me");
 		copy.setTextIsSelectable(true);
@@ -94,6 +98,16 @@ public class TextActivity extends Activity {
 			}
 		});
 		column.addView(show);
+
+		// on top: the capped field's growth moves what is below it
+		Button size = new Button(this);
+		size.setText("size");
+		size.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				Log.i(TAG, "text capped " + capped.getHeight());
+			}
+		});
+		column.addView(size, 0);
 
 		setContentView(column);
 	}

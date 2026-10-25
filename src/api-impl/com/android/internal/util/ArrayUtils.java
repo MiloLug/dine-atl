@@ -186,6 +186,29 @@ public class ArrayUtils {
 		return true;
 	}
 
+	public static boolean contains(char[] array, char value) {
+		if (array == null)
+			return false;
+		for (char element : array) {
+			if (element == value)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Test if all {@code check} items are contained in {@code array}.
+	 */
+	public static boolean containsAll(char[] array, char[] check) {
+		if (check == null)
+			return true;
+		for (char checkItem : check) {
+			if (!contains(array, checkItem))
+				return false;
+		}
+		return true;
+	}
+
 	public static boolean contains(int[] array, int value) {
 		for (int element : array) {
 			if (element == value) {

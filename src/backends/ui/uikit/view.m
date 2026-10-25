@@ -117,6 +117,9 @@ FORWARD_TOUCHES
 - (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment;
 - (void)atlSetColor:(UIColor *)color;
 - (void)atlSetPadding:(UIEdgeInsets)padding;
+@optional
+// TextView's max lines, 0: none; the lines past it don't show, without an ellipsis (Android's clip)
+- (void)atlSetMaxLines:(int)max;
 @end
 
 // an edit record's view
@@ -207,6 +210,12 @@ FORWARD_TOUCHES
 {
 	self.padding = padding;
 	[self setNeedsDisplay];
+}
+
+- (void)atlSetMaxLines:(int)max
+{
+	self.numberOfLines = max;
+	self.lineBreakMode = max ? NSLineBreakByWordWrapping : NSLineBreakByTruncatingTail;
 }
 
 // at the top left of the padded bounds, TextView's default gravity; UILabel centers vertically
@@ -548,16 +557,10 @@ static UIColor *color(uint32_t argb)
 	return [UIColor colorWithRed:((argb >> 16) & 0xFF) / 255. green:((argb >> 8) & 0xFF) / 255. blue:(argb & 0xFF) / 255. alpha:(argb >> 24) / 255.];
 }
 
+// gfx's font, so Paint measures as the labels do; UI_TEXT_BOLD and _ITALIC are GFX_FONT_'s
 static UIFont *font(float size, int style)
 {
-	UIFont *font = [UIFont systemFontOfSize:size / scale()];
-	UIFontDescriptorSymbolicTraits traits = 0;
-	if (style & UI_TEXT_BOLD)
-		traits |= UIFontDescriptorTraitBold;
-	if (style & UI_TEXT_ITALIC)
-		traits |= UIFontDescriptorTraitItalic;
-	UIFontDescriptor *descriptor = traits ? [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits] : nil;
-	return descriptor ? [UIFont fontWithDescriptor:descriptor size:0] : font;
+	return (__bridge_transfer UIFont *)cg_font(size / scale(), GFX_FONT_SANS, style);
 }
 
 static void flush(void)
@@ -849,8 +852,12 @@ void records_text_changed(struct ui_view *view)
 		float size = view->text_size;
 		int style = view->text_style;
 		NSTextAlignment alignment = text_alignment(view->alignment);
+		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
 		uikit_enqueue(^{
-			[(id<ATLText>)native(view) atlSetText:text font:font(size, style) alignment:alignment];
+			UIView<ATLText> *text_view = (UIView<ATLText> *)native(view);
+			[text_view atlSetText:text font:font(size, style) alignment:alignment];
+			if ([text_view respondsToSelector:@selector(atlSetMaxLines:)])
+				[text_view atlSetMaxLines:max_lines];
 		});
 	}
 }
@@ -883,6 +890,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		CGFloat s = scale();
 		bool is_button = view->is_button, has_background = view->has_background;
 		bool edit = view->edit, multiline = view->edit_config.multiline, selectable = view->selectable;
+		int min_lines = view->min_lines, max_lines = view->max_lines > 0 ? view->max_lines : 0;
 		NSString *hint = view->edit_config.hint ? [NSString stringWithUTF8String:view->edit_config.hint] : nil;
 		enum ui_button button = view->button;
 		__block CGSize fit;
@@ -927,18 +935,21 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 					fit = CGSizeMake(MAX(fit.width, size.width), MAX(fit.height, size.height));
 				}
 				fit.height = MAX(fit.height, scratch_font.lineHeight); // a field keeps one line's height
+				if (max_lines && scratch == area) // a multi-line field scrolls the rest
+					fit.height = MIN(fit.height, max_lines * scratch_font.lineHeight);
+				fit.height = MAX(fit.height, min_lines * scratch_font.lineHeight);
 				return;
 			}
 			static ATLLabel *scratch;
-			if (!scratch) {
+			if (!scratch)
 				scratch = [ATLLabel new];
-				scratch.numberOfLines = 0;
-			}
+			[scratch atlSetMaxLines:max_lines];
 			scratch.font = font(size, style);
 			scratch.text = text;
 			fit = [scratch sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 			if (!text.length) // a TextView keeps one line's height
 				fit.height = scratch.font.lineHeight;
+			fit.height = MAX(fit.height, min_lines * scratch.font.lineHeight);
 		});
 		*width = ceil(fit.width * s);
 		*height = ceil(fit.height * s);
@@ -1383,7 +1394,7 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 		_atlState.prev = @"";
 		_atlState.multiline = true;
 		self.delegate = self;
-		self.scrollEnabled = NO; // Java sizes it to its lines
+		self.scrollEnabled = YES; // a frame shorter than its text scrolls to the cursor
 		self.backgroundColor = UIColor.clearColor;
 		self.textContainerInset = UIEdgeInsetsZero;
 		self.textContainer.lineFragmentPadding = 0;
@@ -1487,6 +1498,11 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 - (void)atlSetPadding:(UIEdgeInsets)padding
 {
 	self.textContainerInset = padding;
+}
+
+- (void)atlSetMaxLines:(int)max
+{
+	self.textContainer.maximumNumberOfLines = max;
 }
 @end
 
@@ -1671,6 +1687,7 @@ void records_selectable_changed(struct ui_view *view)
 		CGFloat s = scale();
 		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 		bool selectable = view->selectable, enabled = view->enabled;
+		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
 		uikit_enqueue(^{
 			UIView<ATLText> *old = (UIView<ATLText> *)native(view);
 			UIColor *text_color = [(id)old textColor];
@@ -1683,6 +1700,7 @@ void records_selectable_changed(struct ui_view *view)
 				replacement = label;
 			}
 			[replacement atlSetText:text font:font(size, style) alignment:alignment];
+			[replacement atlSetMaxLines:max_lines];
 			if (text_color)
 				[replacement atlSetColor:text_color];
 			[replacement atlSetPadding:padding];

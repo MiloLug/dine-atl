@@ -42,9 +42,14 @@ name another project.
 | `text/InputType.java` | `core/java/android/text/InputType.java` | the whole file |
 | `text/InputFilter.java` | `core/java/android/text/InputFilter.java` | the whole file; `AllCaps` upper-cases with `String.toUpperCase` (no ICU `CaseMap`) and keeps spans only when the length stays |
 | `view/inputmethod/EditorInfo.java` | `core/java/android/view/inputmethod/EditorInfo.java` | the `IME_*` constants, `implements InputType` |
-| `widget/TextView.java` | `core/java/android/widget/TextView.java` | `onEditorAction` (its Enter keys go through `ATLInput.dispatchKeyFromIme`), `getSelectionStart`, `getSelectionEnd`, `hasSelection` |
+| `widget/TextView.java` | `core/java/android/widget/TextView.java` | `onEditorAction` (its Enter keys go through `ATLInput.dispatchKeyFromIme`), `getSelectionStart`, `getSelectionEnd`, `hasSelection`; the line and height limits (`setMaxLines`, `setMaxHeight`, `setMinLines`, `setMinHeight`, `setLines`, `setHeight`, one maximum and one minimum mode), `applySingleLine` without the transformation and horizontal scrolling, `getLineHeight` |
 | `widget/EditText.java` | `core/java/android/widget/EditText.java` | `getText`, `setSelection`, `selectAll`, `extendSelection` |
-| `widget/EditText.java` | `core/java/android/widget/TextView.java` | `setText`'s filters, Editable and watcher calls, the ChangeWatcher's TextWatcher part, `sendBeforeTextChanged`, `sendOnTextChanged`, `sendAfterTextChanged`, `isMultilineInputType`, `isPasswordInputType`, `setInputTypeSingleLine`, the constructor's `inputType`, `singleLine`, `password` and `maxLength` handling, `shouldAdvanceFocusOnEnter`, `onKeyDown` and `onKeyUp`'s Enter |
+| `widget/EditText.java` | `core/java/android/widget/TextView.java` | `setText`'s filters, Editable and watcher calls, the ChangeWatcher's TextWatcher part, `sendBeforeTextChanged`, `sendOnTextChanged`, `sendAfterTextChanged`, `isMultilineInputType`, `isPasswordInputType`, `setInputTypeSingleLine`, the constructor's `inputType`, `singleLine`, `password`, `maxLength` and `digits` handling, `shouldAdvanceFocusOnEnter`, `onKeyDown` and `onKeyUp`'s Enter; `setKeyListener`, `setInputType`'s number and phone listeners, `setFilters(Editable, InputFilter[])`'s key listener after the app's filters |
+| `text/method/KeyListener.java` | `core/java/android/text/method/KeyListener.java` | the whole file |
+| `text/method/NumberKeyListener.java` | `core/java/android/text/method/NumberKeyListener.java` | the filter: `getAcceptedChars`, `filter`, `ok`, `addDigits`, `collectionToArray`; no key handling (`lookup`, `onKeyDown`) or date and time characters. ATL's `BaseKeyListener` and `MetaKeyKeyListener` take no keys: hardware keys reach the toolkit's field |
+| `text/method/DigitsKeyListener.java` | `core/java/android/text/method/DigitsKeyListener.java` | the whole file without `@GuardedBy` |
+| `text/method/DialerKeyListener.java` | `core/java/android/text/method/DialerKeyListener.java` | the whole file without `lookup` |
+| `src/api-impl/com/android/internal/util/ArrayUtils.java` | `core/java/com/android/internal/util/ArrayUtils.java` | `contains(char[], char)`, `containsAll(char[], char[])` |
 
 Open: Dine's app bundle carries `api-impl.jar` without these notices, `NOTICE-AOSP.txt` or the
 Apache text.

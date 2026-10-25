@@ -91,7 +91,26 @@ static void draw_path(CGContextRef context, CGPathRef path, const struct gfx_pai
 	}
 }
 
-static void draw_op(CGContextRef context, const struct op *op)
+// the context is in px: the line, laid out in points, scales back to them
+static void draw_text(CGContextRef context, const struct op *op, CGFloat scale)
+{
+	if (op->paint.text_size <= 0) // CoreText's default size; Android draws nothing
+		return;
+	CTLineRef line = cg_text_line(&op->paint, scale, op->text, op->text_len);
+	CGFloat width = CTLineGetTypographicBounds(line, NULL, NULL, NULL);
+	static const CGTextDrawingMode modes[] = {[GFX_PAINT_FILL] = kCGTextFill, [GFX_PAINT_STROKE] = kCGTextStroke, [GFX_PAINT_FILL_AND_STROKE] = kCGTextFillStroke};
+	CGContextSetTextDrawingMode(context, modes[op->paint.style]);
+	CGContextSetLineWidth(context, (op->paint.stroke_width > 0 ? op->paint.stroke_width : 1) / scale);
+	CGContextTranslateCTM(context, op->args[0], op->args[1]);
+	CGContextScaleCTM(context, scale, scale);
+	CGContextSetTextMatrix(context, CGAffineTransformMakeScale(1, -1)); // glyphs are y up
+	// Paint.Align: LEFT, CENTER, RIGHT
+	CGContextSetTextPosition(context, -width * op->paint.text_align / 2, 0);
+	CTLineDraw(line, context);
+	CFRelease(line);
+}
+
+static void draw_op(CGContextRef context, const struct op *op, CGFloat scale)
 {
 	const float *a = op->args;
 	CGRect rect = CGRectStandardize(CGRectMake(a[0], a[1], a[2] - a[0], a[3] - a[1]));
@@ -134,6 +153,9 @@ static void draw_op(CGContextRef context, const struct op *op)
 		CGContextDrawImage(context, whole, image);
 		break;
 	}
+	case OP_TEXT:
+		draw_text(context, op, scale);
+		break;
 	}
 }
 
@@ -176,7 +198,7 @@ void cg_list_draw(const struct gfx_canvas *list, CGContextRef context, CGFloat s
 		CGContextConcatCTM(context, affine(&op->matrix));
 		set_color(context, &op->paint);
 		set_stroke(context, &op->paint);
-		draw_op(context, op);
+		draw_op(context, op, scale);
 		CGContextRestoreGState(context);
 	}
 	while (clips--)

@@ -241,6 +241,7 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 	}
 	if (height == -1) {
 		gtk_widget_measure(widget, GTK_ORIENTATION_VERTICAL, width, NULL, &height, NULL, NULL);
+		height = text_cap_height(GTK_WIDGET(view), width, height);
 		if (height_spec_mode == MEASURE_SPEC_AT_MOST && height > height_spec_size)
 			height = height_spec_size;
 	}

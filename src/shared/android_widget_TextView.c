@@ -43,6 +43,16 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextSize(JNIEnv *
 	ui_text_set_size(text_view(env, this), size);
 }
 
+JNIEXPORT jfloat JNICALL Java_android_widget_TextView_native_1getTextSize(JNIEnv *env, jobject this)
+{
+	return ui_text_get_size(text_view(env, this));
+}
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setLines(JNIEnv *env, jobject this, jint min, jint max)
+{
+	ui_text_set_lines(text_view(env, this), min, max);
+}
+
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle(JNIEnv *env, jobject this, jint style)
 {
 	ui_text_set_style(text_view(env, this), style);

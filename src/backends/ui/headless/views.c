@@ -4,16 +4,14 @@
 #include <string.h>
 
 #include "src/shared/input.h"
+#include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 
 #include "../records/records.h"
 #include "input.h"
 
-/* No toolkit: the records are all there is. Fixed text metrics keep dumps exact. */
-
-// Paint.measureText's estimate of a character's width
-#define CHAR_WIDTH_PER_SIZE  0.6f
-#define LINE_HEIGHT_PER_SIZE 1.2f
+/* No toolkit: the records are all there is. Text measures in the record gfx backend's fixed
+ * metrics, which keep dumps exact. */
 
 void records_window_created(struct ui_window *window, void *surface) {}
 void records_view_created(struct ui_view *view) {}
@@ -70,19 +68,30 @@ void records_frame_changed(struct ui_window *window)
 	fflush(stdout);
 }
 
-static int utf8_length(const char *text, const char *end)
+// a paragraph's width and line count, broken as a Layout breaks it
+static void paragraph_extent(const struct gfx_paint *paint, const char *text, const char *end, int max_width, int *width, int *lines)
 {
-	int length = 0;
-	for (; text < end && *text; text++)
-		length += (*text & 0xC0) != 0x80;
-	return length;
+	size_t len;
+	uint16_t *units = atl_utf16_from_utf8(text, end - text, &len);
+	*width = ceilf(gfx_text_measure(paint, units, len));
+	*lines = 1;
+	if (max_width >= 0 && *width > max_width) {
+		size_t *ends;
+		*lines = gfx_text_break_lines(paint, units, len, max_width, &ends);
+		free(ends);
+		*width = max_width;
+	}
+	free(units);
 }
 
-// greedily wrapped, with a button's control beside the text
-static void line_extent(struct ui_view *view, const char *text, const char *end, int max_width, int *width, int *height)
+// paragraphs end at each newline, but a single-line edit's don't; a button's control is beside them
+static void text_extent(struct ui_view *view, const char *text, int max_width, int *width, int *height)
 {
-	float char_width = CHAR_WIDTH_PER_SIZE * view->text_size;
-	int line_height = ceilf(LINE_HEIGHT_PER_SIZE * view->text_size);
+	struct gfx_paint *paint = gfx_paint_new();
+	gfx_paint_set_text_size(paint, view->text_size);
+	struct gfx_font_metrics metrics;
+	gfx_text_font_metrics(paint, &metrics);
+	int line_height = ceilf(metrics.descent - metrics.ascent);
 	int control = 0;
 	if (view->is_button && (view->button == UI_BUTTON_CHECK || view->button == UI_BUTTON_RADIO))
 		control = line_height;
@@ -90,43 +99,40 @@ static void line_extent(struct ui_view *view, const char *text, const char *end,
 		control = 2 * line_height;
 	if (max_width >= 0)
 		max_width = max_width > control ? max_width - control : 0;
-	int length = utf8_length(text, end);
-	int lines = 1;
-	*width = ceilf(length * char_width);
-	if (max_width >= 0 && *width > max_width) {
-		int chars_per_line = floorf(max_width / char_width);
-		if (chars_per_line > 0)
-			lines = (length + chars_per_line - 1) / chars_per_line;
-		*width = max_width;
+	bool paragraphs = !view->edit || view->edit_config.multiline;
+	int lines = 0;
+	*width = 0;
+	for (const char *start = text;;) {
+		const char *end = paragraphs ? strchr(start, '\n') : NULL;
+		if (!end)
+			end = start + strlen(start);
+		int paragraph_width, paragraph_lines;
+		// a "\r\n" ends the paragraph as one, as in a Layout
+		const char *content_end = *end && end > start && end[-1] == '\r' ? end - 1 : end;
+		paragraph_extent(paint, start, content_end, max_width, &paragraph_width, &paragraph_lines);
+		*width = paragraph_width > *width ? paragraph_width : *width;
+		lines += paragraph_lines;
+		if (!*end)
+			break;
+		start = end + 1;
 	}
+	gfx_paint_free(paint);
+	if (view->max_lines >= 0 && lines > view->max_lines)
+		lines = view->max_lines;
+	if (lines < view->min_lines)
+		lines = view->min_lines;
 	*width += control;
 	*height = lines * line_height;
 }
 
-// an edit node is at least as wide as its hint, and its lines break at each newline
+// an edit node is at least as wide and tall as its hint
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height)
 {
-	if (!view->edit) {
-		line_extent(view, view->text, view->text + strlen(view->text), max_width, width, height);
-		return;
-	}
-	const char *hint = view->edit_config.hint;
-	*width = *height = 0;
-	for (const char *line = view->text;;) {
-		const char *end = strchr(line, '\n');
-		if (!end || !view->edit_config.multiline)
-			end = line + strlen(line);
-		int line_width, line_height;
-		line_extent(view, line, end, max_width, &line_width, &line_height);
-		*width = line_width > *width ? line_width : *width;
-		*height += line_height;
-		if (!*end)
-			break;
-		line = end + 1;
-	}
+	text_extent(view, view->text, max_width, width, height);
+	const char *hint = view->edit ? view->edit_config.hint : NULL;
 	if (hint) {
 		int hint_width, hint_height;
-		line_extent(view, hint, hint + strlen(hint), max_width, &hint_width, &hint_height);
+		text_extent(view, hint, max_width, &hint_width, &hint_height);
 		*width = hint_width > *width ? hint_width : *width;
 		*height = hint_height > *height ? hint_height : *height;
 	}

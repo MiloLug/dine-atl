@@ -221,6 +221,10 @@ extern "C" {
 #define android_widget_Button_ALIGN_CENTER 1L
 #undef android_widget_Button_ALIGN_END
 #define android_widget_Button_ALIGN_END 2L
+#undef android_widget_Button_LINES
+#define android_widget_Button_LINES 1L
+#undef android_widget_Button_PIXELS
+#define android_widget_Button_PIXELS 2L
 #undef android_widget_Button_KIND_PUSH
 #define android_widget_Button_KIND_PUSH 0L
 #undef android_widget_Button_KIND_TOGGLE

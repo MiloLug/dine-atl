@@ -18,6 +18,8 @@ struct gfx_paint {
 	int stroke_join;
 	float text_size;
 	int text_align;
+	enum gfx_font_family font_family;
+	int font_style; // GFX_FONT_BOLD, GFX_FONT_ITALIC
 	int filter_mode;
 	uint32_t filter_color;
 };
@@ -40,6 +42,7 @@ enum op_kind {
 	OP_BITMAP,     // src left, top, right, bottom, dst left, top, right, bottom
 	OP_CLIP,       // left, top, right, bottom, enum gfx_clip_op
 	OP_UNCLIP,     // how many: the clips of the level a restore ends; no paint
+	OP_TEXT,       // x, y of the baseline's start
 };
 
 struct op {
@@ -48,6 +51,8 @@ struct op {
 	enum op_kind kind;
 	float args[8];
 	struct gfx_bitmap *bitmap; // OP_BITMAP's, held
+	uint16_t *text;            // OP_TEXT's, owned
+	size_t text_len;
 };
 
 struct canvas_state {

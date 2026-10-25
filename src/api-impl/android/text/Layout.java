@@ -18,7 +18,7 @@ public class Layout {
 
 	public class Directions {}
 
-	long layout; // native PangoLayout
+	long layout; // native line array
 	private CharSequence text;
 	private TextPaint paint;
 	private float spacing_mult;
@@ -38,7 +38,17 @@ public class Layout {
 		this.spacing_mult = spacingMult;
 		this.spacing_add = spacingAdd;
 		this.align = align;
-		layout = native_constructor(str, paint.paint, width);
+		layout = native_constructor(str, paint.paint, width, align != null ? align.ordinal() : 0);
+	}
+
+	@Override
+	protected void finalize() throws Throwable {
+		try {
+			if (layout != 0) // a constructor that threw
+				native_free(layout);
+		} finally {
+			super.finalize();
+		}
 	}
 
 	public int getLineCount() {
@@ -93,7 +103,7 @@ public class Layout {
 	}
 
 	public static float getDesiredWidth(CharSequence source, TextPaint paint) {
-		long layout = native_constructor(source != null ? source.toString() : "", paint.paint, -1);
+		long layout = native_constructor(source != null ? source.toString() : "", paint.paint, -1, 0);
 		float width = native_get_desired_width(layout);
 		native_free(layout);
 		return width;
@@ -259,10 +269,11 @@ public class Layout {
 	public int getEllipsisStart(int line) {
 		if (line < 0 || line >= getLineCount())
 			throw new ArrayIndexOutOfBoundsException();
-		return 0;
+		return native_get_ellipsis_start(layout, line);
 	}
 
-	protected static native long native_constructor(String text, long paint, int width);
+	// align: Alignment's ordinal
+	protected static native long native_constructor(String text, long paint, int width, int align);
 	protected native void native_set_width(long layout, int width);
 	protected native int native_get_width(long layout);
 	protected native int native_get_height(long layout);
@@ -279,6 +290,7 @@ public class Layout {
 	protected native int native_get_line_descent(long layout, int line);
 	protected native int native_get_line_for_vertical(long layout, int y);
 	protected native void native_set_ellipsize(long layout, int ellipsize_mode, float ellipsize_width);
+	protected native int native_get_ellipsis_start(long layout, int line);
 	protected native int native_get_ellipsis_count(long layout, int line);
 	protected native void native_draw(long layout, long snapshot, long paint);
 	protected native void native_draw_custom_canvas(long layout, Canvas canvas, Paint paint);

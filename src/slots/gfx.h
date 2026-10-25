@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-/* gfx slot: paint state, drawables and drawing. */
+/* gfx slot: paint state, drawables, drawing and text. */
 
 struct gfx_paint;
 struct gfx_drawable;
@@ -42,6 +42,14 @@ int gfx_paint_get_stroke_join(const struct gfx_paint *paint);
 void gfx_paint_set_text_size(struct gfx_paint *paint, float size);
 float gfx_paint_get_text_size(const struct gfx_paint *paint);
 void gfx_paint_set_text_align(struct gfx_paint *paint, int align);
+enum gfx_font_family {
+	GFX_FONT_SANS,
+	GFX_FONT_SERIF,
+	GFX_FONT_MONOSPACE,
+};
+#define GFX_FONT_BOLD   1 // Typeface.BOLD
+#define GFX_FONT_ITALIC 2 // Typeface.ITALIC
+void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family, int style);
 /* PorterDuff mode, or -1 for none */
 void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb);
 /* For a Drawable whose class overrides draw(); the backend draws it by calling draw(). */
@@ -103,6 +111,23 @@ enum gfx_clip_op {
 void gfx_canvas_clip_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, enum gfx_clip_op op);
 /* src: the bitmap's part, in its pixels; NULL: all of it */
 void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, const struct gfx_paint *paint);
+/* x, y: the start of the baseline, before the paint's align moves it */
+void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_t len, float x, float y, const struct gfx_paint *paint);
+
+/* Text in the paint's font, in UTF-16 units as Java's strings, on any thread. */
+struct gfx_font_metrics {
+	float top, ascent, descent, bottom, leading; // Paint.FontMetrics: above the baseline is negative
+};
+void gfx_text_font_metrics(const struct gfx_paint *paint, struct gfx_font_metrics *metrics);
+float gfx_text_measure(const struct gfx_paint *paint, const uint16_t *text, size_t len);
+/* x[i]: the caret before unit i, i <= len (x[len] is the advance); a unit inside a cluster gets the
+ * cluster's start */
+void gfx_text_carets(const struct gfx_paint *paint, const uint16_t *text, size_t len, float *x);
+/* The glyphs' ink around the origin on the baseline; empty text: all 0. */
+void gfx_text_bounds(const struct gfx_paint *paint, const uint16_t *text, size_t len, struct gfx_rect *bounds);
+/* A paragraph (no '\n') broken where its lines fit width: *ends (malloc'd) gets each line's end, a
+ * line of at least one code point. Returns the line count, 1 for empty text. */
+size_t gfx_text_break_lines(const struct gfx_paint *paint, const uint16_t *text, size_t len, float width, size_t **ends);
 #ifdef ATL_TEST_HOOKS
 /* For the records ui backends' dump: a "displaylist:" line per op. gsk prints nothing. */
 void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out);

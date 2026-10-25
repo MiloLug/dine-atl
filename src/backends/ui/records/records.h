@@ -35,6 +35,7 @@ struct ui_view {
 	int left, top, right, bottom;
 	char *text;
 	float text_size; // px
+	int min_lines, max_lines; // ui_text_set_lines'
 	int text_style;  // UI_TEXT_BOLD, UI_TEXT_ITALIC
 	bool markup;
 	int alignment;   // UI_TEXT_ALIGN_*
@@ -101,7 +102,7 @@ void records_background_changed(struct ui_view *view, uint32_t argb);
 void records_visibility_changed(struct ui_view *view); // visibility, alpha, enabled
 void records_progress_changed(struct ui_view *view);   // NODE_PROGRESS: fraction, indeterminate
 // NODE_TEXT only
-void records_text_changed(struct ui_view *view); // text, size, style or alignment
+void records_text_changed(struct ui_view *view); // text, size, style, alignment or lines
 void records_button_changed(struct ui_view *view); // pressed or checked
 void records_text_color_changed(struct ui_view *view, uint32_t argb);
 void records_selectable_changed(struct ui_view *view);
