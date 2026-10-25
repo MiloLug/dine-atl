@@ -13,6 +13,8 @@ extern "C" {
 #define android_widget_SeekBar_NOT_FOCUSABLE 0L
 #undef android_widget_SeekBar_FOCUSABLE
 #define android_widget_SeekBar_FOCUSABLE 1L
+#undef android_widget_SeekBar_FOCUSABLE_AUTO
+#define android_widget_SeekBar_FOCUSABLE_AUTO 16L
 #undef android_widget_SeekBar_FOCUSABLE_MASK
 #define android_widget_SeekBar_FOCUSABLE_MASK 1L
 #undef android_widget_SeekBar_FITS_SYSTEM_WINDOWS
@@ -179,6 +181,8 @@ extern "C" {
 #define android_widget_SeekBar_SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION 512L
 #undef android_widget_SeekBar_SYSTEM_UI_FLAG_LAYOUT_STABLE
 #define android_widget_SeekBar_SYSTEM_UI_FLAG_LAYOUT_STABLE 256L
+#undef android_widget_SeekBar_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+#define android_widget_SeekBar_SYSTEM_UI_FLAG_LIGHT_STATUS_BAR 8192L
 #undef android_widget_SeekBar_SYSTEM_UI_FLAG_LOW_PROFILE
 #define android_widget_SeekBar_SYSTEM_UI_FLAG_LOW_PROFILE 1L
 #undef android_widget_SeekBar_SYSTEM_UI_FLAG_VISIBLE
@@ -211,6 +215,12 @@ extern "C" {
 #define android_widget_SeekBar_TEXT_DIRECTION_LTR 3L
 #undef android_widget_SeekBar_TEXT_DIRECTION_RTL
 #define android_widget_SeekBar_TEXT_DIRECTION_RTL 4L
+#undef android_widget_SeekBar_ALIGN_START
+#define android_widget_SeekBar_ALIGN_START 0L
+#undef android_widget_SeekBar_ALIGN_CENTER
+#define android_widget_SeekBar_ALIGN_CENTER 1L
+#undef android_widget_SeekBar_ALIGN_END
+#define android_widget_SeekBar_ALIGN_END 2L
 /*
  * Class:     android_widget_SeekBar
  * Method:    native_constructor

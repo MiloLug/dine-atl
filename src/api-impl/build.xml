@@ -3,7 +3,8 @@
 
 	<target name="compile">
 		<mkdir dir="${build}"/>
-		<depend srcdir="${srcdir}" destdir="${build}" cache="${build}/.depend"/>
+		<!-- closure: javac -h rewrites only the headers of classes it compiles, and a header holds the constants its class inherits -->
+		<depend srcdir="${srcdir}" destdir="${build}" cache="${build}/.depend" closure="true"/>
 		<javac srcdir="${srcdir}" includes="${includes}" destdir="${build}" includeantruntime="false" debug="true">
 			<compilerarg line="${javaargs}"/>
 		</javac>

@@ -215,6 +215,12 @@ extern "C" {
 #define android_widget_TimePicker_TEXT_DIRECTION_LTR 3L
 #undef android_widget_TimePicker_TEXT_DIRECTION_RTL
 #define android_widget_TimePicker_TEXT_DIRECTION_RTL 4L
+#undef android_widget_TimePicker_ALIGN_START
+#define android_widget_TimePicker_ALIGN_START 0L
+#undef android_widget_TimePicker_ALIGN_CENTER
+#define android_widget_TimePicker_ALIGN_CENTER 1L
+#undef android_widget_TimePicker_ALIGN_END
+#define android_widget_TimePicker_ALIGN_END 2L
 #undef android_widget_TimePicker_FLAG_CLIP_CHILDREN
 #define android_widget_TimePicker_FLAG_CLIP_CHILDREN 1L
 #undef android_widget_TimePicker_FLAG_INVALIDATE_REQUIRED
