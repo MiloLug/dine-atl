@@ -77,6 +77,7 @@ struct handle_cache {
 		jmethodID performClick;
 		jmethodID isClickable;
 		jmethodID layoutInternal;
+		jmethodID atlDraw;
 		jmethodID measure;
 		jmethodID getId;
 		jmethodID getIdName;

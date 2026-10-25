@@ -1,6 +1,6 @@
 package android.graphics;
 
-import android.atl.GskCanvas;
+import android.atl.ATLCanvas;
 import android.content.res.Resources;
 import android.util.Log;
 
@@ -12,36 +12,36 @@ public class Canvas {
 	public static final int HAS_ALPHA_LAYER_SAVE_FLAG = (1 << 2);
 
 	private Bitmap bitmap;
-	private GskCanvas gsk_canvas;
+	private ATLCanvas atl_canvas;
 
 	public Canvas() {
-		if (!(this instanceof GskCanvas)) {
-			gsk_canvas = new GskCanvas(0);
+		if (!(this instanceof ATLCanvas)) {
+			atl_canvas = new ATLCanvas(0);
 		}
 	}
 
 	public Canvas(Bitmap bmp) {
 		this.bitmap = bmp;
-		gsk_canvas = new GskCanvas(bmp.getSnapshot());
+		atl_canvas = new ATLCanvas(bmp.getSnapshot());
 	}
 
 	public int save() {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			return gsk_canvas.save();
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.save();
 		}
 	}
 	public void restore() {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.restore();
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.restore();
 		}
 	}
 
 	public int getSaveCount() {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			return gsk_canvas.getSaveCount();
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.getSaveCount();
 		}
 	}
 
@@ -82,16 +82,16 @@ public class Canvas {
 	public void drawRect(float left, float top, float right, float bottom, Paint paint) {
 		synchronized (bitmap) {
 			if (paint != null && paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
-				int oldSaveCount = gsk_canvas.getSaveCount();
-				gsk_canvas.restoreToCount(1);
+				int oldSaveCount = atl_canvas.getSaveCount();
+				atl_canvas.restoreToCount(1);
 				bitmap.eraseColor(0);
-				gsk_canvas.snapshot = bitmap.getSnapshot();
-				while (gsk_canvas.getSaveCount() < oldSaveCount)
-					gsk_canvas.save();
+				atl_canvas.handle = bitmap.getSnapshot();
+				while (atl_canvas.getSaveCount() < oldSaveCount)
+					atl_canvas.save();
 				return;
 			}
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawRect(left, top, right, bottom, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawRect(left, top, right, bottom, paint);
 		}
 	}
 
@@ -103,8 +103,8 @@ public class Canvas {
 	 */
 	public void rotate(float degrees) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.rotate(degrees);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.rotate(degrees);
 		}
 	}
 
@@ -132,8 +132,8 @@ public class Canvas {
 	 */
 	public void drawText(String text, float x, float y, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawText(text, x, y, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawText(text, x, y, paint);
 		}
 	}
 
@@ -231,8 +231,8 @@ public class Canvas {
 	 */
 	public /*native*/ void scale(float sx, float sy) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.scale(sx, sy);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.scale(sx, sy);
 		}
 	}
 
@@ -324,8 +324,8 @@ public class Canvas {
 	 */
 	public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = this.bitmap.getSnapshot();
-			gsk_canvas.drawBitmap(bitmap, src, dst, paint);
+			atl_canvas.handle = this.bitmap.getSnapshot();
+			atl_canvas.drawBitmap(bitmap, src, dst, paint);
 		}
 	}
 
@@ -414,8 +414,8 @@ public class Canvas {
 	 */
 	public void drawLine(float startX, float startY, float stopX, float stopY, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawLine(startX, startY, stopX, stopY, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawLine(startX, startY, stopX, stopY, paint);
 		}
 	}
 
@@ -425,8 +425,8 @@ public class Canvas {
 
 	public void drawLines(float[] points, int offset, int count, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawLines(points, offset, count, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawLines(points, offset, count, paint);
 		}
 	}
 
@@ -435,13 +435,13 @@ public class Canvas {
 			throw new IllegalStateException("Bitmap must be mutable");
 		}
 		this.bitmap = bitmap;
-		gsk_canvas.snapshot = bitmap == null ? 0 : bitmap.getSnapshot();
+		atl_canvas.handle = bitmap == null ? 0 : bitmap.getSnapshot();
 	}
 
 	public void drawPath(Path path, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawPath(path, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawPath(path, paint);
 		}
 	}
 
@@ -458,15 +458,15 @@ public class Canvas {
 				BitmapShader shader = (BitmapShader)paint.getShader();
 				drawBitmap(shader.bitmap, 0, 0, paint);
 			} else if (paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
-				int oldSaveCount = gsk_canvas.getSaveCount();
-				gsk_canvas.restoreToCount(1);
+				int oldSaveCount = atl_canvas.getSaveCount();
+				atl_canvas.restoreToCount(1);
 				bitmap.eraseColor(0);
-				gsk_canvas.snapshot = bitmap.getSnapshot();
-				while (gsk_canvas.getSaveCount() < oldSaveCount)
-					gsk_canvas.save();
+				atl_canvas.handle = bitmap.getSnapshot();
+				while (atl_canvas.getSaveCount() < oldSaveCount)
+					atl_canvas.save();
 			} else {
-				gsk_canvas.snapshot = bitmap.getSnapshot();
-				gsk_canvas.drawRoundRect(left, top, right, bottom, rx, ry, paint);
+				atl_canvas.handle = bitmap.getSnapshot();
+				atl_canvas.drawRoundRect(left, top, right, bottom, rx, ry, paint);
 			}
 		}
 	}
@@ -477,8 +477,8 @@ public class Canvas {
 
 	public void getMatrix(Matrix matrix) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.getMatrix(matrix);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.getMatrix(matrix);
 		}
 	}
 
@@ -490,22 +490,22 @@ public class Canvas {
 
 	public void translate(float dx, float dy) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.translate(dx, dy);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.translate(dx, dy);
 		}
 	}
 
 	public void drawCircle(float cx, float cy, float radius, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawCircle(cx, cy, radius, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawCircle(cx, cy, radius, paint);
 		}
 	}
 
 	public void drawOval(float left, float top, float right, float bottom, Paint paint) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.drawOval(left, top, right, bottom, paint);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawOval(left, top, right, bottom, paint);
 		}
 	}
 
@@ -517,8 +517,8 @@ public class Canvas {
 
 	public void concat(Matrix matrix) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			gsk_canvas.concat(matrix);
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.concat(matrix);
 		}
 	}
 
@@ -577,8 +577,8 @@ public class Canvas {
 
 	public boolean clipRect(float left, float top, float right, float bottom) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			return gsk_canvas.clipRect(left, top, right, bottom);
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.clipRect(left, top, right, bottom);
 		}
 	}
 
@@ -592,8 +592,8 @@ public class Canvas {
 
 	public boolean clipPath(Path path) {
 		synchronized (bitmap) {
-			gsk_canvas.snapshot = bitmap.getSnapshot();
-			return gsk_canvas.clipPath(path);
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.clipPath(path);
 		}
 	}
 

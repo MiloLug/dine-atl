@@ -32,3 +32,11 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidat
 	if (paintable_ptr)
 		gfx_drawable_invalidate(_PTR(paintable_ptr));
 }
+
+// paintable 0: the Drawable has no native one (the records backends make none for a Drawable
+// without its own draw())
+JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1draw(JNIEnv *env, jobject this, jlong paintable_ptr, jlong canvas_ptr, jint width, jint height)
+{
+	if (paintable_ptr && canvas_ptr)
+		gfx_canvas_draw_drawable(_PTR(canvas_ptr), _PTR(paintable_ptr), width, height);
+}

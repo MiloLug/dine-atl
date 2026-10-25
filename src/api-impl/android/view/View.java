@@ -10,7 +10,7 @@ import android.animation.AnimatorInflater;
 import android.animation.StateListAnimator;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.atl.GskCanvas;
+import android.atl.ATLCanvas;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.ColorStateList;
@@ -1210,17 +1210,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void onDraw(Canvas canvas) {
-		if (canvas instanceof GskCanvas)
-			native_drawContent(widget, ((GskCanvas)canvas).snapshot);
+		if (canvas instanceof ATLCanvas)
+			native_drawContent(widget, ((ATLCanvas)canvas).handle);
 	}
 
 	protected void dispatchDraw(Canvas canvas) {
-		if (canvas instanceof GskCanvas)
-			native_drawChildren(widget, ((GskCanvas)canvas).snapshot);
+		if (canvas instanceof ATLCanvas)
+			native_drawChildren(widget, ((ATLCanvas)canvas).handle);
 	}
 	public void draw(Canvas canvas) {
-		if (canvas instanceof GskCanvas)
-			native_drawBackground(widget, ((GskCanvas)canvas).snapshot);
+		if (canvas instanceof ATLCanvas)
+			native_drawBackground(widget, ((ATLCanvas)canvas).handle);
 		onDraw(canvas);
 		// HACK: catch non critical exceptions happening in some composeUI apps
 		try {
@@ -1581,9 +1581,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	private native void native_setTextAlignment(long widget, int alignment);
 
-	protected native void native_drawBackground(long widget, long snapshot);
-	protected native void native_drawContent(long widget, long snapshot);
-	protected void native_drawChildren(long widget, long snapshot) {} // override in ViewGroup
+	protected native void native_drawBackground(long widget, long canvas);
+	protected native void native_drawContent(long widget, long canvas);
+	protected void native_drawChildren(long widget, long canvas) {} // override in ViewGroup
 
 	// --- stubs
 
@@ -2357,6 +2357,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		this.right = r;
 		this.bottom = b;
 		native_layout(widget, l, t, r, b);
+	}
+
+	// the records ui backends' draw pass (atl_upcall_view_draw); a canvas kept past it draws nothing
+	private void atlDraw(long handle) {
+		ATLCanvas canvas = new ATLCanvas(handle);
+		try {
+			draw(canvas);
+		} finally {
+			canvas.handle = 0;
+		}
 	}
 
 	/** Helper function to be called from GTKs LayoutManager via JNI */

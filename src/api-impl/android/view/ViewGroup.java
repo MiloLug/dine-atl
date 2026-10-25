@@ -8,7 +8,7 @@ package android.view;
 import android.R;
 import android.animation.LayoutTransition;
 import android.annotation.UnsupportedAppUsage;
-import android.atl.GskCanvas;
+import android.atl.ATLCanvas;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
@@ -316,10 +316,10 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected native void native_addView(long widget, long child, int index, LayoutParams params);
 	protected native void native_removeView(long widget, long child);
 	@Override
-	protected native void native_drawChildren(long widget, long snapshot);
-	protected native void native_drawChild(long widget, long child, long snapshot);
+	protected native void native_drawChildren(long widget, long canvas);
+	protected native void native_drawChild(long widget, long child, long canvas);
 	@Override
-	protected void native_drawContent(long widget, long snapshot) {}
+	protected void native_drawContent(long widget, long canvas) {}
 
 	public View getChildAt(int index) {
 		try {
@@ -1207,8 +1207,8 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	}
 
 	public boolean drawChild(Canvas canvas, View child, long drawingTime) {
-		if (canvas instanceof GskCanvas)
-			native_drawChild(widget, child.widget, ((GskCanvas)canvas).snapshot);
+		if (canvas instanceof ATLCanvas)
+			native_drawChild(widget, child.widget, ((ATLCanvas)canvas).handle);
 		return false;
 	}
 

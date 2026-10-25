@@ -12,3 +12,15 @@ JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1removeView(JNIEnv *en
 	if (child)
 		ui_view_remove_child(_PTR(widget), _PTR(child));
 }
+
+JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1drawChildren(JNIEnv *env, jobject this, jlong widget, jlong canvas)
+{
+	if (canvas)
+		ui_view_draw_children(_PTR(widget), _PTR(canvas));
+}
+
+JNIEXPORT void JNICALL Java_android_view_ViewGroup_native_1drawChild(JNIEnv *env, jobject this, jlong widget, jlong child, jlong canvas)
+{
+	if (canvas)
+		ui_view_draw_child(_PTR(widget), _PTR(child), _PTR(canvas));
+}

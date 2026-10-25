@@ -1,6 +1,7 @@
 package dev.dine.framework.graphics;
 
 import android.graphics.Matrix;
+import android.graphics.RectF;
 import junit.framework.TestCase;
 
 public class MatrixTest extends TestCase {
@@ -109,5 +110,51 @@ public class MatrixTest extends TestCase {
 		Matrix matrix = new Matrix();
 		matrix.setScale(2, 3);
 		assertEquals((float)Math.sqrt(6) * 5, matrix.mapRadius(5), EPSILON);
+	}
+
+	public void testPreScaleKeepsPivot() {
+		Matrix matrix = new Matrix();
+		matrix.preScale(2, 2, 10, 10);
+		assertValues(matrix, 2, 0, -10, 0, 2, -10, 0, 0, 1);
+	}
+
+	public void testPreRotateKeepsPivot() {
+		Matrix matrix = new Matrix();
+		matrix.setTranslate(5, 0);
+		matrix.preRotate(90, 50, 50);
+		assertValues(matrix, 0, -1, 105, 1, 0, 0, 0, 0, 1);
+		float[] p = map(matrix, 50, 50);
+		assertEquals(55f, p[0], EPSILON);
+		assertEquals(50f, p[1], EPSILON);
+	}
+
+	public void testMapRectPerspective() {
+		Matrix matrix = new Matrix();
+		matrix.setValues(new float[] {1, 0, 0, 0, 1, 0, 0.01f, 0, 1});
+		RectF rect = new RectF(0, 0, 100, 50);
+		assertFalse(matrix.mapRect(rect));
+		// the corners divide by 1, 2, 2 and 1
+		assertEquals(0f, rect.left, EPSILON);
+		assertEquals(0f, rect.top, EPSILON);
+		assertEquals(50f, rect.right, EPSILON);
+		assertEquals(50f, rect.bottom, EPSILON);
+	}
+
+	public void testMapRectReturnsRectStaysRect() {
+		Matrix matrix = new Matrix();
+		matrix.setScale(2, 3);
+		assertTrue(matrix.mapRect(new RectF(0, 0, 1, 1)));
+		matrix.setRotate(45);
+		assertFalse(matrix.mapRect(new RectF(0, 0, 1, 1)));
+	}
+
+	public void testRectStaysRect() {
+		Matrix matrix = new Matrix();
+		matrix.setValues(new float[] {0, 2, 0, 3, 0, 0, 0, 0, 1});
+		assertTrue(matrix.rectStaysRect());
+		matrix.setValues(new float[] {1, 0, 0, 0, 1, 0, 0.01f, 0, 1});
+		assertFalse(matrix.rectStaysRect());
+		matrix.setValues(new float[] {0, 0, 0, 0, 0, 0, 0, 0, 1});
+		assertFalse(matrix.rectStaysRect());
 	}
 }

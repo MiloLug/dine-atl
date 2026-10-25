@@ -1,5 +1,6 @@
 #include <graphene.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "src/api-impl-jni/defines.h"
@@ -43,6 +44,17 @@ static void map_point(const graphene_matrix_t *matrix, float x, float y, float *
 	float w = graphene_vec4_get_w(&point);
 	*out_x = graphene_vec4_get_x(&point) / w;
 	*out_y = graphene_vec4_get_y(&point) / w;
+}
+
+static bool rect_stays_rect(const graphene_matrix_t *matrix)
+{
+	if (graphene_matrix_get_value(matrix, 0, 3) || graphene_matrix_get_value(matrix, 1, 3) || graphene_matrix_get_value(matrix, 3, 3) != 1)
+		return false;
+	float scale_x = graphene_matrix_get_value(matrix, 0, 0);
+	float skew_x = graphene_matrix_get_value(matrix, 1, 0);
+	float skew_y = graphene_matrix_get_value(matrix, 0, 1);
+	float scale_y = graphene_matrix_get_value(matrix, 1, 1);
+	return (!skew_x && !skew_y && scale_x && scale_y) || (!scale_x && !scale_y && skew_x && skew_y);
 }
 
 JNIEXPORT jlong JNICALL Java_android_graphics_Matrix_native_1create(JNIEnv *env, jclass class, jlong src)
@@ -103,22 +115,26 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postConcat(JNIEn
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1mapRect(JNIEnv *env, jclass class, jlong matrix_ptr, jobject dest, jobject src)
 {
 	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_rect_t src_rect = GRAPHENE_RECT_INIT(
-	    _GET_FLOAT_FIELD(src, "left"),
-	    _GET_FLOAT_FIELD(src, "top"),
-	    _GET_FLOAT_FIELD(src, "right") - _GET_FLOAT_FIELD(src, "left"),
-	    _GET_FLOAT_FIELD(src, "bottom") - _GET_FLOAT_FIELD(src, "top"));
+	float left = _GET_FLOAT_FIELD(src, "left"), top = _GET_FLOAT_FIELD(src, "top");
+	float right = _GET_FLOAT_FIELD(src, "right"), bottom = _GET_FLOAT_FIELD(src, "bottom");
+	float x[4], y[4];
+	map_point(matrix, left, top, &x[0], &y[0]);
+	map_point(matrix, right, top, &x[1], &y[1]);
+	map_point(matrix, right, bottom, &x[2], &y[2]);
+	map_point(matrix, left, bottom, &x[3], &y[3]);
+	float min_x = x[0], max_x = x[0], min_y = y[0], max_y = y[0];
+	for (int i = 1; i < 4; i++) {
+		min_x = fminf(min_x, x[i]);
+		max_x = fmaxf(max_x, x[i]);
+		min_y = fminf(min_y, y[i]);
+		max_y = fmaxf(max_y, y[i]);
+	}
 
-	graphene_quad_t dest_quad;
-	graphene_matrix_transform_rect(matrix, &src_rect, &dest_quad);
-	graphene_rect_t dest_rect;
-	graphene_quad_bounds(&dest_quad, &dest_rect);
-
-	_SET_FLOAT_FIELD(dest, "left", dest_rect.origin.x);
-	_SET_FLOAT_FIELD(dest, "top", dest_rect.origin.y);
-	_SET_FLOAT_FIELD(dest, "right", dest_rect.origin.x + dest_rect.size.width);
-	_SET_FLOAT_FIELD(dest, "bottom", dest_rect.origin.y + dest_rect.size.height);
-	return true;
+	_SET_FLOAT_FIELD(dest, "left", min_x);
+	_SET_FLOAT_FIELD(dest, "top", min_y);
+	_SET_FLOAT_FIELD(dest, "right", max_x);
+	_SET_FLOAT_FIELD(dest, "bottom", max_y);
+	return rect_stays_rect(matrix);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1reset(JNIEnv *env, jclass class, jlong matrix_ptr)
@@ -270,10 +286,10 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preScale__JFFFF(
 {
 	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
 	graphene_matrix_t scale;
-	graphene_matrix_init_scale(&scale, x, y, 1);
-	graphene_matrix_translate(&scale, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
+	graphene_matrix_init_translate(&scale, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
+	graphene_matrix_scale(&scale, x, y, 1);
+	graphene_matrix_translate(&scale, &GRAPHENE_POINT3D_INIT(px, py, 0));
 	graphene_matrix_multiply(&scale, matrix, matrix);
-	graphene_matrix_translate(matrix, &GRAPHENE_POINT3D_INIT(px, py, 0));
 	return true;
 }
 
@@ -290,12 +306,10 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preRotate__JFFF(
 {
 	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
 	graphene_matrix_t rotation;
-	graphene_vec3_t rotation_axis;
-	graphene_vec3_init(&rotation_axis, 0, 0, 1);
-	graphene_matrix_init_rotate(&rotation, degrees, &rotation_axis);
-	graphene_matrix_translate(&rotation, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
+	graphene_matrix_init_translate(&rotation, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
+	graphene_matrix_rotate_z(&rotation, degrees);
+	graphene_matrix_translate(&rotation, &GRAPHENE_POINT3D_INIT(px, py, 0));
 	graphene_matrix_multiply(&rotation, matrix, matrix);
-	graphene_matrix_translate(matrix, &GRAPHENE_POINT3D_INIT(px, py, 0));
 	return true;
 }
 
@@ -460,10 +474,5 @@ JNIEXPORT jfloat JNICALL Java_android_graphics_Matrix_native_1mapRadius(JNIEnv *
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1rectStaysRect(JNIEnv *env, jclass class, jlong matrix_ptr)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	float scale_x = graphene_matrix_get_value(matrix, 0, 0);
-	float skew_x = graphene_matrix_get_value(matrix, 1, 0);
-	float skew_y = graphene_matrix_get_value(matrix, 0, 1);
-	float scale_y = graphene_matrix_get_value(matrix, 1, 1);
-	return (!skew_x && !skew_y) || (!scale_x && !scale_y);
+	return rect_stays_rect(_PTR(matrix_ptr));
 }

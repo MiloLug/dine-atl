@@ -76,7 +76,29 @@ static void notify_observers(struct ui_window *window, enum ui_observe what)
 	free(observers);
 }
 
-// nothing draws on these backends: a layout pass stands in for the frame
+static void draw_view(struct ui_view *view)
+{
+	view->dirty = false; // an invalidate inside its draw() is for the next pass
+	view->drawn_width = view->right - view->left;
+	view->drawn_height = view->bottom - view->top;
+	if (view->list)
+		gfx_canvas_free(view->list);
+	view->list = gfx_canvas_new();
+	atl_upcall_view_draw(view->ref, view->list);
+	records_test_view_drawn(view);
+}
+
+static void draw_tree(struct ui_view *view)
+{
+	if (view->visibility != UI_VIEW_VISIBLE)
+		return;
+	if (view->draws && (view->dirty || view->right - view->left != view->drawn_width || view->bottom - view->top != view->drawn_height))
+		draw_view(view);
+	for (size_t i = 0; i < view->n_children; i++)
+		draw_tree(view->children[i]);
+}
+
+// a layout pass stands in for the frame, its draws included
 static void layout_pass(void *data)
 {
 	struct ui_window *window = data;
@@ -84,9 +106,27 @@ static void layout_pass(void *data)
 	lay_out(window);
 	notify_observers(window, UI_OBSERVE_LAYOUT);
 	notify_observers(window, UI_OBSERVE_DRAW);
+	if (window->shown)
+		draw_tree(window->shown);
 	if (!window->layout_pending) // a listener that keeps requesting layout counts too
 		window->passes_in_a_row = 0;
 	records_layout_done(window);
+}
+
+static void draw_pass(void *data)
+{
+	struct ui_window *window = data;
+	window->draw_pending = false;
+	if (!window->layout_pending && window->shown) // else the layout pass draws
+		draw_tree(window->shown);
+}
+
+static void schedule_draw(struct ui_window *window)
+{
+	if (window->draw_pending || window->layout_pending)
+		return;
+	window->draw_pending = true;
+	loop_main_post(draw_pass, window);
 }
 
 static void schedule_layout(struct ui_window *window)
@@ -203,12 +243,13 @@ void records_observations_orphan(struct ui_window *window)
 }
 
 // the caller sets its kind's fields, then calls records_view_created
-static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name)
+static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
 	struct ui_view *view = calloc(1, sizeof(*view));
 	view->kind = kind;
 	view->ref = view_ref;
 	view->class_name = strdup(class_name);
+	view->draws = view->dirty = traits->draws;
 	view->alpha = 1;
 	view->enabled = true;
 	if (kind == NODE_TEXT) {
@@ -226,12 +267,12 @@ static struct ui_view *created(struct ui_view *view)
 
 struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	return created(view_new(NODE_VIEW, view_ref, class_name));
+	return created(view_new(NODE_VIEW, view_ref, class_name, traits));
 }
 
 struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, bool horizontal)
 {
-	struct ui_view *view = view_new(NODE_SCROLL, view_ref, class_name);
+	struct ui_view *view = view_new(NODE_SCROLL, view_ref, class_name, traits);
 	view->horizontal = horizontal;
 	return created(view);
 }
@@ -292,6 +333,8 @@ void ui_view_free(struct ui_view *view)
 	free((char *)view->edit_config.hint);
 	set_background(view, NULL);
 	hold(&view->image, NULL);
+	if (view->list)
+		gfx_canvas_free(view->list);
 	atl_ref_free(view->ref);
 	view->ref = NULL; // uikit: a scroll report still queued finds the view gone
 	records_view_freed(view);
@@ -324,13 +367,29 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 
 void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled)
 {
+	// a subtree that shows again may hold views invalidated while hidden; Java requests a layout
+	// only for a change to or from GONE
+	if (visibility == UI_VIEW_VISIBLE && view->visibility != UI_VIEW_VISIBLE && the_window)
+		schedule_draw(the_window);
 	view->visibility = visibility;
 	view->alpha = alpha;
 	view->enabled = enabled;
 	records_visibility_changed(view);
 }
 
-void ui_view_invalidate(struct ui_view *view) {}
+void ui_view_invalidate(struct ui_view *view)
+{
+	if (!view->draws)
+		return;
+	view->dirty = true;
+	if (the_window)
+		schedule_draw(the_window);
+}
+
+void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas) {}
+void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas) {}
+void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas) {}
+void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas) {}
 
 // layout applies the translations: a pass moves the frames
 void ui_view_children_moved(struct ui_view *view)
@@ -395,7 +454,7 @@ void ui_view_layout(struct ui_view *view, int left, int top, int right, int bott
 
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)
 {
-	struct ui_view *view = created(view_new(NODE_TEXT, view_ref, class_name));
+	struct ui_view *view = created(view_new(NODE_TEXT, view_ref, class_name, traits));
 	if (text)
 		ui_text_set_text(view, text);
 	return view;
@@ -457,7 +516,7 @@ void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, stru
 
 struct ui_view *ui_button_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, enum ui_button kind)
 {
-	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name);
+	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name, traits);
 	view->is_button = true;
 	view->button = kind;
 	return created(view);
@@ -474,7 +533,7 @@ void ui_button_set_state(struct ui_view *view, bool pressed, bool checked)
 
 struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	struct ui_view *view = view_new(NODE_IMAGE, view_ref, class_name);
+	struct ui_view *view = view_new(NODE_IMAGE, view_ref, class_name, traits);
 	view->image_width = view->image_height = -1;
 	return created(view);
 }
@@ -494,7 +553,7 @@ void ui_image_set_scale_type(struct ui_view *view, int scale_type)
 
 struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	return created(view_new(NODE_PROGRESS, view_ref, class_name));
+	return created(view_new(NODE_PROGRESS, view_ref, class_name, traits));
 }
 
 void ui_progress_set_fraction(struct ui_view *view, float fraction)
@@ -511,7 +570,7 @@ void ui_progress_set_indeterminate(struct ui_view *view, bool indeterminate)
 
 struct ui_view *ui_edit_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
-	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name);
+	struct ui_view *view = view_new(NODE_TEXT, view_ref, class_name, traits);
 	view->edit = true;
 	return created(view);
 }

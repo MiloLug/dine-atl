@@ -12,6 +12,7 @@ struct ui_window; // the app's surface holding the activities' root views, or a 
 struct ui_view;   // a view node; View.widget holds it
 struct atl_ref;   // a weak reference to a Java object, for upcalls
 struct gfx_drawable;
+struct gfx_canvas;
 
 struct ui_display {
 	int width, height; // px
@@ -123,6 +124,12 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 #define UI_VIEW_GONE      8
 void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, bool enabled);
 void ui_view_invalidate(struct ui_view *view);
+/* The toolkit's parts of View.draw and ViewGroup.drawChild, into the view's canvas: gtk snapshots
+ * its widgets; the records backends draw nothing, a display list holds only what Java draws. */
+void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas);
+void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas);
+void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas);
+void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas);
 /* A child's translation changed: its frame moves. */
 void ui_view_children_moved(struct ui_view *view);
 void ui_view_request_layout(struct ui_view *view);

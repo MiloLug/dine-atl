@@ -183,7 +183,7 @@ void wrapper_widget_allocate(GtkWidget *widget, int width, int height, int basel
 
 /* this is used to avoid queing layout changes in the middle of snapshotting */
 int snapshot_in_progress = 0;
-static jfieldID canvas_snapshot_field;
+static jfieldID canvas_handle_field;
 static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 {
 	snapshot_in_progress++;
@@ -194,7 +194,7 @@ static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 	}
 	if (wrapper->draw_method) {
 		JNIEnv *env = get_jni_env();
-		(*env)->SetLongField(env, wrapper->canvas, canvas_snapshot_field, _INTPTR(snapshot));
+		(*env)->SetLongField(env, wrapper->canvas, canvas_handle_field, _INTPTR(snapshot));
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->draw_method, wrapper->canvas);
 		if ((*env)->ExceptionCheck(env))
 			(*env)->ExceptionDescribe(env);
@@ -280,10 +280,10 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 	wrapper->jobj = jobj;
 	if (traits->draws) {
 		wrapper->draw_method = _METHOD_OF(jobj, "draw", "(Landroid/graphics/Canvas;)V");
-		jclass canvas_class = (*env)->FindClass(env, "android/atl/GskCanvas");
+		jclass canvas_class = (*env)->FindClass(env, "android/atl/ATLCanvas");
 		jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(J)V");
 		wrapper->canvas = _REF((*env)->NewObject(env, canvas_class, canvas_constructor, 0));
-		canvas_snapshot_field = _FIELD_ID(canvas_class, "snapshot", "J");
+		canvas_handle_field = _FIELD_ID(canvas_class, "handle", "J");
 		(*env)->DeleteLocalRef(env, canvas_class);
 	}
 

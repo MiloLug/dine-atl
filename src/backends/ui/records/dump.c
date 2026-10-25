@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/slots/gfx.h"
 #include "src/slots/ui.h"
 
 #include "records.h"
@@ -32,5 +33,15 @@ void records_test_view_freed(const struct ui_view *view)
 	if (view->kind == NODE_TEXT)
 		printf(" \"%s\"", view->text);
 	putchar('\n');
+	fflush(stdout);
+}
+
+void records_test_view_drawn(const struct ui_view *view)
+{
+	if (!getenv("ATL_DUMP_DISPLAYLIST"))
+		return;
+	printf("displaylist: %s %dx%d\n", view->class_name, view->drawn_width, view->drawn_height);
+	gfx_canvas_dump(view->list, stdout);
+	printf("displaylist: end\n");
 	fflush(stdout);
 }

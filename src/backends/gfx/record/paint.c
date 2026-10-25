@@ -5,25 +5,7 @@
 #include "src/shared/upcall.h"
 #include "src/slots/gfx.h"
 
-/* Plain records; nothing on the headless paths draws yet. */
-
-struct gfx_paint {
-	uint32_t color;
-	enum gfx_paint_style style;
-	float stroke_width;
-	int stroke_cap;
-	int stroke_join;
-	float text_size;
-	int text_align;
-	int filter_mode;
-	uint32_t filter_color;
-};
-
-struct gfx_drawable {
-	struct atl_ref *drawable_ref; // NULL for a container
-	atomic_int refs;
-	struct gfx_drawable *selected; // a container's child, held
-};
+#include "record.h"
 
 struct gfx_paint *gfx_paint_new(void)
 {
@@ -160,7 +142,7 @@ struct gfx_drawable *gfx_container_new(void)
 	return gfx_drawable_new(NULL);
 }
 
-// the selection is kept for M5's drawing
+// the selection is kept for M5b's drawing
 void gfx_container_select(struct gfx_drawable *container, struct gfx_drawable *child)
 {
 	if (child)

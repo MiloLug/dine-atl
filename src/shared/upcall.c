@@ -78,6 +78,20 @@ void atl_upcall_view_layout(struct atl_ref *view, int width, int height)
 		(*env)->ExceptionDescribe(env);
 }
 
+void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas)
+{
+	JNIEnv *env = get_jni_env();
+	jobject view_obj = (*env)->NewLocalRef(env, (jobject)view);
+	if (!view_obj) // collected; its free is posted
+		return;
+	(*env)->CallVoidMethod(env, view_obj, handle_cache.view.atlDraw, _INTPTR(canvas));
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->DeleteLocalRef(env, view_obj);
+}
+
 void atl_upcall_window_ready(void)
 {
 	activity_window_ready();

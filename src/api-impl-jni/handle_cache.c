@@ -78,6 +78,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.view.performClick = _METHOD(handle_cache.view.class, "performClick", "()Z");
 	handle_cache.view.isClickable = _METHOD(handle_cache.view.class, "isClickable", "()Z");
 	handle_cache.view.layoutInternal = _METHOD(handle_cache.view.class, "layoutInternal", "(II)V");
+	handle_cache.view.atlDraw = _METHOD(handle_cache.view.class, "atlDraw", "(J)V");
 	handle_cache.view.measure = _METHOD(handle_cache.view.class, "measure", "(II)V");
 	handle_cache.view.getId = _METHOD(handle_cache.view.class, "getId", "()I");
 	handle_cache.view.getIdName = _METHOD(handle_cache.view.class, "getIdName", "()Ljava/lang/String;");

@@ -20,7 +20,7 @@ public class Paint {
 	public long paint; // native paint
 	private Xfermode xfermode;
 	private Shader shader;
-	private Align align = Align.CENTER;
+	private Align align = Align.LEFT;
 	private ColorFilter color_filter;
 
 	public Paint() {
@@ -34,6 +34,14 @@ public class Paint {
 
 	public Paint(Paint paint) {
 		this.paint = native_clone(paint.paint);
+		copyJavaState(paint);
+	}
+
+	private void copyJavaState(Paint src) {
+		xfermode = src.xfermode;
+		shader = src.shader;
+		align = src.align;
+		color_filter = src.color_filter;
 	}
 
 	@Override
@@ -366,8 +374,11 @@ public class Paint {
 	}
 
 	public void set(Paint paint) {
+		if (paint == this)
+			return;
 		native_recycle(this.paint);
 		this.paint = native_clone(paint.paint);
+		copyJavaState(paint);
 	}
 
 	public boolean isFilterBitmap() { return false; }
@@ -411,7 +422,7 @@ public class Paint {
 		paint = native_create();
 		xfermode = null;
 		shader = null;
-		align = Align.CENTER;
+		align = Align.LEFT;
 		color_filter = null;
 	}
 

@@ -308,6 +308,31 @@ void ui_view_invalidate(struct ui_view *view)
 	wrapper_widget_queue_draw(WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view))));
 }
 
+void ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas)
+{
+	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view)));
+	if (wrapper->background)
+		gtk_widget_snapshot_child(&wrapper->parent_instance, wrapper->background, GTK_SNAPSHOT(canvas));
+}
+
+void ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas)
+{
+	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view)));
+	gtk_widget_snapshot_child(&wrapper->parent_instance, wrapper->child, GTK_SNAPSHOT(canvas));
+}
+
+void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas)
+{
+	ui_view_draw_content(view, canvas);
+}
+
+void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas)
+{
+	GtkWidget *child_wrapper = gtk_widget_get_parent(GTK_WIDGET(child));
+	gtk_widget_queue_draw(child_wrapper); // FIXME: why didn't compose UI invalidate the child?
+	gtk_widget_snapshot_child(GTK_WIDGET(view), child_wrapper, GTK_SNAPSHOT(canvas));
+}
+
 /* we kinda need per-widget css */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"

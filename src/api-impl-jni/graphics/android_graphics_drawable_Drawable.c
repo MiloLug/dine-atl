@@ -19,13 +19,12 @@ struct _JavaPaintable {
 	GObject parent_instance;
 	jobject drawable;
 };
-G_DECLARE_FINAL_TYPE(JavaPaintable, java_paintable, JAVA, PAINTABLE, GObject)
 
 static void java_paintable_snapshot(GdkPaintable *gdk_paintable, GdkSnapshot *snapshot, double width, double height)
 {
 	JNIEnv *env = get_jni_env();
 	JavaPaintable *paintable = JAVA_PAINTABLE(gdk_paintable);
-	jclass canvas_class = (*env)->FindClass(env, "android/atl/GskCanvas");
+	jclass canvas_class = (*env)->FindClass(env, "android/atl/ATLCanvas");
 	jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(J)V");
 	jobject canvas = (*env)->NewObject(env, canvas_class, canvas_constructor, _INTPTR(snapshot));
 	(*env)->CallVoidMethod(env, paintable->drawable, handle_cache.drawable.setBounds, 0, 0, (int)width, (int)height);
@@ -95,13 +94,5 @@ GdkPaintable *java_paintable_new(jweak drawable)
 	JavaPaintable *paintable = g_object_new(java_paintable_get_type(), NULL);
 	paintable->drawable = drawable;
 	return GDK_PAINTABLE(paintable);
-}
-
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1draw(JNIEnv *env, jobject this, jlong paintable_ptr, jlong snapshot_ptr, jint width, jint height)
-{
-	GdkSnapshot *snapshot = (GdkSnapshot *)_PTR(snapshot_ptr);
-	GdkPaintable *paintable = GDK_PAINTABLE(_PTR(paintable_ptr));
-	if (!JAVA_IS_PAINTABLE(paintable))
-		gdk_paintable_snapshot(paintable, snapshot, width, height);
 }
 

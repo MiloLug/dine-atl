@@ -1,6 +1,6 @@
 package android.text;
 
-import android.atl.GskCanvas;
+import android.atl.ATLCanvas;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -72,8 +72,8 @@ public class Layout {
 	}
 
 	public void draw(Canvas canvas) {
-		if (canvas instanceof GskCanvas)
-			native_draw(layout, ((GskCanvas)canvas).snapshot, paint.paint);
+		if (canvas instanceof ATLCanvas)
+			native_draw(layout, ((ATLCanvas)canvas).handle, paint.paint);
 		else
 			native_draw_custom_canvas(layout, canvas, paint);
 	}

@@ -1,6 +1,6 @@
 package android.view;
 
-import android.atl.GskCanvas;
+import android.atl.ATLCanvas;
 import android.graphics.Matrix;
 import android.graphics.Outline;
 import android.graphics.Paint;
@@ -302,12 +302,12 @@ public class RenderNode {
 		this.height = height;
 		children.clear();
 		children_nodes.clear();
-		return new GskCanvas(nativeCreateSnapshot()) {
+		return new ATLCanvas(nativeCreateSnapshot()) {
 			@Override
 			public void drawRenderNode(RenderNode node) {
 				/* gtk_snapshot_append_node() may unpack container nodes since GTK 4.22 https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/9488
 				 * We prevent this using stub nodes, because we need the container nodes as handles in nativePatchNode() */
-				long stub_node = nativeAddStubNode(snapshot);
+				long stub_node = nativeAddStubNode(handle);
 				children.add(node);
 				children_nodes.add(stub_node);
 			}
@@ -316,8 +316,8 @@ public class RenderNode {
 
 	public void end(DisplayListCanvas canvas) {
 		nativeUnref(render_node);
-		render_node = nativeCreateNode(((GskCanvas)canvas).snapshot);
-		((GskCanvas)canvas).snapshot = 0;
+		render_node = nativeCreateNode(((ATLCanvas)canvas).handle);
+		((ATLCanvas)canvas).handle = 0;
 		if (transformed_node != 0) {
 			nativeUnref(transformed_node);
 			transformed_node = 0;

@@ -1,0 +1,30 @@
+widgets draw 1
+displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
+displaylist:   rect 10,10 110,60 #ffff0000 fill
+displaylist:   line 0,0 100,100 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
+displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist: end
+widgets draw 2
+displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
+displaylist:   rect 10,10 110,60 #ffff0000 fill
+displaylist:   line 0,0 100,100 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
+displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist: end
+widgets draw hidden
+widgets draw shown
+widgets draw 3
+displaylist: dev.dine.widgets.DrawActivity$DrawView 960x540
+displaylist:   rect 10,10 110,60 #ffff0000 fill
+displaylist:   line 0,0 100,100 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 0,120 50,120 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   line 50,130 100,130 #ff0000ff stroke width 4 cap 0 join 0
+displaylist:   rect 0,0 20,10 #ffff0000 fill matrix [0,-2,190;2,0,-10;0,0,1]
+displaylist:   rect 120,10 170,60 #ffff0000 fill
+displaylist: end
+widgets draw done

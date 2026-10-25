@@ -7,6 +7,7 @@
 
 struct atl_ref;
 struct ui_display;
+struct gfx_canvas;
 
 /* Another weak reference to the same object; atl_ref_free drops one. */
 struct atl_ref *atl_ref_dup(struct atl_ref *ref);
@@ -32,6 +33,9 @@ int atl_upcall_view_get_suggested_min(struct atl_ref *view, bool vertical);
 void atl_upcall_view_get_old_specs(struct atl_ref *view, int *width_spec, int *height_spec);
 /* View.layoutInternal: the view's own onLayout at width x height, which lays out its children. */
 void atl_upcall_view_layout(struct atl_ref *view, int width, int height);
+/* View.atlDraw: the view's draw() into canvas, which only that call uses; an exception is printed
+ * and cleared. */
+void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas);
 /* The app's window got its first layout: the activities regain focus. */
 void atl_upcall_window_ready(void);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. Returns whether the

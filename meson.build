@@ -89,6 +89,7 @@ atl_shared = static_library('atl_shared', [
 	'src/api-impl-jni/util.c',
 	'src/shared/activity.c',
 	'src/shared/android_app_Dialog.c',
+	'src/shared/android_atl_ATLCanvas.c',
 	'src/shared/android_content_Context.c',
 	'src/shared/android_graphics_Matrix.c',
 	'src/shared/android_graphics_Paint.c',
@@ -210,7 +211,7 @@ if desktop
     'src/api-impl-jni/egl/com_google_android_gles_jni_EGLImpl.c',
     'src/api-impl-jni/gtk_util.c',
     'src/api-impl-jni/graphics/NinePatchPaintable.c',
-    'src/api-impl-jni/graphics/android_atl_GskCanvas.c',
+    'src/api-impl-jni/graphics/android_atl_ATLCanvas.c',
     'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
     'src/api-impl-jni/graphics/android_graphics_BitmapFactory.c',
     'src/api-impl-jni/graphics/android_graphics_Paint.c',
@@ -231,7 +232,6 @@ if desktop
     'src/api-impl-jni/text/android_text_Layout.c',
     'src/api-impl-jni/views/android_view_inputmethod_InputMethodManager.c',
     'src/api-impl-jni/views/android_view_View.c',
-    'src/api-impl-jni/views/android_view_ViewGroup.c',
     'src/api-impl-jni/views/android_view_WindowManagerImpl.c',
     'src/api-impl-jni/widgets/WrapperWidget.c',
     'src/api-impl-jni/widgets/android_view_SurfaceView.c',
@@ -300,9 +300,10 @@ else
 endif
 
 if gfx_backend == 'record'
-  backend_libs += static_library('atl_gfx_record', 'src/backends/gfx/record/paint.c')
+  backend_libs += static_library('atl_gfx_record', ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c'],
+                                 dependencies: graphene_dep)
 else
-  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/container.c', 'src/backends/gfx/gsk/paint.c'],
+  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c', 'src/backends/gfx/gsk/paint.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

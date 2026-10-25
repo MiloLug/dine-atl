@@ -20,7 +20,7 @@ struct ui_dialog_state;
 enum node_kind {
 	NODE_VIEW, // ui_view_new: laid out by Java
 	NODE_TEXT, // ui_text_new, ui_button_new, ui_edit_new: measured by the backend
-	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5
+	NODE_IMAGE,    // ui_image_new: the drawable's intrinsic size; nothing draws it before M5b
 	NODE_PROGRESS, // ui_progress_new
 	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
 };
@@ -49,7 +49,7 @@ struct ui_view {
 	int visibility;  // UI_VIEW_VISIBLE, INVISIBLE or GONE
 	float alpha;
 	bool enabled;
-	struct gfx_drawable *background; // held; nothing draws it before M5
+	struct gfx_drawable *background; // held; nothing draws it before M5b
 	bool has_background;             // a color or a drawable: a push button drops its border
 	struct gfx_drawable *image;      // NODE_IMAGE, held
 	int image_width, image_height;   // px, -1: none
@@ -58,6 +58,10 @@ struct ui_view {
 	bool indeterminate;
 	int scroll_x, scroll_y; // px, View.scrollTo's or the toolkit's
 	bool horizontal;        // NODE_SCROLL's axis
+	bool draws;                 // its class draws (traits): the draw pass runs its draw()
+	bool dirty;                 // draws: new or invalidated since its last draw
+	int drawn_width, drawn_height;
+	struct gfx_canvas *list;    // what its last draw recorded; NULL before one
 	void *native;    // the backend's object; uikit: a UIView, touched only on UIKit's thread
 };
 
@@ -72,6 +76,7 @@ struct ui_window {
 	struct ui_view *shown;
 	struct ui_observation *observations;
 	bool layout_pending;
+	bool draw_pending;
 	int passes_in_a_row;
 	bool ready;
 	struct ui_frame frame;
@@ -127,8 +132,11 @@ void records_key(const struct atl_key *key);
 #ifdef ATL_TEST_HOOKS
 /* With ATL_DUMP_VIEWTREE set, prints a "viewfreed: " line with the view's class and text. */
 void records_test_view_freed(const struct ui_view *view);
+/* With ATL_DUMP_DISPLAYLIST set, prints the display list the view's draw just recorded. */
+void records_test_view_drawn(const struct ui_view *view);
 #else
 static inline void records_test_view_freed(const struct ui_view *view) {}
+static inline void records_test_view_drawn(const struct ui_view *view) {}
 #endif
 
 #endif

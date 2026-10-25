@@ -2,12 +2,15 @@
 #define SLOTS_GFX_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 /* gfx slot: paint state, drawables and drawing. */
 
 struct gfx_paint;
 struct gfx_drawable;
+struct gfx_canvas;
 struct atl_ref;
+struct _graphene_matrix_t; // graphene_matrix_t
 
 /* Paint state. The enums take Android's values: Paint.Style, Cap, Join and Align ordinals. */
 enum gfx_paint_style {
@@ -48,5 +51,26 @@ void gfx_drawable_invalidate(struct gfx_drawable *drawable);
  * Java selects, held while selected; NULL: none. */
 struct gfx_drawable *gfx_container_new(void);
 void gfx_container_select(struct gfx_drawable *container, struct gfx_drawable *child);
+
+/* What android.atl.ATLCanvas draws into, on the thread that draws (a view's draw: the Android main
+ * thread). gsk: a GtkSnapshot; record: a display list whose ops keep their paint and matrix as they
+ * were. Transforms apply before the current matrix, as Canvas's do. */
+struct gfx_canvas *gfx_canvas_new(void); // an empty recording
+void gfx_canvas_free(struct gfx_canvas *canvas);
+void gfx_canvas_save(struct gfx_canvas *canvas);
+void gfx_canvas_restore(struct gfx_canvas *canvas);
+void gfx_canvas_translate(struct gfx_canvas *canvas, float dx, float dy);
+void gfx_canvas_rotate(struct gfx_canvas *canvas, float degrees);
+void gfx_canvas_scale(struct gfx_canvas *canvas, float sx, float sy);
+void gfx_canvas_concat(struct gfx_canvas *canvas, const struct _graphene_matrix_t *matrix);
+void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, const struct gfx_paint *paint);
+void gfx_canvas_draw_round_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float rx, float ry, const struct gfx_paint *paint);
+void gfx_canvas_draw_line(struct gfx_canvas *canvas, float x0, float y0, float x1, float y1, const struct gfx_paint *paint);
+/* Drawable.draw at 0,0 in width x height; one drawn by the Drawable's own draw() is skipped. */
+void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *drawable, int width, int height);
+#ifdef ATL_TEST_HOOKS
+/* For the records ui backends' dump: a "displaylist:" line per op. gsk prints nothing. */
+void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out);
+#endif
 
 #endif
