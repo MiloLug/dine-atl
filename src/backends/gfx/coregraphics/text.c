@@ -1,4 +1,5 @@
 #include <math.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
@@ -16,7 +17,23 @@ static CGFloat scale(void)
 	return atl_window_get()->density_dpi / 160.;
 }
 
-CTFontRef cg_font(CGFloat size, enum gfx_font_family family, int style)
+// Roboto's digits share one width, so apps' digit grids and counters line up; San Francisco's don't
+static CTFontRef tabular_digits(CTFontRef font, CGFloat size)
+{
+	CTFontDescriptorRef plain = CTFontCopyFontDescriptor(font);
+	CFNumberRef type = CFNumberCreate(NULL, kCFNumberIntType, &(int){kNumberSpacingType});
+	CFNumberRef selector = CFNumberCreate(NULL, kCFNumberIntType, &(int){kMonospacedNumbersSelector});
+	CTFontDescriptorRef tabular = CTFontDescriptorCreateCopyWithFeature(plain, type, selector);
+	CTFontRef copy = CTFontCreateWithFontDescriptor(tabular, size, NULL);
+	CFRelease(tabular);
+	CFRelease(selector);
+	CFRelease(type);
+	CFRelease(plain);
+	CFRelease(font);
+	return copy;
+}
+
+static CTFontRef create_font(CGFloat size, enum gfx_font_family family, int style)
 {
 	CTFontRef font;
 	if (family == GFX_FONT_MONOSPACE)
@@ -27,10 +44,55 @@ CTFontRef cg_font(CGFloat size, enum gfx_font_family family, int style)
 		font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, NULL);
 	CTFontSymbolicTraits traits = (style & GFX_FONT_BOLD ? kCTFontTraitBold : 0) | (style & GFX_FONT_ITALIC ? kCTFontTraitItalic : 0);
 	CTFontRef styled = traits ? CTFontCreateCopyWithSymbolicTraits(font, size, NULL, traits, traits) : NULL;
-	if (!styled) // regular, or a face the family lacks
+	if (styled) { // else regular, or a face the family lacks
+		CFRelease(font);
+		font = styled;
+	}
+	return family == GFX_FONT_SANS ? tabular_digits(font, size) : font;
+}
+
+/* Fonts by size, family and style for every thread; a miss creates its font outside the lock, so
+ * UIKit's thread never waits for another thread's CoreText work. Full: it starts over. */
+static struct cached_font {
+	CGFloat size;
+	enum gfx_font_family family;
+	int style;
+	CTFontRef font; // the cache's ref
+} fonts[64];
+static size_t font_count;
+static pthread_mutex_t font_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static CTFontRef cached_font(CGFloat size, enum gfx_font_family family, int style)
+{
+	for (size_t i = 0; i < font_count; i++)
+		if (fonts[i].size == size && fonts[i].family == family && fonts[i].style == style)
+			return CFRetain(fonts[i].font);
+	return NULL;
+}
+
+CTFontRef cg_font(CGFloat size, enum gfx_font_family family, int style)
+{
+	pthread_mutex_lock(&font_lock);
+	CTFontRef font = cached_font(size, family, style);
+	pthread_mutex_unlock(&font_lock);
+	if (font)
 		return font;
-	CFRelease(font);
-	return styled;
+	CTFontRef created = create_font(size, family, style);
+	pthread_mutex_lock(&font_lock);
+	font = cached_font(size, family, style);
+	if (!font) {
+		if (font_count == sizeof(fonts) / sizeof(*fonts)) {
+			for (size_t i = 0; i < font_count; i++)
+				CFRelease(fonts[i].font);
+			font_count = 0;
+		}
+		fonts[font_count++] = (struct cached_font){size, family, style, CFRetain(created)};
+	}
+	pthread_mutex_unlock(&font_lock);
+	if (!font)
+		return created;
+	CFRelease(created); // another thread cached it first
+	return font;
 }
 
 CTLineRef cg_text_line(const struct gfx_paint *paint, CGFloat scale, const uint16_t *text, size_t len)

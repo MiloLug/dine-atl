@@ -98,10 +98,14 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_graphics_Bitmap.c',
 	'src/shared/android_graphics_BitmapFactory.c',
 	'src/shared/android_graphics_Matrix.c',
+	'src/shared/android_graphics_NinePatch.c',
 	'src/shared/android_graphics_Paint.c',
+	'src/shared/android_graphics_Path.c',
+	'src/shared/android_graphics_Shader.c',
 	'src/shared/android_graphics_drawable_BitmapDrawable.c',
 	'src/shared/android_graphics_drawable_Drawable.c',
 	'src/shared/android_graphics_drawable_DrawableContainer.c',
+	'src/shared/android_graphics_drawable_NinePatchDrawable.c',
 	'src/shared/android_text_Layout.c',
 	'src/shared/android_view_View.c',
 	'src/shared/android_view_ViewGroup.c',
@@ -115,10 +119,14 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_widget_TextView.c',
 	'src/shared/input.c',
 	'src/shared/insets.c',
+	'src/shared/ninepatch.c',
+	'src/shared/path.c',
+	'src/shared/shader.c',
 	'src/shared/startup.c',
 	'src/shared/text.c',
 	'src/shared/upcall.c',
-] + (test_hooks ? ['src/shared/test_hooks.c'] : []), dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],
+] + (test_hooks ? ['src/shared/test_hooks.c'] : []) + (desktop ? [] : ['src/shared/android_os_Vibrator.c']),
+   dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],
    c_args: ['-D_LARGEFILE64_SOURCE'])
 
 backend_libs = []
@@ -219,14 +227,11 @@ if desktop
     'src/api-impl-jni/content/android_content_Context.c',
     'src/api-impl-jni/egl/com_google_android_gles_jni_EGLImpl.c',
     'src/api-impl-jni/gtk_util.c',
-    'src/api-impl-jni/graphics/NinePatchPaintable.c',
     'src/api-impl-jni/graphics/android_atl_ATLCanvas.c',
     'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
-    'src/api-impl-jni/graphics/android_graphics_Path.c',
     'src/api-impl-jni/graphics/android_graphics_Region.c',
     'src/api-impl-jni/graphics/android_view_RenderNode.c',
     'src/api-impl-jni/graphics/android_graphics_drawable_Drawable.c',
-    'src/api-impl-jni/graphics/android_graphics_drawable_NinePatchDrawable.c',
     'src/api-impl-jni/location/android_location_LocationManager.c',
     'src/api-impl-jni/media/android_media_MediaCodec.c',
     'src/api-impl-jni/media/android_media_MediaPlayer.c',
@@ -317,7 +322,7 @@ elif gfx_backend == 'coregraphics'
                                  dependencies: graphene_dep)
 else
   backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/bitmap.c', 'src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c',
-                                  'src/backends/gfx/gsk/paint.c', 'src/backends/gfx/gsk/text.c'],
+                                  'src/backends/gfx/gsk/ninepatch.c', 'src/backends/gfx/gsk/paint.c', 'src/backends/gfx/gsk/path.c', 'src/backends/gfx/gsk/text.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

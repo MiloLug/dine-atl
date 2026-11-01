@@ -3,7 +3,9 @@
 
 #include <gtk/gtk.h>
 
-/* A gtk-only native pushed onto the canvas (clipPath): the restore of its save level pops it. */
-void gsk_canvas_pushed(GtkSnapshot *snapshot);
+struct gfx_path;
+
+/* For Region's gtk-only natives */
+GskPath *gsk_path_from_gfx(const struct gfx_path *path);
 
 #endif

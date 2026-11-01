@@ -1,6 +1,7 @@
 #ifndef SLOTS_GFX_H
 #define SLOTS_GFX_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -10,6 +11,8 @@ struct gfx_paint;
 struct gfx_drawable;
 struct gfx_bitmap;
 struct gfx_canvas;
+struct gfx_path;
+struct gfx_shader;
 struct atl_ref;
 struct _graphene_matrix_t; // graphene_matrix_t
 
@@ -50,6 +53,8 @@ enum gfx_font_family {
 #define GFX_FONT_BOLD   1 // Typeface.BOLD
 #define GFX_FONT_ITALIC 2 // Typeface.ITALIC
 void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family, int style);
+/* src/shared/shader.h's, NULL for none; the paint and what copies it hold a ref */
+void gfx_paint_set_shader(struct gfx_paint *paint, struct gfx_shader *shader);
 /* PorterDuff mode, or -1 for none */
 void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb);
 /* For a Drawable whose class overrides draw(); the backend draws it by calling draw(). */
@@ -85,6 +90,11 @@ void gfx_bitmap_ref(struct gfx_bitmap *bitmap);
 void gfx_bitmap_unref(struct gfx_bitmap *bitmap);
 /* BitmapDrawable's: the bitmap scaled to the size it's drawn at */
 struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap);
+struct gfx_ninepatch; // src/shared/ninepatch.h
+/* NinePatchDrawable's: the bitmap stretched by the nine-patch's divs; takes ninepatch. */
+struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *ninepatch);
+/* PorterDuff mode (-1: none) and color over what a nine-patch drawable draws (its tint). */
+void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb);
 
 /* What android.atl.ATLCanvas draws into, on the thread that draws (a view's draw: the Android main
  * thread). gsk: a GtkSnapshot; record and coregraphics: a display list whose ops keep their paint
@@ -93,6 +103,9 @@ struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap);
 struct gfx_canvas *gfx_canvas_new(void); // an empty recording
 void gfx_canvas_free(struct gfx_canvas *canvas);
 void gfx_canvas_save(struct gfx_canvas *canvas);
+/* A save whose restore composites what was drawn since at alpha, with PorterDuff mode blend (-1:
+ * SRC_OVER); bounds (under the current matrix) clip it, NULL: none. */
+void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, int blend);
 void gfx_canvas_restore(struct gfx_canvas *canvas);
 void gfx_canvas_translate(struct gfx_canvas *canvas, float dx, float dy);
 void gfx_canvas_rotate(struct gfx_canvas *canvas, float degrees);
@@ -111,6 +124,12 @@ enum gfx_clip_op {
 void gfx_canvas_clip_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, enum gfx_clip_op op);
 /* src: the bitmap's part, in its pixels; NULL: all of it */
 void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, const struct gfx_paint *paint);
+/* path: src/shared/path.h's; a canvas that keeps it holds a ref. Inverse fill types aren't
+ * drawn inverse. */
+void gfx_canvas_draw_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, const struct gfx_paint *paint);
+void gfx_canvas_clip_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, enum gfx_clip_op op);
+/* Canvas.drawArc: degrees clockwise from the oval's right */
+void gfx_canvas_draw_arc(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float start, float sweep, bool use_center, const struct gfx_paint *paint);
 /* x, y: the start of the baseline, before the paint's align moves it */
 void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_t len, float x, float y, const struct gfx_paint *paint);
 

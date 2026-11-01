@@ -45,3 +45,29 @@ void records_test_view_drawn(const struct ui_view *view)
 	printf("displaylist: end\n");
 	fflush(stdout);
 }
+
+static double ms(const struct timespec *t)
+{
+	return t->tv_sec * 1e3 + t->tv_nsec / 1e6;
+}
+
+void records_test_frame_drawn(const struct timespec *start, const struct timespec *end)
+{
+	static double first, last, total, max;
+	static int frames;
+	double s = ms(start), e = ms(end);
+	if (!frames || s - last > 500) {
+		first = s;
+		frames = 0;
+		total = max = 0;
+	}
+	frames++;
+	total += e - s;
+	max = e - s > max ? e - s : max;
+	last = e;
+	if (e - first >= 5000) {
+		printf("atl frames %d in %.0f ms, draw avg %.2f max %.2f ms\n", frames, e - first, total / frames, max);
+		fflush(stdout);
+		frames = 0;
+	}
+}

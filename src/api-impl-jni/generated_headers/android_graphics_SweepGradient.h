@@ -13,19 +13,11 @@ extern "C" {
 #define android_graphics_SweepGradient_TYPE_COLOR_START_AND_COLOR_END 2L
 /*
  * Class:     android_graphics_SweepGradient
- * Method:    nativeCreate1
- * Signature: (FF[I[F)J
+ * Method:    nativeCreate
+ * Signature: (JFF[I[F)J
  */
-JNIEXPORT jlong JNICALL Java_android_graphics_SweepGradient_nativeCreate1
-  (JNIEnv *, jclass, jfloat, jfloat, jintArray, jfloatArray);
-
-/*
- * Class:     android_graphics_SweepGradient
- * Method:    nativeCreate2
- * Signature: (FFII)J
- */
-JNIEXPORT jlong JNICALL Java_android_graphics_SweepGradient_nativeCreate2
-  (JNIEnv *, jclass, jfloat, jfloat, jint, jint);
+JNIEXPORT jlong JNICALL Java_android_graphics_SweepGradient_nativeCreate
+  (JNIEnv *, jclass, jlong, jfloat, jfloat, jintArray, jfloatArray);
 
 #ifdef __cplusplus
 }

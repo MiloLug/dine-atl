@@ -13,7 +13,8 @@ import android.widget.TextView;
 
 /* DrawActivity for a look on the phone: it stays, and a bar then redraws itself for 2 s and logs how
  * many draws ran, which the display's frame rate bounds. It also logs Paint's widths and line
- * spacing beside a TextView's measured size for the same texts. */
+ * spacing beside a TextView's measured size for the same texts, and how long 1000 measureText
+ * calls take. */
 public class DrawStayActivity extends DrawActivity {
 	private static class SpinView extends View {
 		private final Paint paint = new Paint();
@@ -55,9 +56,19 @@ public class DrawStayActivity extends DrawActivity {
 		}
 	}
 
+	private void logMeasureTime() {
+		Paint paint = new Paint();
+		paint.setTextSize(42);
+		long start = System.nanoTime();
+		for (int i = 0; i < 1000; i++)
+			paint.measureText("The quick brown fox");
+		Log.i(TAG, "widgets measure 1000 in " + (System.nanoTime() - start) / 1000000 + " ms");
+	}
+
 	@Override
 	protected void done() {
 		logMetrics();
+		logMeasureTime();
 		int height = (int)(40 * getResources().getDisplayMetrics().density);
 		root.addView(new SpinView(this), new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, height, Gravity.BOTTOM));
 	}

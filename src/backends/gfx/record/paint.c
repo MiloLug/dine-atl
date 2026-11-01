@@ -1,6 +1,8 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 
+#include "src/shared/ninepatch.h"
+#include "src/shared/shader.h"
 #include "src/shared/test_hooks.h"
 #include "src/shared/upcall.h"
 #include "src/slots/gfx.h"
@@ -17,16 +19,30 @@ struct gfx_paint *gfx_paint_new(void)
 	return paint;
 }
 
+void record_paint_copy(struct gfx_paint *dst, const struct gfx_paint *src)
+{
+	*dst = *src;
+	shader_ref(dst->shader);
+}
+
 struct gfx_paint *gfx_paint_clone(const struct gfx_paint *paint)
 {
 	struct gfx_paint *clone = malloc(sizeof(*clone));
-	*clone = *paint;
+	record_paint_copy(clone, paint);
 	return clone;
 }
 
 void gfx_paint_free(struct gfx_paint *paint)
 {
+	shader_unref(paint->shader);
 	free(paint);
+}
+
+void gfx_paint_set_shader(struct gfx_paint *paint, struct gfx_shader *shader)
+{
+	shader_ref(shader);
+	shader_unref(paint->shader);
+	paint->shader = shader;
 }
 
 void gfx_paint_set_color(struct gfx_paint *paint, uint32_t argb)
@@ -120,6 +136,7 @@ struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)
 {
 	struct gfx_drawable *drawable = calloc(1, sizeof(*drawable));
 	drawable->drawable_ref = drawable_ref;
+	drawable->filter_mode = -1;
 	drawable->refs = 1;
 	return drawable;
 }
@@ -138,6 +155,7 @@ void gfx_drawable_unref(struct gfx_drawable *drawable)
 		gfx_drawable_unref(drawable->selected);
 	if (drawable->bitmap)
 		gfx_bitmap_unref(drawable->bitmap);
+	ninepatch_free(drawable->ninepatch);
 	if (drawable->drawable_ref)
 		atl_ref_free(drawable->drawable_ref);
 	free(drawable);
@@ -156,6 +174,19 @@ struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap)
 	gfx_bitmap_ref(bitmap);
 	drawable->bitmap = bitmap;
 	return drawable;
+}
+
+struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *ninepatch)
+{
+	struct gfx_drawable *drawable = gfx_bitmap_drawable_new(bitmap);
+	drawable->ninepatch = ninepatch;
+	return drawable;
+}
+
+void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb)
+{
+	drawable->filter_mode = mode;
+	drawable->filter_color = argb;
 }
 
 // a container's draw() records its child; gfx_canvas_draw_drawable reaches it otherwise

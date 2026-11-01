@@ -63,24 +63,20 @@ public class MainActivity extends Activity {
 				return PixelFormat.TRANSLUCENT;
 			}
 		};
-		gskDrawables();
+		drawables();
 		return content;
 	}
 
-	// gtk only: on headless and uikit the first call throws, before any object with a native finalizer exists
-	private void gskDrawables() {
-		try {
-			Drawable missing = Drawable.createFromPath(new File(getFilesDir(), "missing.png").getPath());
-			Log.i(TAG, "views createFromPath missing: " + (missing == null));
-			Bitmap bitmap = Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888);
-			StateListDrawable states = new StateListDrawable();
-			states.addState(new int[0], new NinePatchDrawable(getResources(), bitmap, ninePatchChunk(), new Rect(), null));
-			Log.i(TAG, "views gsk drawables");
-		} catch (UnsatisfiedLinkError e) {
-		}
+	private void drawables() {
+		Drawable missing = Drawable.createFromPath(new File(getFilesDir(), "missing.png").getPath());
+		Log.i(TAG, "views createFromPath missing: " + (missing == null));
+		Bitmap bitmap = Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888);
+		StateListDrawable states = new StateListDrawable();
+		states.addState(new int[0], new NinePatchDrawable(getResources(), bitmap, ninePatchChunk(), new Rect(), null));
+		Log.i(TAG, "views drawables");
 	}
 
-	// Res_png_9patch, deserialized: ATL computes the offsets and reads native order; one colour per patch
+	// Res_png_9patch, deserialized: offsets follow the counts (as AOSP's deserialize), native order; one colour per patch
 	private static byte[] ninePatchChunk() {
 		ByteBuffer chunk = ByteBuffer.allocate(32 + 4 * (2 + 2 + 9)).order(ByteOrder.nativeOrder());
 		chunk.put((byte)1).put((byte)2).put((byte)2).put((byte)9);

@@ -13,6 +13,7 @@ import android.graphics.BlendModeColorFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.NinePatch;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
@@ -22,9 +23,6 @@ import android.util.LayoutDirection;
 import android.util.TypedValue;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -291,7 +289,7 @@ public class Drawable {
 				return drawable;
 			}
 			case "nine-patch": {
-				return new NinePatchDrawable(resources, null, null, null, null);
+				return new NinePatchDrawable();
 			}
 			case "animation-list": {
 				return new AnimationDrawable();
@@ -314,36 +312,28 @@ public class Drawable {
 		return null;
 	}
 
-	public static Drawable createFromResourceStream(Resources resources, TypedValue value, InputStream is, String file,
-	                                                Object object) {
-		if (!file.endsWith(".9.png")) {
-			final Bitmap bm = BitmapFactory.decodeStream(is);
-			if (bm == null)
-				return null;
-			return new BitmapDrawable(resources, bm);
-		}
-		Path path = Paths.get(android.os.Environment.getExternalStorageDirectory().getPath(), file);
-		if (!Files.exists(path)) {
-			try (InputStream inputStream = resources.getAssets().openNonAsset(file)) {
-				if (inputStream != null) {
-					Files.createDirectories(path.getParent());
-					Files.copy(inputStream, path);
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		return new NinePatchDrawable(path.toString());
+	public static Drawable createFromResourceStream(Resources res, TypedValue value, InputStream is, String srcName,
+	                                                Object opts) {
+		if (is == null)
+			return null;
+		Rect pad = new Rect();
+		Bitmap bm = BitmapFactory.decodeResourceStream(res, value, is, pad, null);
+		return bm != null ? drawableFromBitmap(res, bm, pad, srcName) : null;
 	}
 
 	public static Drawable createFromPath(String path) {
 		if (path == null)
 			return null;
+		Bitmap bm = BitmapFactory.decodeFile(path);
+		return bm != null ? drawableFromBitmap(null, bm, new Rect(), path) : null;
+	}
 
-		if (path.endsWith(".9.png"))
-			return new NinePatchDrawable(path);
-		long paintable = native_paintable_from_path(path);
-		return paintable != 0 ? new Drawable(paintable) : null;
+	// AOSP's: a valid nine-patch chunk makes a NinePatchDrawable
+	private static Drawable drawableFromBitmap(Resources res, Bitmap bm, Rect pad, String srcName) {
+		byte[] chunk = bm.getNinePatchChunk();
+		if (NinePatch.isNinePatchChunk(chunk))
+			return new NinePatchDrawable(res, bm, chunk, pad, srcName);
+		return new BitmapDrawable(res, bm);
 	}
 
 	protected boolean onStateChange(int[] stateSet) {
@@ -413,7 +403,6 @@ public class Drawable {
 		}
 	}
 
-	protected static native long native_paintable_from_path(String path);
 	protected native long native_constructor();
 	protected native void native_invalidate(long paintable);
 	protected native void native_draw(long paintable, long canvas, int width, int height);

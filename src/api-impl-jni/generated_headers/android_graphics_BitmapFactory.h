@@ -35,6 +35,14 @@ JNIEXPORT jlong JNICALL Java_android_graphics_BitmapFactory_nativeDecodeByteArra
 
 /*
  * Class:     android_graphics_BitmapFactory
+ * Method:    nativeNinePatchChunk
+ * Signature: ([BII)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_android_graphics_BitmapFactory_nativeNinePatchChunk
+  (JNIEnv *, jclass, jbyteArray, jint, jint);
+
+/*
+ * Class:     android_graphics_BitmapFactory
  * Method:    nativeIsSeekable
  * Signature: (Ljava/io/FileDescriptor;)Z
  */

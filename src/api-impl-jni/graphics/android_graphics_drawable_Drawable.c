@@ -7,14 +7,6 @@
 #include "../generated_headers/android_graphics_drawable_Drawable.h"
 #include "java_paintable.h"
 
-JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1paintable_1from_1path(JNIEnv *env, jclass class, jstring pathStr)
-{
-	const char *path = (*env)->GetStringUTFChars(env, pathStr, NULL);
-	GdkTexture *texture = gdk_texture_new_from_filename(path, NULL);
-	(*env)->ReleaseStringUTFChars(env, pathStr, path);
-	return _INTPTR(texture);
-}
-
 struct _JavaPaintable {
 	GObject parent_instance;
 	jobject drawable;

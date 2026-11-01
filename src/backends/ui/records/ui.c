@@ -95,14 +95,29 @@ static bool draws(const struct ui_view *view)
 	return view->draws || view->background || (view->kind == NODE_IMAGE && view->image);
 }
 
-static void draw_tree(struct ui_view *view)
+// returns how many views drew
+static int draw_tree(struct ui_view *view)
 {
 	if (view->visibility != UI_VIEW_VISIBLE)
-		return;
-	if (draws(view) && (view->dirty || view->right - view->left != view->drawn_width || view->bottom - view->top != view->drawn_height))
+		return 0;
+	int drawn = 0;
+	if (draws(view) && (view->dirty || view->right - view->left != view->drawn_width || view->bottom - view->top != view->drawn_height)) {
 		draw_view(view);
+		drawn++;
+	}
 	for (size_t i = 0; i < view->n_children; i++)
-		draw_tree(view->children[i]);
+		drawn += draw_tree(view->children[i]);
+	return drawn;
+}
+
+static void draw_frame(struct ui_window *window)
+{
+	struct timespec start, end;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	int drawn = draw_tree(window->shown);
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	if (drawn)
+		records_test_frame_drawn(&start, &end);
 }
 
 // a layout pass stands in for the frame, its draws included
@@ -114,7 +129,7 @@ static void layout_pass(void *data)
 	notify_observers(window, UI_OBSERVE_LAYOUT);
 	notify_observers(window, UI_OBSERVE_DRAW);
 	if (window->shown)
-		draw_tree(window->shown);
+		draw_frame(window);
 	if (!window->layout_pending) // a listener that keeps requesting layout counts too
 		window->passes_in_a_row = 0;
 	records_layout_done(window);
@@ -124,7 +139,7 @@ void records_draw_pass(struct ui_window *window)
 {
 	window->draw_pending = false;
 	if (!window->layout_pending && window->shown) // else the layout pass draws
-		draw_tree(window->shown);
+		draw_frame(window);
 	records_draw_done(window);
 }
 

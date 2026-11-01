@@ -20,7 +20,7 @@
 
 /* A UIView per view record, an ATLLabel per text record (an ATLButton per button's, a UITextField or
  * UITextView per edit record's), in the surface the host gave; the shown activity's frame goes to
- * the surface as ATLSurface. Changes queue on the Android main thread and reach UIKit's thread in
+ * the surface as ATLSurface. Changes queue on any Android thread and reach UIKit's thread in
  * order, one batch per layout or draw pass. Text measurement waits for UIKit's thread:
  * deadlock-free only while main never waits for the Android thread. */
 
@@ -536,6 +536,7 @@ FORWARD_TOUCHES
 static struct ui_window *app_window;
 static void *surface; // a retained UIView; blocks capture it when queued, the window's close clears it
 
+static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER; // pending and flush_posted
 static NSMutableArray<dispatch_block_t> *pending;
 static bool flush_posted;
 static atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
@@ -565,10 +566,12 @@ static UIFont *font(float size, int style)
 
 static void flush(void)
 {
-	if (!pending.count)
-		return;
+	pthread_mutex_lock(&pending_lock);
 	NSArray<dispatch_block_t> *ops = pending;
 	pending = nil;
+	pthread_mutex_unlock(&pending_lock);
+	if (!ops.count)
+		return;
 	atomic_fetch_add(&batches_in_flight, 1);
 	dispatch_async(dispatch_get_main_queue(), ^{
 		for (dispatch_block_t op in ops)
@@ -580,7 +583,9 @@ static void flush(void)
 static void flush_post(void *data)
 {
 	@autoreleasepool {
+		pthread_mutex_lock(&pending_lock);
 		flush_posted = false;
+		pthread_mutex_unlock(&pending_lock);
 		if (app_window && app_window->layout_pending) // the pass flushes, with its frames
 			return;
 		flush();
@@ -589,11 +594,18 @@ static void flush_post(void *data)
 
 void uikit_enqueue(dispatch_block_t op)
 {
+	pthread_mutex_lock(&pending_lock);
 	if (!pending)
 		pending = [NSMutableArray array];
 	[pending addObject:op];
-	if (!flush_posted)
-		flush_posted = loop_main_post(flush_post, NULL);
+	bool post = !flush_posted;
+	flush_posted = true;
+	pthread_mutex_unlock(&pending_lock);
+	if (post && !loop_main_post(flush_post, NULL)) {
+		pthread_mutex_lock(&pending_lock);
+		flush_posted = false;
+		pthread_mutex_unlock(&pending_lock);
+	}
 }
 
 void records_window_created(struct ui_window *window, void *surface_view)

@@ -34,7 +34,7 @@ import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
-//import android.graphics.SweepGradient;
+import android.graphics.SweepGradient;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.TypedValue;
@@ -802,12 +802,15 @@ public class GradientDrawable extends Drawable {
 					y0 = r.top + (r.bottom - r.top) * st.mCenterY;
 
 					final float level = st.mUseLevel ? (float)getLevel() / 10000.0f : 1.0f;
+					float radius = level * st.mGradientRadius;
+					if (radius <= 0) // AOSP 10's: RadialGradient throws on 0
+						radius = 0.001f;
 
 					mFillPaint.setShader(new RadialGradient(x0, y0,
-					                                        level * st.mGradientRadius, colors, null,
+					                                        radius, colors, null,
 					                                        Shader.TileMode.CLAMP));
 				} else if (st.mGradient == SWEEP_GRADIENT) {
-					/*x0 = r.left + (r.right - r.left) * st.mCenterX;
+					x0 = r.left + (r.right - r.left) * st.mCenterX;
 					y0 = r.top + (r.bottom - r.top) * st.mCenterY;
 
 					int[] tempColors = colors;
@@ -834,7 +837,7 @@ public class GradientDrawable extends Drawable {
 						}
 						tempPositions[length] = 1.0f;
 					}
-					mFillPaint.setShader(new SweepGradient(x0, y0, tempColors, tempPositions));*/
+					mFillPaint.setShader(new SweepGradient(x0, y0, tempColors, tempPositions));
 				}
 
 				// If we don't have a solid color, the alpha channel must be

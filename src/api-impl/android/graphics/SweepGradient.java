@@ -60,9 +60,8 @@ public class SweepGradient extends Shader {
 		mType = TYPE_COLORS_AND_POSITIONS;
 		mCx = cx;
 		mCy = cy;
-		mColors = colors;
-		mPositions = positions;
-		init(nativeCreate1(cx, cy, colors, positions));
+		mColors = colors.clone();
+		mPositions = positions != null ? positions.clone() : null;
 	}
 
 	/**
@@ -79,7 +78,6 @@ public class SweepGradient extends Shader {
 		mCy = cy;
 		mColor0 = color0;
 		mColor1 = color1;
-		init(nativeCreate2(cx, cy, color0, color1));
 	}
 
 	/**
@@ -104,6 +102,11 @@ public class SweepGradient extends Shader {
 		return copy;
 	}
 
-	private static native long nativeCreate1(float x, float y, int colors[], float positions[]);
-	private static native long nativeCreate2(float x, float y, int color0, int color1);
+	@Override
+	long createNativeInstance(long nativeMatrix) {
+		int[] colors = mType == TYPE_COLORS_AND_POSITIONS ? mColors : new int[] {mColor0, mColor1};
+		return nativeCreate(nativeMatrix, mCx, mCy, colors, mType == TYPE_COLORS_AND_POSITIONS ? mPositions : null);
+	}
+
+	private static native long nativeCreate(long matrix, float x, float y, int colors[], float positions[]);
 }

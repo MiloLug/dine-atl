@@ -42,10 +42,10 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetRect
 /*
  * Class:     android_graphics_Region
  * Method:    nativeSetPath
- * Signature: (JJJIZ)Z
+ * Signature: (JJJZZ)Z
  */
 JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetPath
-  (JNIEnv *, jclass, jlong, jlong, jlong, jint, jboolean);
+  (JNIEnv *, jclass, jlong, jlong, jlong, jboolean, jboolean);
 
 /*
  * Class:     android_graphics_Region

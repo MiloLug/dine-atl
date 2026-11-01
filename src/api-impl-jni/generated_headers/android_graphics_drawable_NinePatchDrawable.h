@@ -10,26 +10,18 @@ extern "C" {
 /*
  * Class:     android_graphics_drawable_NinePatchDrawable
  * Method:    nativeCreate
- * Signature: ([BJ)J
+ * Signature: (J[B)J
  */
-JNIEXPORT jlong JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeCreate___3BJ
-  (JNIEnv *, jobject, jbyteArray, jlong);
+JNIEXPORT jlong JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeCreate
+  (JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     android_graphics_drawable_NinePatchDrawable
- * Method:    nativeCreate
- * Signature: (Ljava/lang/String;)J
+ * Method:    nativeSetColorFilter
+ * Signature: (JII)V
  */
-JNIEXPORT jlong JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeCreate__Ljava_lang_String_2
-  (JNIEnv *, jobject, jstring);
-
-/*
- * Class:     android_graphics_drawable_NinePatchDrawable
- * Method:    nativeSetTint
- * Signature: (JI)V
- */
-JNIEXPORT void JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeSetTint
-  (JNIEnv *, jobject, jlong, jint);
+JNIEXPORT void JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeSetColorFilter
+  (JNIEnv *, jclass, jlong, jint, jint);
 
 #ifdef __cplusplus
 }

@@ -3,6 +3,9 @@
 
 #include <graphene.h>
 
+#include "src/shared/ninepatch.h"
+#include "src/shared/path.h"
+#include "src/shared/shader.h"
 #include "src/slots/gfx.h"
 
 #include "record.h"
@@ -29,6 +32,8 @@ void gfx_canvas_free(struct gfx_canvas *canvas)
 		if (canvas->ops[i].bitmap)
 			gfx_bitmap_unref(canvas->ops[i].bitmap);
 		free(canvas->ops[i].text);
+		path_unref(canvas->ops[i].path);
+		shader_unref(canvas->ops[i].paint.shader);
 	}
 	free(canvas->saved);
 	free(canvas->ops);
@@ -43,6 +48,7 @@ void gfx_canvas_save(struct gfx_canvas *canvas)
 	}
 	canvas->saved[canvas->n_saved++] = canvas->state;
 	canvas->state.clips = 0;
+	canvas->state.layer = false;
 }
 
 static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args);
@@ -53,7 +59,18 @@ void gfx_canvas_restore(struct gfx_canvas *canvas)
 		return;
 	if (canvas->state.clips)
 		add(canvas, OP_UNCLIP, NULL, (float[]){canvas->state.clips}, 1);
+	if (canvas->state.layer)
+		add(canvas, OP_UNLAYER, NULL, (float[]){0}, 0);
 	canvas->state = canvas->saved[--canvas->n_saved];
+}
+
+void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, int blend)
+{
+	gfx_canvas_save(canvas);
+	const struct gfx_rect none = {0};
+	const struct gfx_rect *b = bounds ? bounds : &none;
+	add(canvas, OP_LAYER, NULL, (float[]){b->left, b->top, b->right, b->bottom, bounds != NULL, alpha, blend}, 7);
+	canvas->state.layer = true;
 }
 
 void gfx_canvas_clip_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, enum gfx_clip_op op)
@@ -101,7 +118,7 @@ static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct
 	memset(op, 0, sizeof(*op));
 	op->matrix = canvas->state.matrix;
 	if (paint)
-		op->paint = *paint;
+		record_paint_copy(&op->paint, paint);
 	op->kind = kind;
 	memcpy(op->args, args, n_args * sizeof(*args));
 	return op;
@@ -139,11 +156,40 @@ void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_
 	op->text_len = len;
 }
 
+void gfx_canvas_draw_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, const struct gfx_paint *paint)
+{
+	add(canvas, OP_PATH, paint, (float[]){even_odd}, 1)->path = path_ref(path);
+}
+
+void gfx_canvas_clip_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, enum gfx_clip_op op)
+{
+	add(canvas, OP_CLIP_PATH, NULL, (float[]){even_odd, op}, 2)->path = path_ref(path);
+	canvas->state.clips++;
+}
+
+void gfx_canvas_draw_arc(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float start, float sweep, bool use_center, const struct gfx_paint *paint)
+{
+	add(canvas, OP_ARC, paint, (float[]){left, top, right, bottom, start, sweep, use_center}, 7);
+}
+
 // a Java-drawn one recorded itself in its draw(); a container draws its child
 void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *drawable, int width, int height)
 {
-	if (drawable->bitmap) {
-		struct gfx_paint opaque = {.color = 0xff000000, .filter_mode = -1};
+	if (drawable->ninepatch) {
+		struct ninepatch_slice *slices;
+		size_t n = ninepatch_slices(drawable->ninepatch, gfx_bitmap_get_width(drawable->bitmap), gfx_bitmap_get_height(drawable->bitmap), width, height, &slices);
+		for (size_t i = 0; i < n; i++) {
+			struct gfx_paint paint = {.color = slices[i].color, .filter_mode = drawable->filter_mode, .filter_color = drawable->filter_color};
+			if (slices[i].color == NINEPATCH_NO_COLOR) {
+				paint.color = 0xff000000;
+				gfx_canvas_draw_bitmap(canvas, drawable->bitmap, &slices[i].src, &slices[i].dst, &paint);
+			} else {
+				gfx_canvas_draw_rect(canvas, slices[i].dst.left, slices[i].dst.top, slices[i].dst.right, slices[i].dst.bottom, &paint);
+			}
+		}
+		free(slices);
+	} else if (drawable->bitmap) {
+		struct gfx_paint opaque = {.color = 0xff000000, .filter_mode = drawable->filter_mode, .filter_color = drawable->filter_color};
 		gfx_canvas_draw_bitmap(canvas, drawable->bitmap, NULL, &(struct gfx_rect){0, 0, width, height}, &opaque);
 	} else if (!drawable->drawable_ref && drawable->selected) {
 		gfx_canvas_draw_drawable(canvas, drawable->selected, width, height);
@@ -180,6 +226,29 @@ static void print_numbers(FILE *out, const float *values, size_t n, const char *
 	}
 }
 
+static void print_matrix(FILE *out, const graphene_matrix_t *m);
+
+// shader linear x0,y0 x1,y1 | radial x,y radius | sweep x,y, then #color@position ..., tile, matrix
+static void print_shader(FILE *out, const struct gfx_shader *shader)
+{
+	static const char *const kinds[] = {"linear", "radial", "sweep"};
+	fprintf(out, " shader %s ", kinds[shader->kind]);
+	print_numbers(out, &shader->x0, 2, ",");
+	if (shader->kind != SHADER_SWEEP)
+		fputc(' ', out);
+	if (shader->kind == SHADER_LINEAR)
+		print_numbers(out, &shader->x1, 2, ",");
+	else if (shader->kind == SHADER_RADIAL)
+		print_number(out, shader->radius);
+	for (size_t i = 0; i < shader->n; i++) {
+		fprintf(out, " #%08x@", shader->colors[i]);
+		print_number(out, shader->positions[i]);
+	}
+	if (shader->tile != SHADER_CLAMP)
+		fprintf(out, " tile %d", shader->tile);
+	print_matrix(out, &shader->matrix);
+}
+
 static void print_paint(FILE *out, const struct gfx_paint *paint)
 {
 	fprintf(out, " #%08x %s", paint->color, style_names[paint->style]);
@@ -190,6 +259,8 @@ static void print_paint(FILE *out, const struct gfx_paint *paint)
 	}
 	if (paint->filter_mode != -1)
 		fprintf(out, " filter %d #%08x", paint->filter_mode, paint->filter_color);
+	if (paint->shader)
+		print_shader(out, paint->shader);
 }
 
 // quoted UTF-8; quotes, backslashes and controls escaped
@@ -214,6 +285,22 @@ static void print_text(FILE *out, const uint16_t *text, size_t len)
 			fprintf(out, "%c%c%c%c", 0xF0 | c >> 18, 0x80 | (c >> 12 & 0x3F), 0x80 | (c >> 6 & 0x3F), 0x80 | (c & 0x3F));
 	}
 	fputc('"', out);
+}
+
+// SVG-like: M x,y L x,y Q x,y x,y C x,y x,y x,y Z
+static void print_path(FILE *out, const struct gfx_path *path)
+{
+	static const char letters[] = {[PATH_MOVE] = 'M', [PATH_LINE] = 'L', [PATH_QUAD] = 'Q', [PATH_CUBIC] = 'C', [PATH_CLOSE] = 'Z'};
+	const float *p = path->points;
+	for (size_t i = 0; i < path->n_verbs; i++) {
+		if (i)
+			fputc(' ', out);
+		fputc(letters[path->verbs[i]], out);
+		for (size_t j = 0; j < path_verb_points(path->verbs[i]); j++, p += 2) {
+			fputc(' ', out);
+			print_numbers(out, p, 2, ",");
+		}
+	}
 }
 
 // Android's 3x3, in getValues' order
@@ -271,6 +358,21 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 		case OP_UNCLIP:
 			fprintf(out, "unclip %d", (int)op->args[0]);
 			break;
+		case OP_LAYER:
+			fputs("layer", out);
+			if (op->args[4]) {
+				fputc(' ', out);
+				print_numbers(out, op->args, 2, ",");
+				fputc(' ', out);
+				print_numbers(out, op->args + 2, 2, ",");
+			}
+			fprintf(out, " alpha %d", (int)op->args[5]);
+			if (op->args[6] != -1)
+				fprintf(out, " mode %d", (int)op->args[6]);
+			break;
+		case OP_UNLAYER:
+			fputs("unlayer", out);
+			break;
 		case OP_BITMAP:
 			fprintf(out, "bitmap %dx%d src ", gfx_bitmap_get_width(op->bitmap), gfx_bitmap_get_height(op->bitmap));
 			print_numbers(out, op->args, 2, ",");
@@ -281,6 +383,30 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			fputc(' ', out);
 			print_numbers(out, op->args + 6, 2, ",");
 			fprintf(out, " #%08x", op->paint.color);
+			if (op->paint.filter_mode != -1)
+				fprintf(out, " filter %d #%08x", op->paint.filter_mode, op->paint.filter_color);
+			break;
+		case OP_PATH:
+		case OP_CLIP_PATH:
+			fputs(op->kind == OP_PATH ? "path " : "clip_path ", out);
+			print_path(out, op->path);
+			if (op->args[0])
+				fputs(" evenodd", out);
+			if (op->kind == OP_PATH)
+				print_paint(out, &op->paint);
+			else if (op->args[1] == GFX_CLIP_DIFFERENCE)
+				fputs(" difference", out);
+			break;
+		case OP_ARC:
+			fputs("arc ", out);
+			print_numbers(out, op->args, 2, ",");
+			fputc(' ', out);
+			print_numbers(out, op->args + 2, 2, ",");
+			fputc(' ', out);
+			print_numbers(out, op->args + 4, 2, " ");
+			if (op->args[6])
+				fputs(" center", out);
+			print_paint(out, &op->paint);
 			break;
 		case OP_TEXT:
 			fputs("text ", out);
@@ -299,7 +425,7 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 				fprintf(out, " align %d", op->paint.text_align);
 			break;
 		}
-		if (op->kind != OP_UNCLIP)
+		if (op->kind != OP_UNCLIP && op->kind != OP_UNLAYER)
 			print_matrix(out, &op->matrix);
 		fputc('\n', out);
 	}

@@ -36,6 +36,8 @@ grep -q "views row attached true$" "$log" || fail "the row wasn't attached with 
 grep -q "views row detached$" "$log" || fail "the row wasn't detached on removal"
 grep -q "views matrix 0,1 paint 2.0$" "$log" || fail "Matrix or Paint state wrong"
 grep -q "views widgets$" "$log" || fail "the widgets step didn't finish"
+grep -q "views drawables$" "$log" || fail "the drawables step didn't run"
+grep -q "views createFromPath missing: true$" "$log" || fail "createFromPath of a missing file isn't null"
 if ((headless)); then
   grep '^viewtree:' "$log" | diff -u "$here/views.viewtree" - || fail "view tree differs from views.viewtree"
   grep -q '^viewfreed: android.widget.LinearLayout$' "$log" || fail "x and y's column not freed"
@@ -47,8 +49,6 @@ if ((headless)); then
     grep -q "^viewfreed: android.widget.TextView \"$text\"$" "$log" || fail "\"$text\" not freed"
   done
 else
-  grep -q "views gsk drawables$" "$log" || fail "the gsk drawables step didn't run"
-  grep -q "views createFromPath missing: true$" "$log" || fail "createFromPath of a missing file isn't null"
   # the container that holds the nine-patch must go first: a ContainerPaintable line alone doesn't show it
   for kind in JavaPaintable NinePatchPaintable ContainerPaintable; do
     grep -q "^drawablefreed: $kind$" "$log" || fail "no $kind freed"

@@ -20,6 +20,7 @@ public class Paint {
 	public long paint; // native paint
 	private Xfermode xfermode;
 	private Shader shader;
+	private long native_shader; // the shader's native the native paint holds
 	private Align align = Align.LEFT;
 	private ColorFilter color_filter;
 	private Typeface typeface;
@@ -41,6 +42,7 @@ public class Paint {
 	private void copyJavaState(Paint src) {
 		xfermode = src.xfermode;
 		shader = src.shader;
+		native_shader = src.native_shader;
 		align = src.align;
 		color_filter = src.color_filter;
 		typeface = src.typeface;
@@ -179,7 +181,18 @@ public class Paint {
 
 	public Shader setShader(Shader shader) {
 		this.shader = shader;
+		getNativeInstance();
 		return shader;
+	}
+
+	/** @hide the native paint, its shader's native up to date (a new local matrix makes a new one) */
+	public long getNativeInstance() {
+		long native_instance = shader != null ? shader.getNativeInstance() : 0;
+		if (native_instance != native_shader) {
+			native_set_shader(paint, native_instance);
+			native_shader = native_instance;
+		}
+		return paint;
 	}
 
 	public enum Style {
@@ -477,6 +490,7 @@ public class Paint {
 		paint = native_create();
 		xfermode = null;
 		shader = null;
+		native_shader = 0;
 		align = Align.LEFT;
 		color_filter = null;
 		typeface = null;
@@ -500,6 +514,7 @@ public class Paint {
 	private static native void native_set_text_size(long paint, float size);
 	private static native float native_get_text_size(long paint);
 	private static native void native_set_color_filter(long paint, int mode, int color);
+	private static native void native_set_shader(long paint, long shader);
 	private static native void native_set_typeface(long paint, int family, int style);
 	private static native float native_measure_text(long paint, String text, int start, int end);
 	private static native void native_get_text_widths(long paint, String text, int start, int end, float[] widths);

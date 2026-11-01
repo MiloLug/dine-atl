@@ -49,6 +49,7 @@ public final class Bitmap implements Parcelable {
 	long bytes = 0; // used by native function AndroidBitmap_lockPixels()
 	private boolean recycled = false;
 	boolean mutable = true;
+	private byte[] ninePatchChunk; // BitmapFactory's, from a PNG's npTc
 
 	Bitmap(long texture) {
 		this(native_get_width(texture), native_get_height(texture), Config.ARGB_8888);
@@ -152,6 +153,14 @@ public final class Bitmap implements Parcelable {
 		recycled = true;
 	}
 
+	public byte[] getNinePatchChunk() {
+		return ninePatchChunk;
+	}
+
+	void setNinePatchChunk(byte[] chunk) {
+		ninePatchChunk = chunk;
+	}
+
 	public int getRowBytes() {
 		return stride;
 	}
@@ -167,6 +176,7 @@ public final class Bitmap implements Parcelable {
 		this.config = src.config;
 		this.hasAlpha = src.hasAlpha;
 		this.mutable = src.mutable;
+		this.ninePatchChunk = src.ninePatchChunk;
 		this.recycled = false;
 		src.texture = 0;
 		src.snapshot = 0;

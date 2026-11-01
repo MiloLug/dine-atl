@@ -600,10 +600,14 @@ public class BitmapFactory {
 		} catch (IOException e) {
 			return null;
 		}
-		final long texture = nativeDecodeByteArray(encoded.toByteArray(), 0, encoded.size());
+		byte[] bytes = encoded.toByteArray();
+		final long texture = nativeDecodeByteArray(bytes, 0, bytes.length);
 		if (texture == 0)
 			return null;
 		Bitmap decoded = new Bitmap(texture);
+		decoded.setNinePatchChunk(nativeNinePatchChunk(bytes, 0, bytes.length));
+		if (outPadding != null)
+			NinePatch.getPadding(decoded.getNinePatchChunk(), outPadding);
 		if (opts != null) {
 			opts.outWidth = decoded.getWidth();
 			opts.outHeight = decoded.getHeight();
@@ -694,5 +698,6 @@ public class BitmapFactory {
 	                                                        Rect padding, Options opts);
 	private static native Bitmap nativeDecodeAsset(int asset, Rect padding, Options opts);
 	private static native long nativeDecodeByteArray(byte[] data, int offset, int length);
+	private static native byte[] nativeNinePatchChunk(byte[] data, int offset, int length);
 	private static native boolean nativeIsSeekable(FileDescriptor fd);
 }

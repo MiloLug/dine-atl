@@ -223,4 +223,19 @@ public class TouchTest extends android.test.InstrumentationTestCase {
 		assertEquals(0xFF808080, colors[1]);
 		assertFalse(button[0].isPressed());
 	}
+
+	// apps call it from their touch listeners (Gravity Defied's keypad); no vibrator must not throw
+	public void testHapticFeedbackWithoutAVibrator() {
+		final Throwable[] thrown = new Throwable[1];
+		onMain(new Runnable() {
+			public void run() {
+				try {
+					new View(context).performHapticFeedback(1); // HapticFeedbackConstants.VIRTUAL_KEY
+				} catch (Throwable t) {
+					thrown[0] = t;
+				}
+			}
+		});
+		assertNull(String.valueOf(thrown[0]), thrown[0]);
+	}
 }

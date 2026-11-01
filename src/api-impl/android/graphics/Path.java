@@ -4,22 +4,22 @@ import android.annotation.UnsupportedAppUsage;
 import android.util.Log;
 
 /*
- * Path is implemented as a GskPath or a GskPathBuilder. It can only be one of the two at a time.
- * The methods getGskPath() and getBuilder() automatically convert between the two as needed.
+ * Path is a native struct gfx_path (src/shared/path.h). Copies and display lists share it; an edit
+ * of a shared one edits a copy, so every edit native returns the path to keep.
  */
 public class Path {
 
 	public enum FillType {
-		WINDING(0, false),         // GSK_FILL_RULE_WINDING
-		EVEN_ODD(1, false),        // GSK_FILL_RULE_EVEN_ODD
-		INVERSE_WINDING(0, true),  // GSK_FILL_RULE_WINDING
-		INVERSE_EVEN_ODD(1, true); // GSK_FILL_RULE_EVEN_ODD
+		WINDING(false, false),
+		EVEN_ODD(true, false),
+		INVERSE_WINDING(false, true),
+		INVERSE_EVEN_ODD(true, true);
 
-		public int fill_rule;
-		boolean inverse;
+		public final boolean even_odd;
+		final boolean inverse;
 
-		private FillType(int fill_rule, boolean inverse) {
-			this.fill_rule = fill_rule;
+		private FillType(boolean even_odd, boolean inverse) {
+			this.even_odd = even_odd;
 			this.inverse = inverse;
 		}
 	}
@@ -43,44 +43,44 @@ public class Path {
 		}
 	}
 
-	private long builder;
 	private long path;
 	private FillType fillType = FillType.WINDING;
 
-	public Path() {}
-
-	public Path(Path path) {
-		this.path = native_ref_path(path.getGskPath());
+	public Path() {
+		path = native_new();
 	}
 
-	private long getBuilder() {
-		if (builder == 0 || path != 0) {
-			builder = native_create_builder(path, builder);
-			path = 0;
+	public Path(Path src) {
+		if (src == null) {
+			path = native_new();
+			return;
 		}
-		return builder;
+		path = native_ref(src.path);
+		fillType = src.fillType;
 	}
 
 	@UnsupportedAppUsage
-	public long getGskPath() {
-		if (path == 0) {
-			path = native_create_path(builder);
-		}
+	public long getNativePath() {
 		return path;
 	}
 
 	public void reset() {
-		native_reset(path, builder);
-		path = 0;
-		builder = 0;
+		path = native_reset(path);
 	}
 
 	public void rewind() {
-		reset();
+		path = native_reset(path);
+	}
+
+	public void set(Path src) {
+		if (src == this)
+			return;
+		path = native_add_path(native_reset(path), src.path, 0);
+		fillType = src.fillType;
 	}
 
 	public void close() {
-		native_close(getBuilder());
+		path = native_close(path);
 	}
 
 	public void setFillType(FillType fillType) {
@@ -91,12 +91,44 @@ public class Path {
 		return fillType;
 	}
 
+	public boolean isInverseFillType() {
+		return fillType.inverse;
+	}
+
+	public void toggleInverseFillType() {
+		fillType = FillType.values()[fillType.ordinal() ^ 2];
+	}
+
 	public void moveTo(float x, float y) {
-		native_move_to(getBuilder(), x, y);
+		path = native_move_to(path, x, y, false);
+	}
+
+	public void rMoveTo(float dx, float dy) {
+		path = native_move_to(path, dx, dy, true);
 	}
 
 	public void lineTo(float x, float y) {
-		native_line_to(getBuilder(), x, y);
+		path = native_line_to(path, x, y, false);
+	}
+
+	public void rLineTo(float dx, float dy) {
+		path = native_line_to(path, dx, dy, true);
+	}
+
+	public void quadTo(float x1, float y1, float x2, float y2) {
+		path = native_quad_to(path, x1, y1, x2, y2, false);
+	}
+
+	public void rQuadTo(float dx1, float dy1, float dx2, float dy2) {
+		path = native_quad_to(path, dx1, dy1, dx2, dy2, true);
+	}
+
+	public void cubicTo(float x1, float y1, float x2, float y2, float x3, float y3) {
+		path = native_cubic_to(path, x1, y1, x2, y2, x3, y3, false);
+	}
+
+	public void rCubicTo(float x1, float y1, float x2, float y2, float x3, float y3) {
+		path = native_cubic_to(path, x1, y1, x2, y2, x3, y3, true);
 	}
 
 	public void arcTo(RectF oval, float startAngle, float sweepAngle, boolean forceMoveTo) {
@@ -108,31 +140,7 @@ public class Path {
 	}
 
 	public void arcTo(float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean forceMoveTo) {
-		native_arc_to(getBuilder(), left, top, right, bottom, startAngle, sweepAngle, forceMoveTo);
-	}
-
-	public void cubicTo(float x1, float y1, float x2, float y2, float x3, float y3) {
-		native_cubic_to(getBuilder(), x1, y1, x2, y2, x3, y3);
-	}
-
-	public void quadTo(float x1, float y1, float x2, float y2) {
-		native_quad_to(getBuilder(), x1, y1, x2, y2);
-	}
-
-	public void rMoveTo(float x, float y) {
-		native_rel_move_to(getBuilder(), x, y);
-	}
-
-	public void rLineTo(float x, float y) {
-		native_rel_line_to(getBuilder(), x, y);
-	}
-
-	public void rCubicTo(float x1, float y1, float x2, float y2, float x3, float y3) {
-		native_rel_cubic_to(getBuilder(), x1, y1, x2, y2, x3, y3);
-	}
-
-	public void rQuadTo(float x1, float y1, float x2, float y2) {
-		native_rel_quad_to(getBuilder(), x1, y1, x2, y2);
+		path = native_arc_to(path, left, top, right, bottom, startAngle, sweepAngle, forceMoveTo);
 	}
 
 	public void addArc(RectF oval, float startAngle, float sweepAngle) {
@@ -140,34 +148,35 @@ public class Path {
 	}
 
 	public void addArc(float left, float top, float right, float bottom, float startAngle, float sweepAngle) {
-		native_add_arc(getBuilder(), left, top, right, bottom, startAngle, sweepAngle);
+		path = native_add_arc(path, left, top, right, bottom, startAngle, sweepAngle);
 	}
 
-	public void addPath(Path path, Matrix matrix) {
-		native_add_path(getBuilder(), path.getGskPath(), matrix.ni());
+	public void addPath(Path src, Matrix matrix) {
+		path = native_add_path(path, src.path, matrix != null ? matrix.ni() : 0);
 	}
 
-	public void addPath(Path path, float deltaX, float deltaY) {
+	public void addPath(Path src, float dx, float dy) {
 		Matrix matrix = new Matrix();
-		matrix.setTranslate(deltaX, deltaY);
-		addPath(path, matrix);
+		matrix.setTranslate(dx, dy);
+		addPath(src, matrix);
 	}
 
-	public void addPath(Path path) {
-		addPath(path, Matrix.IDENTITY_MATRIX);
+	public void addPath(Path src) {
+		path = native_add_path(path, src.path, 0);
 	}
 
 	public void addRect(RectF rect, Direction direction) {
 		addRect(rect.left, rect.top, rect.right, rect.bottom, direction);
 	}
 
-	public void addRect(float left, float top, float right, float bottom, Path.Direction dir) {
-		native_add_rect(getBuilder(), left, top, right, bottom);
+	public void addRect(float left, float top, float right, float bottom, Direction direction) {
+		path = native_add_rect(path, left, top, right, bottom, direction == Direction.CCW);
 	}
 
-	public void addRoundRect(float left, float top, float right, float bottom,
-	                         float[] radii, Direction direction) {
-		native_add_round_rect(getBuilder(), left, top, right, bottom, radii);
+	public void addRoundRect(float left, float top, float right, float bottom, float[] radii, Direction direction) {
+		if (radii.length < 8)
+			throw new ArrayIndexOutOfBoundsException("radii[] needs 8 values");
+		path = native_add_round_rect(path, left, top, right, bottom, radii, direction == Direction.CCW);
 	}
 
 	public void addRoundRect(RectF rect, float[] radii, Direction direction) {
@@ -178,15 +187,12 @@ public class Path {
 		addRoundRect(rect.left, rect.top, rect.right, rect.bottom, rx, ry, direction);
 	}
 
-	public void addRoundRect(float left, float top, float right, float bottom,
-	                         float rx, float ry, Direction direction) {
+	public void addRoundRect(float left, float top, float right, float bottom, float rx, float ry, Direction direction) {
 		addRoundRect(left, top, right, bottom, new float[] {rx, ry, rx, ry, rx, ry, rx, ry}, direction);
 	}
 
 	public void addOval(float left, float top, float right, float bottom, Direction direction) {
-		float rx = (right - left) / 2;
-		float ry = (bottom - top) / 2;
-		addRoundRect(left, top, right, bottom, new float[] {rx, ry, rx, ry, rx, ry, rx, ry}, direction);
+		path = native_add_oval(path, left, top, right, bottom, direction == Direction.CCW);
 	}
 
 	public void addOval(RectF rect, Direction direction) {
@@ -194,23 +200,49 @@ public class Path {
 	}
 
 	public void addCircle(float x, float y, float radius, Direction direction) {
-		Log.w("Path", "STUB: addCircle");
+		addOval(x - radius, y - radius, x + radius, y + radius, direction);
 	}
 
 	public void transform(Matrix matrix) {
-		builder = native_transform(getGskPath(), matrix.ni());
-		path = 0;
+		path = native_transform(path, matrix.ni());
 	}
 
-	public void transform(Matrix matrix, Path out_path) {
-		if (out_path == null)
-			out_path = this;
-
-		out_path.transform(matrix);
+	public void transform(Matrix matrix, Path dst) {
+		if (dst == null || dst == this) {
+			transform(matrix);
+			return;
+		}
+		dst.set(this);
+		dst.transform(matrix);
 	}
 
+	public void offset(float dx, float dy) {
+		Matrix matrix = new Matrix();
+		matrix.setTranslate(dx, dy);
+		transform(matrix);
+	}
+
+	public void offset(float dx, float dy, Path dst) {
+		Matrix matrix = new Matrix();
+		matrix.setTranslate(dx, dy);
+		transform(matrix, dst);
+	}
+
+	public void setLastPoint(float x, float y) {
+		path = native_set_last_point(path, x, y);
+	}
+
+	// exact is unused, as on Android: the bounds of the control points
 	public void computeBounds(RectF bounds, boolean exact) {
-		native_get_bounds(getGskPath(), bounds);
+		native_get_bounds(path, bounds);
+	}
+
+	public boolean isEmpty() {
+		return native_is_empty(path);
+	}
+
+	public boolean isRect(RectF rect) {
+		return native_is_rect(path, rect != null ? rect : new RectF());
 	}
 
 	public boolean op(Path path, Op op) {
@@ -224,13 +256,13 @@ public class Path {
 		path2.computeBounds(bounds2, false);
 		// special case for composeUI ShapeContainingUtil.isInPath which puts a tiny rectangle in path2 to represent a point
 		if (op == Op.INTERSECT && bounds2.width() < 1 && bounds2.height() < 1) {
-			if (native_contains(path1.path, path1.fillType.fill_rule, path1.fillType.inverse, bounds2.centerX(), bounds2.centerY()))
+			if (path1.contains(bounds2.centerX(), bounds2.centerY()))
 				set(path2);
 			else
 				reset();
 			return true;
 		} else if (op == Op.INTERSECT && bounds1.width() < 1 && bounds1.height() < 1) {
-			if (native_contains(path2.path, path2.fillType.fill_rule, path2.fillType.inverse, bounds1.centerX(), bounds1.centerY()))
+			if (path2.contains(bounds1.centerX(), bounds1.centerY()))
 				set(path1);
 			else
 				reset();
@@ -245,8 +277,8 @@ public class Path {
 		return true;
 	}
 
-	public boolean isEmpty() {
-		return path == 0 && builder == 0;
+	private boolean contains(float x, float y) {
+		return native_contains(path, fillType.even_odd, x, y) ^ fillType.inverse;
 	}
 
 	public void incReserve(int additionalPoints) {}
@@ -256,52 +288,35 @@ public class Path {
 		return false;
 	}
 
-	public void set(Path src) {
-		reset();
-		addPath(src);
-	}
-
-	public void offset(float dx, float dy) {
-		Matrix matrix = new Matrix();
-		matrix.setTranslate(dx, dy);
-		transform(matrix);
-	}
-
-	public void setLastPoint(float x, float y) {
-		Log.w("Path", "STUB: setLastPoint");
-	}
-
-	public void toggleInverseFillType() {}
-
 	@SuppressWarnings("deprecation")
 	@Override
 	protected void finalize() throws Throwable {
 		try {
-			reset();
+			native_unref(path);
 		} finally {
 			super.finalize();
 		}
 	}
 
-	private static native long native_create_builder(long path, long builder);
-	private static native long native_create_path(long builder);
-	private static native long native_ref_path(long path);
-	private static native void native_reset(long path, long builder);
-	private static native void native_close(long builder);
-	private static native void native_move_to(long builder, float x, float y);
-	private static native void native_line_to(long builder, float x, float y);
-	private static native void native_cubic_to(long builder, float x1, float y1, float x2, float y2, float x3, float y3);
-	private static native void native_quad_to(long builder, float x1, float y1, float x2, float y2);
-	private static native void native_arc_to(long builder, float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean forceMoveTo);
-	private static native void native_rel_move_to(long builder, float x, float y);
-	private static native void native_rel_line_to(long builder, float x, float y);
-	private static native void native_rel_cubic_to(long builder, float x1, float y1, float x2, float y2, float x3, float y3);
-	private static native void native_rel_quad_to(long builder, float x1, float y1, float x2, float y2);
-	private static native void native_add_arc(long builder, float left, float top, float right, float bottom, float startAngle, float sweepAngle);
-	private static native void native_add_path(long builder, long path, long matrix);
-	private static native void native_add_rect(long builder, float left, float top, float right, float bottom);
-	private static native void native_add_round_rect(long builder, float left, float top, float right, float bottom, float[] radii);
-	private static native void native_get_bounds(long path, RectF rect);
+	private static native long native_new();
+	private static native long native_ref(long path);
+	private static native void native_unref(long path);
+	private static native long native_reset(long path);
+	private static native long native_close(long path);
+	private static native long native_move_to(long path, float x, float y, boolean relative);
+	private static native long native_line_to(long path, float x, float y, boolean relative);
+	private static native long native_quad_to(long path, float x1, float y1, float x2, float y2, boolean relative);
+	private static native long native_cubic_to(long path, float x1, float y1, float x2, float y2, float x3, float y3, boolean relative);
+	private static native long native_arc_to(long path, float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean forceMoveTo);
+	private static native long native_add_arc(long path, float left, float top, float right, float bottom, float startAngle, float sweepAngle);
+	private static native long native_add_path(long path, long src, long matrix);
+	private static native long native_add_rect(long path, float left, float top, float right, float bottom, boolean ccw);
+	private static native long native_add_oval(long path, float left, float top, float right, float bottom, boolean ccw);
+	private static native long native_add_round_rect(long path, float left, float top, float right, float bottom, float[] radii, boolean ccw);
 	private static native long native_transform(long path, long matrix);
-	private static native boolean native_contains(long path, int fill_rule, boolean inverse, float x, float y);
+	private static native long native_set_last_point(long path, float x, float y);
+	private static native void native_get_bounds(long path, RectF rect);
+	private static native boolean native_contains(long path, boolean even_odd, float x, float y);
+	private static native boolean native_is_empty(long path);
+	private static native boolean native_is_rect(long path, RectF rect);
 }

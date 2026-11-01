@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "src/slots/ui.h"
 
@@ -84,8 +85,9 @@ struct ui_window {
 	struct ui_dialog_state *dialog; // NULL for the app's window
 };
 
-/* What the backend does besides keeping the records; on the Android main thread, after the
- * records changed. */
+/* What the backend does besides keeping the records, after the records changed. The view and
+ * property hooks also run on app threads (apps build views off the main one); the window, layout
+ * and draw hooks only on the Android main thread. */
 void records_window_created(struct ui_window *window, void *surface);
 void records_view_created(struct ui_view *view);
 void records_child_added(struct ui_view *parent, struct ui_view *child, size_t index);
@@ -142,9 +144,13 @@ void records_key(const struct atl_key *key);
 void records_test_view_freed(const struct ui_view *view);
 /* With ATL_DUMP_DISPLAYLIST set, prints the display list the view's draw just recorded. */
 void records_test_view_drawn(const struct ui_view *view);
+/* A pass that drew a view, timed on the Android thread: while such passes come at most 500 ms
+ * apart, an "atl frames" line every 5 s with their count and draw times. */
+void records_test_frame_drawn(const struct timespec *start, const struct timespec *end);
 #else
 static inline void records_test_view_freed(const struct ui_view *view) {}
 static inline void records_test_view_drawn(const struct ui_view *view) {}
+static inline void records_test_frame_drawn(const struct timespec *start, const struct timespec *end) {}
 #endif
 
 #endif

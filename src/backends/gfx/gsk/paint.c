@@ -2,6 +2,7 @@
 
 #include "src/api-impl-jni/graphics/AndroidPaint.h"
 #include "src/api-impl-jni/graphics/java_paintable.h"
+#include "src/shared/shader.h"
 #include "src/slots/gfx.h"
 
 struct gfx_paint *gfx_paint_new(void)
@@ -21,6 +22,7 @@ struct gfx_paint *gfx_paint_clone(const struct gfx_paint *gfx_paint)
 	struct AndroidPaint *clone = g_memdup2(paint, sizeof(struct AndroidPaint));
 	clone->gsk_stroke = gsk_stroke_copy(paint->gsk_stroke);
 	clone->font = pango_font_description_copy(paint->font);
+	shader_ref(clone->shader);
 	return (struct gfx_paint *)clone;
 }
 
@@ -29,7 +31,16 @@ void gfx_paint_free(struct gfx_paint *gfx_paint)
 	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
 	gsk_stroke_free(paint->gsk_stroke);
 	pango_font_description_free(paint->font);
+	shader_unref(paint->shader);
 	g_free(paint);
+}
+
+void gfx_paint_set_shader(struct gfx_paint *gfx_paint, struct gfx_shader *shader)
+{
+	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
+	shader_ref(shader);
+	shader_unref(paint->shader);
+	paint->shader = shader;
 }
 
 void gfx_paint_set_color(struct gfx_paint *gfx_paint, uint32_t color)

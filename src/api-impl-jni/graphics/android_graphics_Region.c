@@ -3,6 +3,8 @@
 #include <gdk/gdk.h>
 #include <gsk/gsk.h>
 
+#include "src/backends/gfx/gsk/canvas.h"
+
 #include "../defines.h"
 
 #include "../generated_headers/android_graphics_Region.h"
@@ -119,12 +121,8 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetRect(JNIEnv *en
 	return !cairo_region_is_empty(region);
 }
 
-JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetPath(JNIEnv *env, jclass class, jlong dst_ptr, jlong path_ptr, jlong clip_ptr, jint fill_rule, jboolean inverse)
+static jboolean set_path(cairo_region_t *dst, GskPath *path, cairo_region_t *clip, cairo_fill_rule_t fill_rule, jboolean inverse)
 {
-	cairo_region_t *dst = to_region(dst_ptr);
-	GskPath *path = _PTR(path_ptr);
-	cairo_region_t *clip = clip_ptr ? to_region(clip_ptr) : NULL;
-
 	region_clear(dst);
 
 	if (clip && cairo_region_is_empty(clip))
@@ -204,6 +202,14 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetPath(JNIEnv *en
 	cairo_region_destroy(raster);
 
 	return !cairo_region_is_empty(dst);
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeSetPath(JNIEnv *env, jclass class, jlong dst, jlong path_ptr, jlong clip, jboolean even_odd, jboolean inverse)
+{
+	GskPath *path = gsk_path_from_gfx(_PTR(path_ptr));
+	jboolean set = set_path(to_region(dst), path, clip ? to_region(clip) : NULL, even_odd ? CAIRO_FILL_RULE_EVEN_ODD : CAIRO_FILL_RULE_WINDING, inverse);
+	gsk_path_unref(path);
+	return set;
 }
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Region_nativeIsEmpty(JNIEnv *env, jclass class, jlong region)

@@ -28,10 +28,18 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawRect
 /*
  * Class:     android_atl_ATLCanvas
  * Method:    native_drawPath
- * Signature: (JJIJ)V
+ * Signature: (JJZJ)V
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawPath
-  (JNIEnv *, jobject, jlong, jlong, jint, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jboolean, jlong);
+
+/*
+ * Class:     android_atl_ATLCanvas
+ * Method:    native_drawArc
+ * Signature: (JFFFFFFZJ)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawArc
+  (JNIEnv *, jobject, jlong, jfloat, jfloat, jfloat, jfloat, jfloat, jfloat, jboolean, jlong);
 
 /*
  * Class:     android_atl_ATLCanvas
@@ -56,6 +64,14 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1rotate
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1save
   (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     android_atl_ATLCanvas
+ * Method:    native_saveLayer
+ * Signature: (JZFFFFII)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1saveLayer
+  (JNIEnv *, jobject, jlong, jboolean, jfloat, jfloat, jfloat, jfloat, jint, jint);
 
 /*
  * Class:     android_atl_ATLCanvas
@@ -124,10 +140,10 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect
 /*
  * Class:     android_atl_ATLCanvas
  * Method:    native_clipPath
- * Signature: (JJI)V
+ * Signature: (JJZZ)V
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipPath
-  (JNIEnv *, jobject, jlong, jlong, jint);
+  (JNIEnv *, jobject, jlong, jlong, jboolean, jboolean);
 
 /*
  * Class:     android_atl_ATLCanvas

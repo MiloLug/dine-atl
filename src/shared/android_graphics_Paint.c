@@ -22,6 +22,11 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1recycle(JNIEnv *env, 
 	gfx_paint_free(_PTR(paint_ptr));
 }
 
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1shader(JNIEnv *env, jclass clazz, jlong paint_ptr, jlong shader)
+{
+	gfx_paint_set_shader(_PTR(paint_ptr), _PTR(shader));
+}
+
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color(JNIEnv *env, jclass clazz, jlong paint_ptr, jint color)
 {
 	gfx_paint_set_color(_PTR(paint_ptr), color);

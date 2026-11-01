@@ -69,7 +69,7 @@ public class Region implements Parcelable {
 
 	public boolean setPath(Path path, Region clip) {
 		Path.FillType fillType = path.getFillType();
-		return nativeSetPath(region, path.getGskPath(), clip == null ? 0 : clip.region, fillType.fill_rule, fillType.inverse);
+		return nativeSetPath(region, path.getNativePath(), clip == null ? 0 : clip.region, fillType.even_odd, fillType.inverse);
 	}
 
 	public boolean isEmpty() {
@@ -238,7 +238,7 @@ public class Region implements Parcelable {
 	private static native void nativeDestructor(long region);
 	private static native void nativeSetRegion(long dst, long src);
 	private static native boolean nativeSetRect(long dst, int left, int top, int right, int bottom);
-	private static native boolean nativeSetPath(long dst, long path, long clip, int fill_type, boolean inverse);
+	private static native boolean nativeSetPath(long dst, long path, long clip, boolean even_odd, boolean inverse);
 	private static native boolean nativeIsEmpty(long region);
 	private static native boolean nativeIsRect(long region);
 	private static native boolean nativeIsComplex(long region);

@@ -552,15 +552,43 @@ public class Canvas {
 	}
 
 	public int saveLayer(RectF bounds, Paint paint, int flags) {
-		return save();
+		return saveLayer(bounds, paint);
 	}
 
 	public int saveLayer(RectF bounds, Paint paint) {
-		return save();
+		return atlSaveLayer(bounds, paint != null ? paint.getAlpha() : 255, paint != null && paint.getXfermode() instanceof PorterDuffXfermode ? ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode : -1);
+	}
+
+	public int saveLayer(float left, float top, float right, float bottom, Paint paint, int flags) {
+		return saveLayer(new RectF(left, top, right, bottom), paint);
 	}
 
 	public int saveLayer(float left, float top, float right, float bottom, Paint paint) {
-		return save();
+		return saveLayer(new RectF(left, top, right, bottom), paint);
+	}
+
+	public int saveLayerAlpha(RectF bounds, int alpha, int flags) {
+		return saveLayerAlpha(bounds, alpha);
+	}
+
+	public int saveLayerAlpha(RectF bounds, int alpha) {
+		return atlSaveLayer(bounds, Math.min(255, Math.max(0, alpha)), -1);
+	}
+
+	public int saveLayerAlpha(float left, float top, float right, float bottom, int alpha, int flags) {
+		return saveLayerAlpha(new RectF(left, top, right, bottom), alpha);
+	}
+
+	public int saveLayerAlpha(float left, float top, float right, float bottom, int alpha) {
+		return saveLayerAlpha(new RectF(left, top, right, bottom), alpha);
+	}
+
+	/** @hide every saveLayer's: bounds null for none; mode a PorterDuff.Mode's nativeInt, -1 for SRC_OVER */
+	public int atlSaveLayer(RectF bounds, int alpha, int mode) {
+		synchronized (bitmap) {
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.atlSaveLayer(bounds, alpha, mode);
+		}
 	}
 
 	public void drawOval(RectF oval, Paint paint) {
@@ -595,7 +623,10 @@ public class Canvas {
 	}
 
 	public boolean clipPath(Path path, Region.Op op) {
-		return clipPath(path);
+		synchronized (bitmap) {
+			atl_canvas.handle = bitmap.getSnapshot();
+			return atl_canvas.clipPath(path, op);
+		}
 	}
 
 	public boolean isHardwareAccelerated() {
@@ -617,11 +648,11 @@ public class Canvas {
 		return clipRect(rect.left, rect.top, rect.right, rect.bottom, op);
 	}
 
-	public void drawArc(float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean includeCenter, Paint paint) {
-		Path path = new Path();
-		path.addArc(left, top, right, bottom, startAngle, sweepAngle);
-		drawPath(path, paint);
-		path.reset();
+	public void drawArc(float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean useCenter, Paint paint) {
+		synchronized (bitmap) {
+			atl_canvas.handle = bitmap.getSnapshot();
+			atl_canvas.drawArc(left, top, right, bottom, startAngle, sweepAngle, useCenter, paint);
+		}
 	}
 
 	public boolean getClipBounds(Rect outRect) {

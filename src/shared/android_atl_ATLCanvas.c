@@ -3,6 +3,7 @@
 
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_atl_ATLCanvas.h"
+#include "src/shared/path.h"
 #include "src/slots/gfx.h"
 
 /* A 0 handle draws nothing: a canvas whose recording ended (View.atlDraw, RenderNode.end) or one
@@ -12,6 +13,12 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1save(JNIEnv *env, jcla
 {
 	if (canvas)
 		gfx_canvas_save(_PTR(canvas));
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1saveLayer(JNIEnv *env, jclass class, jlong canvas, jboolean has_bounds, jfloat left, jfloat top, jfloat right, jfloat bottom, jint alpha, jint mode)
+{
+	if (canvas)
+		gfx_canvas_save_layer(_PTR(canvas), has_bounds ? &(struct gfx_rect){left, top, right, bottom} : NULL, alpha, mode);
 }
 
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1restore(JNIEnv *env, jclass class, jlong canvas)
@@ -99,4 +106,22 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawText(JNIEnv *env, 
 	(*env)->GetStringRegion(env, text, 0, len, units);
 	gfx_canvas_draw_text(_PTR(canvas), units, len, x, y, _PTR(paint));
 	free(units);
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawPath(JNIEnv *env, jclass class, jlong canvas, jlong path, jboolean even_odd, jlong paint)
+{
+	if (canvas)
+		gfx_canvas_draw_path(_PTR(canvas), _PTR(path), even_odd, _PTR(paint));
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipPath(JNIEnv *env, jclass class, jlong canvas, jlong path, jboolean even_odd, jboolean difference)
+{
+	if (canvas)
+		gfx_canvas_clip_path(_PTR(canvas), _PTR(path), even_odd, difference ? GFX_CLIP_DIFFERENCE : GFX_CLIP_INTERSECT);
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawArc(JNIEnv *env, jclass class, jlong canvas, jfloat left, jfloat top, jfloat right, jfloat bottom, jfloat start, jfloat sweep, jboolean use_center, jlong paint)
+{
+	if (canvas)
+		gfx_canvas_draw_arc(_PTR(canvas), left, top, right, bottom, start, sweep, use_center, _PTR(paint));
 }

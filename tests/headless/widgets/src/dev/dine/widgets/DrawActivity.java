@@ -5,13 +5,20 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Region;
+import android.graphics.Shader;
+import android.graphics.SweepGradient;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.Layout;
 import android.text.StaticLayout;
@@ -22,17 +29,18 @@ import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
-/* A view drawn through Canvas, text and a Layout included, for run-draw.sh: headless compares its
- * display lists with draw.displaylist, gtk draws it. It redraws after invalidate(), not after a
- * layout at the same size, and after showing again from INVISIBLE with an invalidate() while
- * hidden; then it finishes. Beside it, a view scrolled by 10 px keeps its selector background in
- * place. */
+/* A view drawn through Canvas, text, a Layout, paths, arcs, gradients, a layer and a nine-patch
+ * included, for run-draw.sh: headless compares its display lists with draw.displaylist, gtk draws
+ * it. It redraws after invalidate(), not after a layout at the same size, and after showing again
+ * from INVISIBLE with an invalidate() while hidden; then it finishes. Beside it, a view scrolled by
+ * 10 px keeps its selector background in place. */
 public class DrawActivity extends Activity {
 	static final String TAG = "widgets";
 	protected FrameLayout root;
 
 	private class DrawView extends View {
 		private final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
+		private final Drawable frame = getResources().getDrawable(R.drawable.frame);
 		private int draws;
 
 		DrawView(Context context) {
@@ -101,6 +109,45 @@ public class DrawActivity extends Activity {
 			canvas.translate(330, 160);
 			layout.draw(canvas);
 			canvas.restore();
+
+			Path shape = new Path();
+			shape.moveTo(10, 330);
+			shape.lineTo(60, 330);
+			shape.quadTo(60, 380, 10, 380);
+			shape.close();
+			Path circle = new Path();
+			circle.addCircle(35, 355, 20, Path.Direction.CW);
+			canvas.save();
+			canvas.clipPath(circle);
+			canvas.drawPath(shape, fill);
+			canvas.restore();
+			canvas.drawArc(new RectF(70, 330, 120, 380), 0, 90, true, blue);
+			canvas.drawArc(new RectF(130, 330, 180, 380), 0, 360, true, stroke); // the whole oval: no radius line
+			canvas.drawArc(new RectF(190, 330, 240, 380), 180, 90, false, stroke);
+			Paint gradient = new Paint();
+			gradient.setShader(new LinearGradient(250, 330, 300, 330, 0xffff0000, 0xff0000ff, Shader.TileMode.MIRROR));
+			canvas.drawRect(250, 330, 350, 380, gradient);
+			Matrix shift = new Matrix();
+			shift.setTranslate(10, 0);
+			gradient.getShader().setLocalMatrix(shift); // after setShader: the next draw takes it
+			canvas.drawRect(250, 385, 350, 395, gradient);
+			Paint sweep = new Paint();
+			sweep.setShader(new SweepGradient(505, 355, new int[] {0xffff0000, 0xff00ff00, 0xff0000ff}, null));
+			canvas.drawCircle(505, 355, 25, sweep);
+			GradientDrawable ring = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] {0xffff0000, 0xff0000ff});
+			ring.setGradientType(GradientDrawable.SWEEP_GRADIENT);
+			ring.setBounds(540, 330, 590, 380);
+			ring.draw(canvas);
+			canvas.saveLayerAlpha(360, 330, 410, 380, 128);
+			canvas.drawRect(360, 330, 410, 380, blue);
+			canvas.drawCircle(385, 355, 10, copy);
+			canvas.restore();
+			frame.setBounds(420, 330, 460, 350); // stretched to 40x20; tinted below
+			frame.draw(canvas);
+			frame.setTint(0xff00ff00);
+			frame.setBounds(470, 330, 473, 333); // smaller than its fixed parts: they shrink
+			frame.draw(canvas);
+			frame.setTintList(null);
 
 			draws++;
 			Log.i(TAG, "widgets draw layout lines " + layout.getLineCount());
