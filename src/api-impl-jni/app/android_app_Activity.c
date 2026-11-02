@@ -53,8 +53,7 @@ static void file_dialog_callback(GObject *source_object, GAsyncResult *res, gpoi
 		char *uri = g_file_get_uri(file);
 
 		(*env)->CallVoidMethod(env, d->activity, fileChooserResultCallback, d->request_code, RESULT_OK, d->action, _JSTRING(uri));
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 
 		g_free(uri);
 		g_object_unref(file);

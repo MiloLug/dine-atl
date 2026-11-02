@@ -197,7 +197,7 @@ public class SurfaceView extends View {
 			if (getWidth() == 0 || getHeight() == 0)
 				return null;
 
-			return new ATLCanvas(native_createSnapshot());
+			return new ATLCanvas(native_createSnapshot(), getWidth(), getHeight());
 		}
 
 		/**

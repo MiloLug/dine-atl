@@ -152,9 +152,7 @@ static gboolean on_new_endpoint(Connector1 *connector, GDBusMethodInvocation *in
 
 	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-	}
+	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
 	return TRUE;
 }
@@ -182,9 +180,7 @@ static gboolean on_message(Connector1 *connector, GDBusMethodInvocation *invocat
 
 	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-	}
+	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
 	return TRUE;
 }

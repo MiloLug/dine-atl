@@ -1,11 +1,14 @@
 package android.graphics.drawable;
 
+import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.Resources.Theme;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -18,6 +21,7 @@ import org.xmlpull.v1.XmlPullParserException;
 public class BitmapDrawable extends Drawable {
 
 	private Bitmap bitmap;
+	private final PaintableFilter filter = new PaintableFilter();
 
 	public BitmapDrawable() {
 	}
@@ -57,6 +61,46 @@ public class BitmapDrawable extends Drawable {
 		if (bitmap == null)
 			throw new XmlPullParserException("<bitmap> needs a valid `src' attribute");
 		adoptPaintable(native_paintable(bitmap.getTexture()));
+		filter.apply(this);
+	}
+
+	@Override
+	public void setColorFilter(ColorFilter colorFilter) {
+		filter.colorFilter = colorFilter;
+		filter.apply(this);
+		invalidateSelf();
+	}
+
+	@Override
+	public ColorFilter getColorFilter() {
+		return filter.colorFilter;
+	}
+
+	@Override
+	public void setTintList(ColorStateList tint) {
+		filter.tint = tint;
+		filter.apply(this);
+		invalidateSelf();
+	}
+
+	@Override
+	public void setTintMode(PorterDuff.Mode tintMode) {
+		filter.tintMode = tintMode;
+		filter.apply(this);
+		invalidateSelf();
+	}
+
+	@Override
+	public boolean isStateful() {
+		return filter.isStateful();
+	}
+
+	@Override
+	protected boolean onStateChange(int[] stateSet) {
+		if (!filter.isStateful())
+			return false;
+		filter.apply(this);
+		return true;
 	}
 
 	@Override

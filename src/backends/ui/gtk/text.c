@@ -70,7 +70,7 @@ void ui_text_set_color(struct ui_view *view, uint32_t color)
 	g_free(css_string);
 
 	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_set_data(G_OBJECT(widget), "color_style_provider", css_provider);
+	g_object_set_data_full(G_OBJECT(widget), "color_style_provider", css_provider, g_object_unref);
 }
 #pragma GCC diagnostic pop
 

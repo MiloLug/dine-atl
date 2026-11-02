@@ -45,8 +45,7 @@ static void row_view_release(gpointer view)
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->CallVoidMethod(env, view, handle_cache.view.dispatchDetachedFromWindow);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	_UNREF(view);
 }
 
@@ -73,8 +72,7 @@ static void bind_listitem_cb(GtkListItemFactory *factory, GtkListItem *list_item
 	else if (old_view)
 		_UNREF(old_view);
 	(*env)->CallVoidMethod(env, view, handle_cache.view.dispatchAttachedToWindow);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	g_object_set_data_full(G_OBJECT(list_item), "atl-view", _REF(view), row_view_release);
 	GtkWidget *child = gtk_widget_get_parent(GTK_WIDGET(_PTR(_GET_LONG_FIELD(view, "widget"))));
 	jobject background_drawable = _GET_OBJ_FIELD(this, "popupBackground", "Landroid/graphics/drawable/Drawable;");

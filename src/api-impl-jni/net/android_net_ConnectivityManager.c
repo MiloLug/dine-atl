@@ -25,8 +25,7 @@ static void on_network_changed(GNetworkMonitor *self, gboolean network_available
 		method = _METHOD_OF(callback, "onLost", "(Landroid/net/Network;)V");
 	}
 	(*env)->CallVoidMethod(env, callback, method, NULL);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 JNIEXPORT void JNICALL Java_android_net_ConnectivityManager_registerNetworkCallback(JNIEnv *env, jobject this, jobject request, jobject callback)

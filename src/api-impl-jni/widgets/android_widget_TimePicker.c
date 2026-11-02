@@ -90,8 +90,7 @@ static void clicked_cb(GtkWidget *button, gpointer user_data)
 
 	(*env)->CallVoidMethod(env, wrapper->jobj, handle_cache.time_picker.onTimeChange);
 
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 JNIEXPORT void JNICALL Java_android_widget_TimePicker_nativeSetOnTimeChangedListener(JNIEnv *env, jobject this, jlong widget_ptr)

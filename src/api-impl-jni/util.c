@@ -131,6 +131,21 @@ void _gdb_force_java_stack_trace(void)
 	(*env)->ExceptionClear(env);
 }
 
+void exit_on_exception(JNIEnv *env)
+{
+	jthrowable exception = (*env)->ExceptionOccurred(env);
+	if (!exception)
+		return;
+	(*env)->ExceptionClear(env);
+	jclass thread_class = (*env)->FindClass(env, "java/lang/Thread");
+	jobject thread = (*env)->CallStaticObjectMethod(env, thread_class, _STATIC_METHOD(thread_class, "currentThread", "()Ljava/lang/Thread;"));
+	(*env)->CallVoidMethod(env, thread, _METHOD(thread_class, "dispatchUncaughtException", "(Ljava/lang/Throwable;)V"), exception);
+	// an app's own handler may return or throw; the default one exits with 10
+	if ((*env)->ExceptionCheck(env))
+		(*env)->ExceptionDescribe(env);
+	exit(10);
+}
+
 void extract_from_apk(const char *path, const char *target)
 {
 	JNIEnv *env = get_jni_env();

@@ -2,16 +2,24 @@ package android.graphics.drawable;
 
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
+import android.content.res.Resources.Theme;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.ColorFilter;
 import android.graphics.NinePatch;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
+import android.util.AttributeSet;
+import com.android.internal.R;
+import java.io.IOException;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
 
 /* AOSP 10's API over the gfx slot's nine-patch drawable; copies from the constant state share its
  * bitmap and chunk. */
 public class NinePatchDrawable extends Drawable {
-	private final NinePatchState state;
-	private ColorStateList tint;
+	private NinePatchState state;
+	private final PaintableFilter filter = new PaintableFilter();
 
 	public NinePatchDrawable(Resources res, Bitmap bitmap, byte[] chunk, Rect padding, String srcName) {
 		this(new NinePatchState(bitmap, chunk, padding));
@@ -29,19 +37,34 @@ public class NinePatchDrawable extends Drawable {
 		this(new NinePatchState(patch.getBitmap(), patch.getChunk(), null));
 	}
 
-	// <nine-patch> XML, which ATL doesn't inflate: draws nothing
+	// <nine-patch> XML, which inflate() fills
 	NinePatchDrawable() {
 		this(new NinePatchState(null, null, null));
 	}
 
 	private NinePatchDrawable(NinePatchState state) {
+		setState(state);
+	}
+
+	private void setState(NinePatchState state) {
 		this.state = state;
 		if (state.bitmap != null && state.chunk != null) {
 			long drawable = nativeCreate(state.bitmap.getTexture(), state.chunk);
 			if (drawable == 0)
 				throw new RuntimeException("not a nine-patch chunk");
 			adoptPaintable(drawable);
+			filter.apply(this);
 		}
+	}
+
+	public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
+	    throws XmlPullParserException, IOException {
+		TypedArray a = obtainAttributes(r, theme, attrs, R.styleable.NinePatchDrawable);
+		Drawable src = a.getDrawable(R.styleable.NinePatchDrawable_src);
+		a.recycle();
+		if (!(src instanceof NinePatchDrawable))
+			throw new XmlPullParserException(parser.getPositionDescription() + ": <nine-patch> requires a valid 9-patch source image");
+		setState(((NinePatchDrawable)src).state);
 	}
 
 	@Override
@@ -63,33 +86,42 @@ public class NinePatchDrawable extends Drawable {
 	}
 
 	@Override
+	public void setColorFilter(ColorFilter colorFilter) {
+		filter.colorFilter = colorFilter;
+		filter.apply(this);
+		invalidateSelf();
+	}
+
+	@Override
+	public ColorFilter getColorFilter() {
+		return filter.colorFilter;
+	}
+
+	@Override
 	public void setTintList(ColorStateList tint) {
-		this.tint = tint;
-		updateTint();
+		filter.tint = tint;
+		filter.apply(this);
+		invalidateSelf();
+	}
+
+	@Override
+	public void setTintMode(PorterDuff.Mode tintMode) {
+		filter.tintMode = tintMode;
+		filter.apply(this);
 		invalidateSelf();
 	}
 
 	@Override
 	public boolean isStateful() {
-		return tint != null && tint.isStateful();
+		return filter.isStateful();
 	}
 
 	@Override
 	protected boolean onStateChange(int[] stateSet) {
-		if (!isStateful())
+		if (!filter.isStateful())
 			return false;
-		updateTint();
+		filter.apply(this);
 		return true;
-	}
-
-	// Android's default tint mode
-	private void updateTint() {
-		if (paintable == 0)
-			return;
-		if (tint == null)
-			nativeSetColorFilter(paintable, -1, 0);
-		else
-			nativeSetColorFilter(paintable, PorterDuff.Mode.SRC_IN.nativeInt, tint.getColorForState(getState(), tint.getDefaultColor()));
 	}
 
 	@Override
@@ -125,5 +157,4 @@ public class NinePatchDrawable extends Drawable {
 	}
 
 	private static native long nativeCreate(long bitmap, byte[] chunk);
-	private static native void nativeSetColorFilter(long drawable, int mode, int color);
 }

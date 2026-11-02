@@ -41,8 +41,7 @@ static void call_hover_callback(jobject this, int action, float x, float y, floa
 	JNIEnv *env = get_jni_env();
 	jobject motion_event = (*env)->NewObject(env, handle_cache.motion_event.class, handle_cache.motion_event.constructor_single, SOURCE_CLASS_POINTER, action, 0, x, y, raw_x, raw_y);
 	(*env)->CallBooleanMethod(env, this, handle_cache.view.dispatchHoverEvent, motion_event);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->DeleteLocalRef(env, motion_event); // GTK calls back in the base JNI frame
 }
 
@@ -120,8 +119,7 @@ static gboolean scroll_cb(GtkEventControllerScroll *controller, gdouble dx, gdou
 	                                         gdk_event_get_time(event), x, y, raw_x, raw_y, dx, -dy);
 
 	gboolean ret = (*env)->CallBooleanMethod(env, this, handle_cache.view.dispatchGenericMotionEvent, motion_event);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->DeleteLocalRef(env, motion_event);
 
 	// HACK: replay last hover event to work around scrolling issues in composeUI apps

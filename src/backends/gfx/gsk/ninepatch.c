@@ -5,6 +5,8 @@
 #include "src/shared/test_hooks.h"
 #include "src/slots/gfx.h"
 
+#include "canvas.h"
+
 /* A NinePatchDrawable's paintable: the texture's slices at the size it's drawn at. */
 
 struct _NinePatchPaintable {
@@ -79,9 +81,9 @@ struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struc
 	return (struct gfx_drawable *)ninepatch;
 }
 
-// a bitmap drawable is its texture, which keeps no filter
 void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb)
 {
-	if (NINEPATCH_IS_PAINTABLE(drawable))
-		gfx_paint_set_color_filter(NINEPATCH_PAINTABLE(drawable)->filter, mode, argb);
+	struct gfx_paint *filter = NINEPATCH_IS_PAINTABLE(drawable) ? NINEPATCH_PAINTABLE(drawable)->filter : gsk_bitmap_drawable_filter(GDK_PAINTABLE(drawable));
+	if (filter)
+		gfx_paint_set_color_filter(filter, mode, argb);
 }

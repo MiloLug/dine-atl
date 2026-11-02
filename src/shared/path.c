@@ -289,37 +289,22 @@ void path_bounds(const struct gfx_path *path, struct gfx_rect *bounds)
 	}
 }
 
-struct crossing {
-	float x, y;
-	int winding; // signed crossings of the ray to the right of (x, y)
-};
-
-static void edge(struct crossing *c, float x0, float y0, float x1, float y1)
-{
-	if ((y0 <= c->y) == (y1 <= c->y))
-		return;
-	float x = x0 + (c->y - y0) * (x1 - x0) / (y1 - y0);
-	if (x > c->x)
-		c->winding += y1 > y0 ? 1 : -1;
-}
-
 // curves flattened into this many lines each
 #define FLATTEN 16
 
-bool path_contains(const struct gfx_path *path, bool even_odd, float x, float y)
+void path_flatten(const struct gfx_path *path, path_line_fn line, void *data)
 {
-	struct crossing c = {x, y, 0};
 	const float *p = path->points;
 	float start_x = 0, start_y = 0, cur_x = 0, cur_y = 0;
 	for (size_t i = 0; i < path->n_verbs; i++) {
 		switch (path->verbs[i]) {
 		case PATH_MOVE:
-			edge(&c, cur_x, cur_y, start_x, start_y); // a fill closes each contour
+			line(data, cur_x, cur_y, start_x, start_y); // a fill closes each contour
 			start_x = cur_x = p[0];
 			start_y = cur_y = p[1];
 			break;
 		case PATH_LINE:
-			edge(&c, cur_x, cur_y, p[0], p[1]);
+			line(data, cur_x, cur_y, p[0], p[1]);
 			cur_x = p[0];
 			cur_y = p[1];
 			break;
@@ -334,20 +319,41 @@ bool path_contains(const struct gfx_path *path, bool even_odd, float x, float y)
 					nx = u * u * u * cur_x + 3 * u * u * t * p[0] + 3 * u * t * t * p[2] + t * t * t * p[4];
 					ny = u * u * u * cur_y + 3 * u * u * t * p[1] + 3 * u * t * t * p[3] + t * t * t * p[5];
 				}
-				edge(&c, cur_x, cur_y, nx, ny);
+				line(data, cur_x, cur_y, nx, ny);
 				cur_x = nx;
 				cur_y = ny;
 			}
 			break;
 		case PATH_CLOSE:
-			edge(&c, cur_x, cur_y, start_x, start_y);
+			line(data, cur_x, cur_y, start_x, start_y);
 			cur_x = start_x;
 			cur_y = start_y;
 			break;
 		}
 		p += path_verb_points(path->verbs[i]) * 2;
 	}
-	edge(&c, cur_x, cur_y, start_x, start_y);
+	line(data, cur_x, cur_y, start_x, start_y);
+}
+
+struct crossing {
+	float x, y;
+	int winding; // signed crossings of the ray to the right of (x, y)
+};
+
+static void edge(void *data, float x0, float y0, float x1, float y1)
+{
+	struct crossing *c = data;
+	if ((y0 <= c->y) == (y1 <= c->y))
+		return;
+	float x = x0 + (c->y - y0) * (x1 - x0) / (y1 - y0);
+	if (x > c->x)
+		c->winding += y1 > y0 ? 1 : -1;
+}
+
+bool path_contains(const struct gfx_path *path, bool even_odd, float x, float y)
+{
+	struct crossing c = {x, y, 0};
+	path_flatten(path, edge, &c);
 	return even_odd ? c.winding & 1 : c.winding != 0;
 }
 

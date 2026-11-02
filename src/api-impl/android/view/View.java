@@ -2379,7 +2379,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	// the records ui backends' draw pass (atl_upcall_view_draw); a canvas kept past it draws nothing
 	private void atlDraw(long handle) {
-		ATLCanvas canvas = new ATLCanvas(handle);
+		ATLCanvas canvas = new ATLCanvas(handle, getWidth(), getHeight());
 		try {
 			draw(canvas);
 		} finally {

@@ -15,4 +15,9 @@ public class ColorStateListDrawable extends Drawable implements Drawable.Callbac
 	@Override
 	public void invalidateDrawable(Drawable who) {
 	}
+
+	@Override
+	public ConstantState getConstantState() {
+		return new StubState(ColorStateListDrawable::new);
+	}
 }

@@ -17,8 +17,7 @@ void atl_upcall_looper_loop(void)
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->CallStaticVoidMethod(env, handle_cache.looper.class, handle_cache.looper.loop);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 void atl_upcall_display_changed(const struct ui_display *display)
@@ -74,8 +73,7 @@ void atl_upcall_view_layout(struct atl_ref *view, int width, int height)
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->CallVoidMethod(env, (jobject)view, handle_cache.view.layoutInternal, width, height);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas)

@@ -11,4 +11,9 @@ public class AnimatedVectorDrawable extends Drawable implements Animatable2 {
 	public void start() {}
 
 	public void stop() {}
+
+	@Override
+	public ConstantState getConstantState() {
+		return new StubState(AnimatedVectorDrawable::new);
+	}
 }

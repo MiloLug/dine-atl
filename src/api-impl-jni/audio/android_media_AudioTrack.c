@@ -120,8 +120,6 @@ JNIEXPORT jint JNICALL Java_android_media_AudioTrack_getMinBufferSize(JNIEnv *en
 	snd_pcm_close(pcm_handle);
 
 	_SET_STATIC_INT_FIELD(this_class, "frames", frames);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
 
 	printf("\n\nJava_android_media_AudioTrack_getMinBufferSize is returning: %ld\n\n\n", frames * num_channels * 2);
 	return frames * num_channels * 2; // FIXME: 2 bytes = 16 bits (s16)

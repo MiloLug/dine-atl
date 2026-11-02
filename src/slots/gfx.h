@@ -93,7 +93,7 @@ struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap);
 struct gfx_ninepatch; // src/shared/ninepatch.h
 /* NinePatchDrawable's: the bitmap stretched by the nine-patch's divs; takes ninepatch. */
 struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *ninepatch);
-/* PorterDuff mode (-1: none) and color over what a nine-patch drawable draws (its tint). */
+/* A bitmap or nine-patch drawable's PorterDuff color filter (mode -1: none): its color filter or tint. */
 void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb);
 
 /* What android.atl.ATLCanvas draws into, on the thread that draws (a view's draw: the Android main

@@ -148,19 +148,44 @@ void gfx_paint_set_typeface(struct gfx_paint *gfx_paint, enum gfx_font_family fa
 	pango_font_description_set_style(font, style & GFX_FONT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
+/* A PorterDuff color filter as a color matrix over unpremultiplied colors (out = in M + offset),
+ * for the modes one can express. The others draw as SRC_IN. */
 void gfx_paint_set_color_filter(struct gfx_paint *gfx_paint, int mode, uint32_t color)
 {
 	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
-	/* clang-format off */
-	graphene_matrix_init_from_float(&paint->color_matrix, (float[]){
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, ((color >> 24) & 0xFF) / 255.f,
-	});
-	/* clang-format on */
-	graphene_vec4_init(&paint->color_offset, ((color >> 16) & 0xFF) / 255.f, ((color >> 8) & 0xFF) / 255.f, ((color >> 0) & 0xFF) / 255.f, 0);
-	paint->use_color_filter = mode != -1;
+	float a = ((color >> 24) & 0xFF) / 255.f, r = ((color >> 16) & 0xFF) / 255.f, g = ((color >> 8) & 0xFF) / 255.f, b = (color & 0xFF) / 255.f;
+	float m[4][4] = {0}, offset[4] = {0};
+	paint->use_color_filter = mode != -1 && mode != 2; // 2: DST keeps the colors
+	switch (mode) {
+		case 0: // CLEAR
+			break;
+		case 1: // SRC
+			offset[0] = r, offset[1] = g, offset[2] = b, offset[3] = a;
+			break;
+		case 6: // DST_IN
+		case 8: // DST_OUT
+			m[0][0] = m[1][1] = m[2][2] = 1;
+			m[3][3] = mode == 6 ? a : 1 - a;
+			break;
+		case 7: // SRC_OUT
+			offset[0] = r, offset[1] = g, offset[2] = b, offset[3] = a;
+			m[3][3] = -a;
+			break;
+		case 9: // SRC_ATOP
+			m[0][0] = m[1][1] = m[2][2] = 1 - a;
+			m[3][3] = 1;
+			offset[0] = a * r, offset[1] = a * g, offset[2] = a * b;
+			break;
+		case 14: // MULTIPLY, Skia's modulate
+			m[0][0] = r, m[1][1] = g, m[2][2] = b, m[3][3] = a;
+			break;
+		default: // SRC_IN
+			offset[0] = r, offset[1] = g, offset[2] = b;
+			m[3][3] = a;
+			break;
+	}
+	graphene_matrix_init_from_float(&paint->color_matrix, *m);
+	graphene_vec4_init(&paint->color_offset, offset[0], offset[1], offset[2], offset[3]);
 }
 
 struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)

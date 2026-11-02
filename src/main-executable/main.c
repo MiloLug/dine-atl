@@ -169,9 +169,7 @@ static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, do
 	_SET_OBJ_FIELD(intent, "data", "Landroid/net/Uri;", (*env)->CallStaticObjectMethod(env, handle_cache.uri.class, handle_cache.uri.parse, _JSTRING(data)));
 
 	jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.context.class, handle_cache.context.resolveActivityInternal, intent);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-	}
+	exit_on_exception(env);
 	gboolean resolved = activity != NULL;
 	if (resolved)
 		activity_start(env, activity);
@@ -309,8 +307,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		                               _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;"),
 		                               _JSTRING(d->apk_instrumentation_class), intent);
 
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	// construct main Activity
@@ -330,14 +327,12 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	if (!d->apk_instrumentation_class) {
 		jstring package_name_jstr = (*env)->CallObjectMethod(env, application_object, handle_cache.context.get_package_name);
 		package_name = package_name_jstr ? _CSTRING(package_name_jstr) : NULL;
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	jstring app_icon_path_jstr = (*env)->CallObjectMethod(env, application_object, handle_cache.application.get_app_icon_path);
 	const char *app_icon_path = app_icon_path_jstr ? _CSTRING(app_icon_path_jstr) : NULL;
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	if (d->install || d->install_internal) {
 		if (d->apk_instrumentation_class) {
@@ -348,8 +343,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		XdpPortal *portal = xdp_portal_new();
 
 		const char *app_label = _CSTRING((*env)->CallObjectMethod(env, application_object, _METHOD(handle_cache.application.class, "get_app_label", "()Ljava/lang/String;")));
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 
 		GVariant *icon_serialized = NULL;
 		if (!d->install_internal) {
@@ -404,8 +398,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		jmethodID get_supported_mime_types = _METHOD(handle_cache.application.class, "get_supported_mime_types", "()Ljava/lang/String;");
 		jstring supported_mime_types_jstr = (*env)->CallObjectMethod(env, application_object, get_supported_mime_types);
 		const char *supported_mime_types = supported_mime_types_jstr ? _CSTRING(supported_mime_types_jstr) : NULL;
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 
 		GString *exec_cmd = g_string_new("env ");
 		if (getenv("RUN_FROM_BUILDDIR")) {
@@ -500,8 +493,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		jobject input_queue = g_object_get_data(G_OBJECT(window), "input_queue");
 
 		(*env)->CallVoidMethod(env, input_queue_callback, handle_cache.input_queue_callback.onInputQueueCreated, input_queue);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	if (strcmp(app_id, "com.example.demo_application")) {

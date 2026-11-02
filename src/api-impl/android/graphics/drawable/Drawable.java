@@ -289,10 +289,19 @@ public class Drawable {
 				return drawable;
 			}
 			case "nine-patch": {
-				return new NinePatchDrawable();
+				NinePatchDrawable drawable = new NinePatchDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
 			}
 			case "animation-list": {
-				return new AnimationDrawable();
+				AnimationDrawable drawable = new AnimationDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "level-list": {
+				LevelListDrawable drawable = new LevelListDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
 			}
 			case "adaptive-icon": {
 				AdaptiveIconDrawable drawable = new AdaptiveIconDrawable();
@@ -408,4 +417,6 @@ public class Drawable {
 	protected native void native_draw(long paintable, long canvas, int width, int height);
 	protected native void native_ref(long paintable);
 	protected native void native_unref(long paintable);
+	// mode -1: none
+	static native void native_setColorFilter(long paintable, int mode, int color);
 }

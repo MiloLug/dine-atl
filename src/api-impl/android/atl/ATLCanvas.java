@@ -12,6 +12,8 @@ import java.util.Stack;
 public class ATLCanvas extends DisplayListCanvas {
 	public long handle;
 	private Stack<Matrix> state_stack = new Stack<>();
+	// per save level, the clip's bounds in device space, as Android's clip queries answer from them
+	private Stack<RectF> clip_stack = new Stack<>();
 
 	private static Paint default_paint = new Paint();
 
@@ -19,15 +21,24 @@ public class ATLCanvas extends DisplayListCanvas {
 		return (paint != null ? paint : default_paint).getNativeInstance();
 	}
 
-	public ATLCanvas(long handle) {
+	public ATLCanvas(long handle, int width, int height) {
 		this.handle = handle;
+		atlReset(width, height);
+	}
+
+	// a new target of this size: the save stack goes, the clip is the whole target
+	public void atlReset(int width, int height) {
+		state_stack.clear();
 		state_stack.push(new Matrix());
+		clip_stack.clear();
+		clip_stack.push(new RectF(0, 0, width, height));
 	}
 
 	@Override
 	public int save() {
 		native_save(handle);
 		state_stack.push(new Matrix(state_stack.peek()));
+		clip_stack.push(new RectF(clip_stack.peek()));
 		return getSaveCount() - 1;
 	}
 
@@ -38,6 +49,7 @@ public class ATLCanvas extends DisplayListCanvas {
 		else
 			native_saveLayer(handle, false, 0, 0, 0, 0, alpha, mode);
 		state_stack.push(new Matrix(state_stack.peek()));
+		clip_stack.push(new RectF(clip_stack.peek()));
 		return getSaveCount() - 1;
 	}
 
@@ -47,6 +59,7 @@ public class ATLCanvas extends DisplayListCanvas {
 		if (save_count <= 1)
 			throw new IllegalStateException("No more saves to restore");
 		state_stack.pop();
+		clip_stack.pop();
 		native_restore(handle);
 	}
 
@@ -95,7 +108,7 @@ public class ATLCanvas extends DisplayListCanvas {
 	@Override
 	public boolean clipRect(float left, float top, float right, float bottom, Region.Op op) {
 		native_clipRect(handle, left, top, right, bottom, op == Region.Op.DIFFERENCE);
-		return right > left && bottom > top;
+		return clip(new RectF(left, top, right, bottom), op == Region.Op.DIFFERENCE, state_stack.peek().rectStaysRect());
 	}
 
 	@Override
@@ -109,7 +122,34 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_clipPath(handle, path.getNativePath(), path.getFillType().even_odd, op == Region.Op.DIFFERENCE);
 		RectF bounds = new RectF();
 		path.computeBounds(bounds, true);
-		return !bounds.isEmpty();
+		return clip(bounds, op == Region.Op.DIFFERENCE, path.isRect(null) && state_stack.peek().rectStaysRect());
+	}
+
+	// bounds can't hold a hole: only an exact shape (a rect in device space) covering them empties them
+	private boolean clip(RectF shape, boolean difference, boolean exact) {
+		RectF clip = clip_stack.peek();
+		RectF device = new RectF(shape);
+		state_stack.peek().mapRect(device);
+		if (difference) {
+			if (exact && device.contains(clip))
+				clip.setEmpty();
+		} else if (!clip.intersect(device)) {
+			clip.setEmpty();
+		}
+		return !clip.isEmpty();
+	}
+
+	@Override
+	public boolean getClipBounds(Rect bounds) {
+		RectF local = new RectF(clip_stack.peek());
+		Matrix inverse = new Matrix();
+		if (local.isEmpty() || !state_stack.peek().invert(inverse)) {
+			bounds.setEmpty();
+			return false;
+		}
+		inverse.mapRect(local);
+		local.round(bounds); // Android rounds, which also takes the inverse's float error
+		return true;
 	}
 
 	@Override

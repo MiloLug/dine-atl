@@ -394,7 +394,7 @@ public abstract class DrawableWrapper extends Drawable implements Drawable.Callb
 		}
 	}*/
 
-	/*@Override
+	@Override
 	@Nullable
 	public ConstantState getConstantState() {
 		if (mState != null && mState.canConstantState()) {
@@ -402,7 +402,7 @@ public abstract class DrawableWrapper extends Drawable implements Drawable.Callb
 			return mState;
 		}
 		return null;
-	}*/
+	}
 
 	@Override
 	@NonNull

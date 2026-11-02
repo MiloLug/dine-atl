@@ -27,6 +27,15 @@ public class NinePatchTest extends android.test.InstrumentationTestCase {
 		assertEquals(8, drawable.getIntrinsicHeight());
 	}
 
+	public void testNinePatchXml() {
+		Drawable drawable = resources().getDrawable(R.drawable.framed);
+		assertTrue(drawable instanceof NinePatchDrawable);
+		Rect padding = new Rect();
+		assertTrue(drawable.getPadding(padding));
+		assertEquals(new Rect(1, 2, 1, 3), padding);
+		assertEquals(8, drawable.getIntrinsicWidth());
+	}
+
 	public void testPlainPngIsABitmap() {
 		assertTrue(resources().getDrawable(R.drawable.photo) instanceof BitmapDrawable);
 	}

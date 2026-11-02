@@ -16,9 +16,8 @@ import android.view.inputmethod.InputMethodManager;
 public final class ATLInput {
 	// Android starts touch devices in touch mode (config_defaultInTouchMode)
 	private static boolean touchMode = true;
-	/* ESCAPE went down unhandled: Back stands in for it until its up. ATL's, since a keyboard on iOS
-	 * has no Back key; Android 10's keymap gives plain ESCAPE no fallback, and Dialog takes it. */
-	private static boolean escapeFallsBack;
+	// keys that went down unhandled: their fallback stands in for them until their up
+	private static final java.util.Set<Integer> fallingBack = new java.util.HashSet<>();
 	// Android's IME takes Back while it shows: the keyboard hides and the window gets neither half
 	private static boolean keyboardTookBack;
 
@@ -55,15 +54,16 @@ public final class ATLInput {
 		if (checkForLeavingTouchModeAndConsume(event, decor))
 			return true;
 		boolean handled = deliver(window, decor, event);
-		if (event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE) {
+		int code = event.getKeyCode(), fallbackCode = fallbackKeyCode(code);
+		if (fallbackCode != KeyEvent.KEYCODE_UNKNOWN) {
 			if (event.getAction() == KeyEvent.ACTION_DOWN && !handled && event.getRepeatCount() == 0) {
-				escapeFallsBack = true;
-				return deliver(window, decor, fallback(event, KeyEvent.KEYCODE_BACK));
+				fallingBack.add(code);
+				return deliver(window, decor, fallback(event, fallbackCode));
 			}
-			if (escapeFallsBack) {
+			if (fallingBack.contains(code)) {
 				if (event.getAction() == KeyEvent.ACTION_UP)
-					escapeFallsBack = false;
-				return deliver(window, decor, fallback(event, KeyEvent.KEYCODE_BACK));
+					fallingBack.remove(code);
+				return deliver(window, decor, fallback(event, fallbackCode));
 			}
 		}
 		if (!handled && event.getAction() == KeyEvent.ACTION_DOWN)
@@ -94,6 +94,19 @@ public final class ATLInput {
 		boolean took = keyboardTookBack;
 		keyboardTookBack = false;
 		return took;
+	}
+
+	/* Android 10's Generic.kcm gives NUMPAD_ENTER the fallback ENTER. ESCAPE's BACK is ATL's, since
+	 * a keyboard on iOS has no Back key; Android's keymap gives plain ESCAPE none, and Dialog takes it. */
+	private static int fallbackKeyCode(int keyCode) {
+		switch (keyCode) {
+			case KeyEvent.KEYCODE_NUMPAD_ENTER:
+				return KeyEvent.KEYCODE_ENTER;
+			case KeyEvent.KEYCODE_ESCAPE:
+				return KeyEvent.KEYCODE_BACK;
+			default:
+				return KeyEvent.KEYCODE_UNKNOWN;
+		}
 	}
 
 	private static KeyEvent fallback(KeyEvent event, int keyCode) {

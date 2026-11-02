@@ -69,6 +69,9 @@ void path_transform(struct gfx_path *path, const struct _graphene_matrix_t *matr
 /* Control-point bounds, as Android's computeBounds; all 0 when empty. */
 void path_bounds(const struct gfx_path *path, struct gfx_rect *bounds);
 bool path_contains(const struct gfx_path *path, bool even_odd, float x, float y);
+typedef void (*path_line_fn)(void *data, float x0, float y0, float x1, float y1);
+/* The fill's outline as lines, curves flattened, each contour closed. */
+void path_flatten(const struct gfx_path *path, path_line_fn line, void *data);
 /* One closed or open contour of 4 axis-aligned edges */
 bool path_is_rect(const struct gfx_path *path, struct gfx_rect *rect);
 

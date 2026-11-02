@@ -42,8 +42,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 	switch ((WrapperWidgetProperty)property_id) {
 		case ATL_ID: {
 			jint id_jint = (*env)->CallIntMethod(env, jobj, handle_cache.view.getId);
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
+			exit_on_exception(env);
 
 			g_value_take_string(value, g_markup_printf_escaped("0x%08x", id_jint));
 			break;
@@ -51,8 +50,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_ID_NAME: {
 			jstring id_name_jstring = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getIdName);
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
+			exit_on_exception(env);
 
 			const char *id_name = (*env)->GetStringUTFChars(env, id_name_jstring, NULL);
 			g_value_set_string(value, id_name);
@@ -63,8 +61,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_CLASS_NAME: {
 			jstring class_name_jstring = (*env)->CallObjectMethod(env, class, _METHOD_OF(class, "getName", "()Ljava/lang/String;"));
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
+			exit_on_exception(env);
 
 			const char *class_name = (*env)->GetStringUTFChars(env, class_name_jstring, NULL);
 			g_value_set_string(value, class_name);
@@ -75,8 +72,7 @@ static void wrapper_widget_get_property(GObject *object, guint property_id, GVal
 
 		case ATL_SUPER_CLASS_NAMES: {
 			jstring super_classes_names_obj = (*env)->CallObjectMethod(env, jobj, handle_cache.view.getAllSuperClasses);
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
+			exit_on_exception(env);
 
 			const char *super_classes_names = (*env)->GetStringUTFChars(env, super_classes_names_obj, NULL);
 			g_value_set_string(value, super_classes_names);
@@ -156,8 +152,7 @@ void wrapper_widget_allocate(GtkWidget *widget, int width, int height, int basel
 		JNIEnv *env;
 		(*wrapper->jvm)->GetEnv(wrapper->jvm, (void **)&env, JNI_VERSION_1_6);
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->computeScroll_method);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 		allocation.x = -(*env)->CallIntMethod(env, wrapper->jobj, handle_cache.view.getScrollX);
 		allocation.y = -(*env)->CallIntMethod(env, wrapper->jobj, handle_cache.view.getScrollY);
 	}
@@ -184,6 +179,7 @@ void wrapper_widget_allocate(GtkWidget *widget, int width, int height, int basel
 /* this is used to avoid queing layout changes in the middle of snapshotting */
 int snapshot_in_progress = 0;
 static jfieldID canvas_handle_field;
+static jmethodID canvas_reset_method;
 static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 {
 	snapshot_in_progress++;
@@ -195,9 +191,10 @@ static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 	if (wrapper->draw_method) {
 		JNIEnv *env = get_jni_env();
 		(*env)->SetLongField(env, wrapper->canvas, canvas_handle_field, _INTPTR(snapshot));
+		// a widget keeps one canvas: each draw starts its Java state again, as the snapshot does
+		(*env)->CallVoidMethod(env, wrapper->canvas, canvas_reset_method, wrapper->real_width ?: gtk_widget_get_width(widget), wrapper->real_height ?: gtk_widget_get_height(widget));
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->draw_method, wrapper->canvas);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	} else {
 		GtkWidget *widget = &wrapper->parent_instance;
 		GtkWidget *child = gtk_widget_get_first_child(widget);
@@ -281,9 +278,10 @@ void wrapper_widget_setup(WrapperWidget *wrapper, struct atl_ref *view_ref, cons
 	if (traits->draws) {
 		wrapper->draw_method = _METHOD_OF(jobj, "draw", "(Landroid/graphics/Canvas;)V");
 		jclass canvas_class = (*env)->FindClass(env, "android/atl/ATLCanvas");
-		jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(J)V");
-		wrapper->canvas = _REF((*env)->NewObject(env, canvas_class, canvas_constructor, 0));
+		jmethodID canvas_constructor = _METHOD(canvas_class, "<init>", "(JII)V");
+		wrapper->canvas = _REF((*env)->NewObject(env, canvas_class, canvas_constructor, 0, 0, 0));
 		canvas_handle_field = _FIELD_ID(canvas_class, "handle", "J");
+		canvas_reset_method = _METHOD(canvas_class, "atlReset", "(II)V");
 		(*env)->DeleteLocalRef(env, canvas_class);
 	}
 

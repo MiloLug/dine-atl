@@ -13,8 +13,3 @@ JNIEXPORT jlong JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeC
 	(*env)->ReleaseByteArrayElements(env, chunk_array, chunk, JNI_ABORT);
 	return ninepatch ? _INTPTR(gfx_ninepatch_drawable_new(_PTR(bitmap), ninepatch)) : 0;
 }
-
-JNIEXPORT void JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeSetColorFilter(JNIEnv *env, jclass class, jlong drawable, jint mode, jint color)
-{
-	gfx_drawable_set_color_filter(_PTR(drawable), mode, color);
-}

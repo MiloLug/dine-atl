@@ -26,6 +26,10 @@ char *get_app_data_dir(void);
 
 void prepare_main_looper(JNIEnv *env);
 
+/* For an exception thrown into C code where Android's main loop would see it: the thread's uncaught
+ * handler gets it and the process ends, as an Android app's does. Returns only when none is pending. */
+void exit_on_exception(JNIEnv *env);
+
 /* we don't (currently?) install the headers for liblog */
 typedef enum {
 	LOG_ID_MAIN = 0,

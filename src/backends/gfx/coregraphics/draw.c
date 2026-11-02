@@ -67,6 +67,40 @@ static void set_color(CGContextRef context, const struct gfx_paint *paint)
 	CGContextSetRGBStrokeColor(context, r, g, b, d.a);
 }
 
+/* A color filter over a bitmap just drawn into a transparency layer: the filter color drawn onto it
+ * with the mode's blend. Skia's MULTIPLY modulates, where CG's multiply also paints the color over
+ * transparent pixels: the image again as DestinationIn takes that back, except at partial alpha. */
+static void filter_bitmap(CGContextRef context, CGRect dst, CGImageRef image, CGRect whole, const struct gfx_paint *paint)
+{
+	static const CGBlendMode blend[] = {
+	    kCGBlendModeClear, kCGBlendModeCopy, kCGBlendModeNormal, kCGBlendModeNormal, kCGBlendModeDestinationOver,
+	    kCGBlendModeSourceIn, kCGBlendModeDestinationIn, kCGBlendModeSourceOut, kCGBlendModeDestinationOut,
+	    kCGBlendModeSourceAtop, kCGBlendModeDestinationAtop, kCGBlendModeXOR, kCGBlendModeDarken, kCGBlendModeLighten,
+	    kCGBlendModeMultiply, kCGBlendModeScreen, kCGBlendModePlusLighter, kCGBlendModeOverlay,
+	};
+	int mode = paint->filter_mode;
+	if (mode < 0 || mode >= (int)(sizeof(blend) / sizeof(*blend)) || mode == 2) // DST keeps the bitmap
+		return;
+	struct color c = unpack(paint->filter_color);
+	float r = c.a ? c.r / c.a : 0, g = c.a ? c.g / c.a : 0, b = c.a ? c.b / c.a : 0;
+	CGContextSetBlendMode(context, blend[mode]);
+	if (mode != 14) {
+		CGContextSetRGBFillColor(context, r, g, b, c.a);
+		CGContextFillRect(context, dst);
+		return;
+	}
+	CGContextSetRGBFillColor(context, r, g, b, 1);
+	CGContextFillRect(context, dst);
+	CGContextSetBlendMode(context, kCGBlendModeDestinationIn);
+	CGContextSaveGState(context);
+	CGContextTranslateCTM(context, 0, CGRectGetMaxY(whole) + whole.origin.y);
+	CGContextScaleCTM(context, 1, -1);
+	CGContextDrawImage(context, whole, image);
+	CGContextRestoreGState(context);
+	CGContextSetRGBFillColor(context, 0, 0, 0, c.a);
+	CGContextFillRect(context, dst);
+}
+
 static void set_stroke(CGContextRef context, const struct gfx_paint *paint)
 {
 	// Paint.Cap and Join share CGLineCap's and CGLineJoin's order; width 0 is a hairline
@@ -264,10 +298,19 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale)
 		                          CGImageGetWidth(image) * xscale, CGImageGetHeight(image) * yscale);
 		CGContextClipToRect(context, dst);
 		CGContextSetAlpha(context, (op->paint.color >> 24) / 255.);
+		bool filtered = op->paint.filter_mode != -1;
+		if (filtered) // the paint's alpha applies to the filtered bitmap
+			CGContextBeginTransparencyLayerWithRect(context, dst, NULL);
+		CGContextSaveGState(context);
 		// CGContextDrawImage draws y up; the layer's context is y down
 		CGContextTranslateCTM(context, 0, CGRectGetMaxY(whole) + whole.origin.y);
 		CGContextScaleCTM(context, 1, -1);
 		CGContextDrawImage(context, whole, image);
+		CGContextRestoreGState(context);
+		if (filtered) {
+			filter_bitmap(context, dst, image, whole, &op->paint);
+			CGContextEndTransparencyLayer(context);
+		}
 		break;
 	}
 	case OP_TEXT:

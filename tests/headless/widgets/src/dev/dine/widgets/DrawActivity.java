@@ -2,6 +2,7 @@ package dev.dine.widgets;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -17,6 +18,7 @@ import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -28,6 +30,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 
 /* A view drawn through Canvas, text, a Layout, paths, arcs, gradients, a layer and a nine-patch
  * included, for run-draw.sh: headless compares its display lists with draw.displaylist, gtk draws
@@ -41,6 +44,7 @@ public class DrawActivity extends Activity {
 	private class DrawView extends View {
 		private final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
 		private final Drawable frame = getResources().getDrawable(R.drawable.frame);
+		private final BitmapDrawable filtered = new BitmapDrawable(getResources(), photo);
 		private int draws;
 
 		DrawView(Context context) {
@@ -148,6 +152,9 @@ public class DrawActivity extends Activity {
 			frame.setBounds(470, 330, 473, 333); // smaller than its fixed parts: they shrink
 			frame.draw(canvas);
 			frame.setTintList(null);
+			filtered.setColorFilter(0xff0000ff, PorterDuff.Mode.SRC_ATOP);
+			filtered.setBounds(480, 330, 496, 346);
+			filtered.draw(canvas);
 
 			draws++;
 			Log.i(TAG, "widgets draw layout lines " + layout.getLineCount());
@@ -215,6 +222,10 @@ public class DrawActivity extends Activity {
 		scrolled.setBackgroundResource(R.drawable.shared_selector);
 		scrolled.scrollTo(0, 10);
 		root.addView(scrolled, new FrameLayout.LayoutParams(40, 40, Gravity.BOTTOM));
+		ImageView tinted = new ImageView(this);
+		tinted.setImageResource(R.drawable.photo);
+		tinted.setImageTintList(ColorStateList.valueOf(0xffff0000));
+		root.addView(tinted, new FrameLayout.LayoutParams(16, 16, Gravity.BOTTOM | Gravity.RIGHT));
 		setContentView(root);
 	}
 }

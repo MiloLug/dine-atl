@@ -110,6 +110,40 @@ public class KeyTest extends android.test.InstrumentationTestCase {
 		assertEquals(1, clicks);
 	}
 
+	// Android 10's isConfirmKey takes the keypad's Enter and Space too
+	public void testNumpadEnterAndSpaceClickTheFocusedView() {
+		onMain(new Runnable() {
+			public void run() {
+				second.setFocusableInTouchMode(true);
+				second.requestFocus();
+			}
+		});
+		press(KeyEvent.KEYCODE_NUMPAD_ENTER, false);
+		press(KeyEvent.KEYCODE_SPACE, false);
+		assertEquals(2, clicks);
+	}
+
+	// Generic.kcm: NUMPAD_ENTER no view takes goes again as ENTER
+	public void testNumpadEnterFallsBackToEnter() {
+		final java.util.List<String> keys = new java.util.ArrayList<>();
+		onMain(new Runnable() {
+			public void run() {
+				View plain = new View(activity);
+				plain.setFocusableInTouchMode(true);
+				plain.setOnKeyListener(new View.OnKeyListener() {
+					public boolean onKey(View v, int keyCode, KeyEvent event) {
+						keys.add(event.getAction() + ":" + keyCode + ((event.getFlags() & KeyEvent.FLAG_FALLBACK) != 0 ? " fallback" : ""));
+						return keyCode == KeyEvent.KEYCODE_ENTER;
+					}
+				});
+				activity.root.addView(plain, new FrameLayout.LayoutParams(10, 10));
+				plain.requestFocus();
+			}
+		});
+		press(KeyEvent.KEYCODE_NUMPAD_ENTER, true);
+		assertEquals(java.util.Arrays.asList("0:160", "0:66 fallback", "1:160", "1:66 fallback"), keys);
+	}
+
 	public void testDialogTakesBackAndCancels() {
 		final Dialog[] dialog = new Dialog[1];
 		final int[] cancels = new int[1];

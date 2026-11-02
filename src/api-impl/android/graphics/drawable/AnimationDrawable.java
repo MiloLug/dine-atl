@@ -17,6 +17,7 @@
 package android.graphics.drawable;
 
 import android.content.res.Resources;
+import android.content.res.Resources.Theme;
 import android.content.res.TypedArray;
 import android.os.SystemClock;
 import android.util.AttributeSet;
@@ -230,18 +231,11 @@ public class AnimationDrawable extends DrawableContainer implements Runnable, An
 		}
 	}
 
-	//@Override
-	/*public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
+	public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
 	    throws XmlPullParserException, IOException {
 
 		TypedArray a = obtainAttributes(r, theme, attrs,
 						  com.android.internal.R.styleable.AnimationDrawable);
-
-		super.inflateWithAttributes(r, parser, a,
-					    com.android.internal.R.styleable.AnimationDrawable_visible);
-
-		mAnimationState.setVariablePadding(a.getBoolean(
-		    com.android.internal.R.styleable.AnimationDrawable_variablePadding, false));
 
 		mAnimationState.mOneShot = a.getBoolean(
 		    com.android.internal.R.styleable.AnimationDrawable_oneshot, false);
@@ -298,7 +292,6 @@ public class AnimationDrawable extends DrawableContainer implements Runnable, An
 
 		setFrame(0, true, false);
 	}
-	*/
 	@Override
 	public Drawable mutate() {
 		if (!mMutated && super.mutate() == this) {

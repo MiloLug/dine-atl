@@ -3,6 +3,7 @@
 
 #include <graphene.h>
 
+#include "src/shared/matrix.h"
 #include "src/shared/ninepatch.h"
 #include "src/shared/path.h"
 #include "src/shared/shader.h"
@@ -94,7 +95,7 @@ void gfx_canvas_translate(struct gfx_canvas *canvas, float dx, float dy)
 void gfx_canvas_rotate(struct gfx_canvas *canvas, float degrees)
 {
 	graphene_matrix_t m;
-	pre_concat(canvas, graphene_matrix_init_rotate(&m, degrees, graphene_vec3_z_axis()));
+	pre_concat(canvas, matrix_init_rotate(&m, degrees, 0, 0));
 }
 
 void gfx_canvas_scale(struct gfx_canvas *canvas, float sx, float sy)

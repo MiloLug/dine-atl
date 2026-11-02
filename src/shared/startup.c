@@ -303,20 +303,16 @@ jobject atl_app_create(JNIEnv *env, struct ui_window *window)
 	// construct Application
 	jobject application_object = (*env)->CallStaticObjectMethod(env, handle_cache.context.class,
 	                                                            _STATIC_METHOD(handle_cache.context.class, "createApplication", "(J)Landroid/app/Application;"), _INTPTR(window));
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	jclass content_provider = (*env)->FindClass(env, "android/content/ContentProvider");
 	(*env)->CallStaticVoidMethod(env, content_provider, _STATIC_METHOD(content_provider, "createContentProviders", "()V"));
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	jmethodID on_create_method = _METHOD(handle_cache.application.class, "onCreate", "()V");
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->CallVoidMethod(env, application_object, on_create_method);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	return application_object;
 }
@@ -326,8 +322,7 @@ jobject atl_activity_create_main(JNIEnv *env, const char *activity_class, const 
 	jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.activity.class,
 	                                                  _STATIC_METHOD(handle_cache.activity.class, "createMainActivity", "(Ljava/lang/String;JLjava/lang/String;)Landroid/app/Activity;"),
 	                                                  _JSTRING(activity_class), _INTPTR(atl_window), uri ? _JSTRING(uri) : NULL);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	return activity;
 }
 

@@ -203,11 +203,11 @@ public class ClipDrawable extends DrawableWrapper {
 		}
 	}
 
-	/*@Override
+	@Override
 	DrawableWrapperState mutateConstantState() {
 		mState = new ClipState(mState, null);
 		return mState;
-	}*/
+	}
 
 	static final class ClipState extends DrawableWrapper.DrawableWrapperState {
 		private int[] mThemeAttrs;

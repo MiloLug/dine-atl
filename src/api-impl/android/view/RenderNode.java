@@ -302,7 +302,7 @@ public class RenderNode {
 		this.height = height;
 		children.clear();
 		children_nodes.clear();
-		return new ATLCanvas(nativeCreateSnapshot()) {
+		return new ATLCanvas(nativeCreateSnapshot(), width, height) {
 			@Override
 			public void drawRenderNode(RenderNode node) {
 				/* gtk_snapshot_append_node() may unpack container nodes since GTK 4.22 https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/9488

@@ -53,46 +53,35 @@ static void set_decor_attached(JNIEnv *env, jobject activity, bool attached)
 	jobject window_jobj = _GET_OBJ_FIELD(activity, "window", "Landroid/view/Window;");
 	jobject decor_view_jobj = _GET_OBJ_FIELD(window_jobj, "decorView", "Landroid/view/ViewGroup;");
 	(*env)->CallVoidMethod(env, decor_view_jobj, attached ? handle_cache.view.dispatchAttachedToWindow : handle_cache.view.dispatchDetachedFromWindow);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->DeleteLocalRef(env, decor_view_jobj);
 	(*env)->DeleteLocalRef(env, window_jobj);
 }
 
 static void activity_close(JNIEnv *env, jobject activity)
 {
-	// a pending exception from native code, printed apart from what onDestroy throws
-	if ((*env)->ExceptionCheck(env)) {
-		fprintf(stderr, "activity.onDestroy: seems there was a pending exception... :");
-		(*env)->ExceptionDescribe(env);
-	}
-
 	set_decor_attached(env, activity, false);
 	ui_window_remove_activity(atl_window, get_decor_view(env, activity));
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onDestroy);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 static void activity_unfocus(JNIEnv *env, jobject activity)
 {
 	if (!_GET_BOOL_FIELD(activity, "paused")) {
 		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onPause);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	if (!_GET_BOOL_FIELD(activity, "stopped")) {
 		_SET_BOOL_FIELD(activity, "stopped", true);
 		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStop);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, false);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 static void activity_focus(JNIEnv *env, jobject activity)
@@ -103,51 +92,43 @@ static void activity_focus(JNIEnv *env, jobject activity)
 	if (_GET_BOOL_FIELD(activity, "stopped")) {
 		_SET_BOOL_FIELD(activity, "stopped", false);
 		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onRestart);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 		if (_GET_BOOL_FIELD(activity, "finishing"))
 			return;
 	}
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStart);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
 	ui_window_show_activity(atl_window, get_decor_view(env, activity));
 	jobject window = _GET_OBJ_FIELD(activity, "window", "Landroid/view/Window;");
 	(*env)->CallVoidMethod(env, window, handle_cache.window.updateFrame);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->CallVoidMethod(env, window, handle_cache.window.dispatchInsets);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	(*env)->DeleteLocalRef(env, window);
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onResume);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onPostResume);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, true);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 }
 
 // whether back does more than closing the last activity
 static bool back_has_target(JNIEnv *env)
 {
 	jmethodID on_back_pressed = _METHOD_OF(activity_current, "onBackPressed", "()V");
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	return backlog_len > 1 || handle_cache.activity.onBackPressed != on_back_pressed;
 }
@@ -179,8 +160,7 @@ void activity_window_ready(void)
 
 	for (size_t i = backlog_len; i-- > 0;) {
 		(*env)->CallVoidMethod(env, backlog[i], handle_cache.activity.onWindowFocusChanged, true);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 
 	atl_test_window_ready(atl_window);
@@ -215,8 +195,7 @@ static void task_move(bool front, bool by_host)
 	(*env)->PushLocalFrame(env, 16);
 	// before the lifecycle: shows from onStop wait for the front, shows from onResume go on top
 	(*env)->CallStaticVoidMethod(env, handle_cache.dialog.class, handle_cache.dialog.atlTaskMoved, front);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 	activity_update_current(env);
 	(*env)->PopLocalFrame(env, NULL);
 	host_task_moved(front, by_host);
@@ -300,16 +279,14 @@ void activity_start(JNIEnv *env, jobject activity_object)
 		activity_unfocus(env, activity_current);
 	activity_current = NULL;
 	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.onCreate, NULL);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	if (_GET_BOOL_FIELD(activity_object, "finishing")) { // finish() was called before the activity was created
 		return;
 	}
 
 	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.onPostCreate, NULL);
-	if ((*env)->ExceptionCheck(env))
-		(*env)->ExceptionDescribe(env);
+	exit_on_exception(env);
 
 	backlog_push(_REF(activity_object));
 
@@ -359,8 +336,7 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity(JNIEnv
 			}
 
 			(*env)->CallVoidMethod(env, backlog[i], handle_cache.activity.onNewIntent, intent);
-			if ((*env)->ExceptionCheck(env))
-				(*env)->ExceptionDescribe(env);
+			exit_on_exception(env);
 			found = JNI_TRUE;
 			break;
 		}

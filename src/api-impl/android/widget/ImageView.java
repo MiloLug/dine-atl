@@ -26,6 +26,10 @@ public class ImageView extends View {
 	private ScaleType scaleType = ScaleType.FIT_CENTER;
 	private Drawable drawable = null;
 	private ColorFilter colorFilter = null;
+	private ColorStateList tint = null;
+	private PorterDuff.Mode tintMode = null;
+	// AOSP's mHas* flags: once set, a null value clears the drawable's filter or tint
+	private boolean hasColorFilter, hasTint, hasTintMode;
 	private final Matrix matrix = new Matrix();
 	private Matrix drawMatrix = null;
 	private final RectF tempSrc = new RectF();
@@ -48,16 +52,17 @@ public class ImageView extends View {
 
 		haveCustomMeasure = false;
 		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.ImageView, defStyleAttr, defStyleRes);
-		if (a.hasValue(com.android.internal.R.styleable.ImageView_tint))
-			colorFilter = new PorterDuffColorFilter(a.getColor(com.android.internal.R.styleable.ImageView_tint, 0),
-			                                        PorterDuff.Mode.values()[a.getInt(com.android.internal.R.styleable.ImageView_tintMode, PorterDuff.Mode.SRC_IN.nativeInt)]);
-		drawable = a.getDrawable(com.android.internal.R.styleable.ImageView_src);
-		if (drawable != null) {
-			drawable.setCallback(this);
-			if (colorFilter != null)
-				drawable.setColorFilter(colorFilter);
-			native_setDrawable(widget, drawable.paintable, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+		if (a.hasValue(com.android.internal.R.styleable.ImageView_tint)) {
+			tint = a.getColorStateList(com.android.internal.R.styleable.ImageView_tint);
+			hasTint = true;
 		}
+		if (a.hasValue(com.android.internal.R.styleable.ImageView_tintMode)) {
+			tintMode = PorterDuff.Mode.values()[a.getInt(com.android.internal.R.styleable.ImageView_tintMode, PorterDuff.Mode.SRC_IN.nativeInt)];
+			hasTintMode = true;
+		}
+		Drawable src = a.getDrawable(com.android.internal.R.styleable.ImageView_src);
+		if (src != null)
+			setImageDrawable(src);
 		if (a.hasValue(com.android.internal.R.styleable.ImageView_scaleType))
 			setScaleType(scaletype_from_int[a.getInt(com.android.internal.R.styleable.ImageView_scaleType, 3 /*CENTER*/)]);
 		a.recycle();
@@ -86,14 +91,13 @@ public class ImageView extends View {
 	}
 
 	public void setImageDrawable(Drawable drawable) {
-		if (drawable != null && colorFilter != null) {
-			drawable = drawable.mutate();
-			drawable.setColorFilter(colorFilter);
-		}
 		if (this.drawable != null) {
 			this.drawable.setCallback(null);
 		}
 		this.drawable = drawable;
+		applyImageTint();
+		applyColorMod();
+		drawable = this.drawable;
 		if (drawable != null) {
 			drawable.setCallback(this);
 		}
@@ -266,14 +270,14 @@ public class ImageView extends View {
 		ScaleType.CENTER_INSIDE,
 	};
 
-	public final void setColorFilter(int color, PorterDuff.Mode mode) {}
+	public final void setColorFilter(int color, PorterDuff.Mode mode) {
+		setColorFilter(new PorterDuffColorFilter(color, mode));
+	}
 
 	public void setImageTintList(ColorStateList tint) {
-		if (tint == null)
-			colorFilter = null;
-		else
-			colorFilter = new PorterDuffColorFilter(tint.getDefaultColor(), PorterDuff.Mode.SRC_IN);
-		setImageDrawable(drawable);
+		this.tint = tint;
+		hasTint = true;
+		applyImageTint();
 	}
 
 	public void setImageAlpha(int alpha) {}
@@ -285,27 +289,65 @@ public class ImageView extends View {
 	public void setImageState(int[] state, boolean merge) {}
 
 	public ColorStateList getImageTintList() {
-		return null;
+		return tint;
 	}
 
 	public PorterDuff.Mode getImageTintMode() {
-		return null;
+		return tintMode;
 	}
 
-	public void setImageTintMode(PorterDuff.Mode tintMode) {}
+	public void setImageTintMode(PorterDuff.Mode tintMode) {
+		this.tintMode = tintMode;
+		hasTintMode = true;
+		applyImageTint();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void applyImageTint() {
+		if (drawable != null && (hasTint || hasTintMode)) {
+			drawable = drawable.mutate();
+			if (hasTint)
+				drawable.setTintList(tint);
+			if (hasTintMode)
+				drawable.setTintMode(tintMode);
+			if (drawable.isStateful())
+				drawable.setState(getDrawableState());
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void applyColorMod() {
+		if (drawable != null && hasColorFilter) {
+			drawable = drawable.mutate();
+			drawable.setColorFilter(colorFilter);
+		}
+	}
 
 	public void setCropToPadding(boolean crop) {}
 
-	public void setColorFilter(int color) {}
+	public void setColorFilter(int color) {
+		setColorFilter(color, PorterDuff.Mode.SRC_ATOP);
+	}
 
-	public void setColorFilter(ColorFilter cf) {}
+	public void setColorFilter(ColorFilter cf) {
+		if (colorFilter != cf) {
+			colorFilter = cf;
+			hasColorFilter = true;
+			applyColorMod();
+			invalidate();
+		}
+	}
+
+	public ColorFilter getColorFilter() {
+		return colorFilter;
+	}
 
 	public Matrix getImageMatrix() {
 		return drawMatrix == null ? new Matrix(Matrix.IDENTITY_MATRIX) : drawMatrix;
 	}
 
 	public void clearColorFilter() {
-		colorFilter = null;
+		setColorFilter(null);
 	}
 
 	@Override

@@ -210,7 +210,7 @@ void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int
 	g_free(css_string);
 
 	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_set_data(G_OBJECT(widget), "padding_style_provider", css_provider);
+	g_object_set_data_full(G_OBJECT(widget), "padding_style_provider", css_provider, g_object_unref);
 }
 
 void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int *out_width, int *out_height)
@@ -357,7 +357,7 @@ void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *
 	g_free(css_string);
 
 	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
+	g_object_set_data_full(G_OBJECT(widget), "background_style_provider", css_provider, g_object_unref);
 	if (paintable)
 		widget_set_needs_allocation(widget);
 	button_set_has_background(widget, paintable);
@@ -383,7 +383,7 @@ void ui_view_set_background_color(struct ui_view *view, uint32_t color)
 	g_free(css_string);
 
 	gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_set_data(G_OBJECT(widget), "background_style_provider", css_provider);
+	g_object_set_data_full(G_OBJECT(widget), "background_style_provider", css_provider, g_object_unref);
 	if (((color >> 24) & 0xFF) != 0)
 		widget_set_needs_allocation(widget);
 	button_set_has_background(widget, true); // Android's ColorDrawable replaces the button's own

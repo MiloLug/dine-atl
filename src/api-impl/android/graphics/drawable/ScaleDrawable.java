@@ -9,4 +9,9 @@ public class ScaleDrawable extends Drawable {
 		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'draw'");
 	}
+
+	@Override
+	public ConstantState getConstantState() {
+		return new StubState(ScaleDrawable::new);
+	}
 }

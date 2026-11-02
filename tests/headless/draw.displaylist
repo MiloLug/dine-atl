@@ -47,9 +47,13 @@ displaylist:   rect 0,0 1.5,1.5 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,47
 displaylist:   bitmap 8x8 src 6,0 8,2 dst 1.5,0 3,1.5 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   rect 0,1.5 1.5,3 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   bitmap 8x8 src 6,6 8,8 dst 1.5,1.5 3,3 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 0,0 16,16 #ff000000 filter 9 #ff0000ff matrix [1,0,480;0,1,330;0,0,1]
 displaylist: end
 displaylist: android.view.View 40x40
 displaylist:   rect 0,0 40,40 #ff808080 fill matrix [1,0,0;0,1,10;0,0,1]
+displaylist: end
+displaylist: android.widget.ImageView 16x16
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 0,0 64,64 #ff000000 filter 5 #ffff0000 matrix [0.25,0,0;0,0.25,0;0,0,1]
 displaylist: end
 widgets draw layout lines 2
 widgets draw 2
@@ -100,6 +104,7 @@ displaylist:   rect 0,0 1.5,1.5 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,47
 displaylist:   bitmap 8x8 src 6,0 8,2 dst 1.5,0 3,1.5 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   rect 0,1.5 1.5,3 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   bitmap 8x8 src 6,6 8,8 dst 1.5,1.5 3,3 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 0,0 16,16 #ff000000 filter 9 #ff0000ff matrix [1,0,480;0,1,330;0,0,1]
 displaylist: end
 widgets draw hidden
 widgets draw shown
@@ -152,5 +157,6 @@ displaylist:   rect 0,0 1.5,1.5 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,47
 displaylist:   bitmap 8x8 src 6,0 8,2 dst 1.5,0 3,1.5 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   rect 0,1.5 1.5,3 #ff336699 fill filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
 displaylist:   bitmap 8x8 src 6,6 8,8 dst 1.5,1.5 3,3 #ff000000 filter 5 #ff00ff00 matrix [1,0,470;0,1,330;0,0,1]
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 0,0 16,16 #ff000000 filter 9 #ff0000ff matrix [1,0,480;0,1,330;0,0,1]
 displaylist: end
 widgets draw done

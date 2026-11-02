@@ -15,14 +15,6 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeCreate
   (JNIEnv *, jclass, jlong, jbyteArray);
 
-/*
- * Class:     android_graphics_drawable_NinePatchDrawable
- * Method:    nativeSetColorFilter
- * Signature: (JII)V
- */
-JNIEXPORT void JNICALL Java_android_graphics_drawable_NinePatchDrawable_nativeSetColorFilter
-  (JNIEnv *, jclass, jlong, jint, jint);
-
 #ifdef __cplusplus
 }
 #endif

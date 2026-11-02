@@ -6,6 +6,8 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_graphics_Matrix.h"
 
+#include "matrix.h"
+
 /* A Matrix is a graphene 4x4 in row-vector form: graphene_matrix_multiply(a, b) applies a, then
  * b. Android's 3x3 (column vectors) sits in rows and columns 0, 1 and 3; z stays identity. */
 
@@ -165,10 +167,8 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postScale__JFF(J
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postRotate__JFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees, jfloat px, jfloat py)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_matrix_translate(matrix, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
-	graphene_matrix_rotate_z(matrix, degrees);
-	graphene_matrix_translate(matrix, &GRAPHENE_POINT3D_INIT(px, py, 0));
+	graphene_matrix_t rotation;
+	graphene_matrix_multiply(_PTR(matrix_ptr), matrix_init_rotate(&rotation, degrees, px, py), _PTR(matrix_ptr));
 	return true;
 }
 
@@ -197,8 +197,8 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postScale__JFFFF
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1postRotate__JF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_matrix_rotate_z(matrix, degrees);
+	graphene_matrix_t rotation;
+	graphene_matrix_multiply(_PTR(matrix_ptr), matrix_init_rotate(&rotation, degrees, 0, 0), _PTR(matrix_ptr));
 	return true;
 }
 
@@ -259,12 +259,8 @@ JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setTranslate(JNIEnv 
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preRotate__JF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
 	graphene_matrix_t rotation;
-	graphene_vec3_t rotation_axis;
-	graphene_vec3_init(&rotation_axis, 0, 0, 1);
-	graphene_matrix_init_rotate(&rotation, degrees, &rotation_axis);
-	graphene_matrix_multiply(&rotation, matrix, matrix);
+	graphene_matrix_multiply(matrix_init_rotate(&rotation, degrees, 0, 0), _PTR(matrix_ptr), _PTR(matrix_ptr));
 	return true;
 }
 
@@ -304,12 +300,8 @@ JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preTranslate(JNI
 
 JNIEXPORT jboolean JNICALL Java_android_graphics_Matrix_native_1preRotate__JFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees, jfloat px, jfloat py)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
 	graphene_matrix_t rotation;
-	graphene_matrix_init_translate(&rotation, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
-	graphene_matrix_rotate_z(&rotation, degrees);
-	graphene_matrix_translate(&rotation, &GRAPHENE_POINT3D_INIT(px, py, 0));
-	graphene_matrix_multiply(&rotation, matrix, matrix);
+	graphene_matrix_multiply(matrix_init_rotate(&rotation, degrees, px, py), _PTR(matrix_ptr), _PTR(matrix_ptr));
 	return true;
 }
 
@@ -329,16 +321,12 @@ JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setValues(JNIEnv *en
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setRotate__JFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees, jfloat px, jfloat py)
 {
-	graphene_matrix_t *matrix = (graphene_matrix_t *)_PTR(matrix_ptr);
-	graphene_matrix_init_translate(matrix, &GRAPHENE_POINT3D_INIT(-px, -py, 0));
-	graphene_matrix_rotate_z(matrix, degrees);
-	graphene_matrix_translate(matrix, &GRAPHENE_POINT3D_INIT(px, py, 0));
+	matrix_init_rotate(_PTR(matrix_ptr), degrees, px, py);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setRotate__JF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat degrees)
 {
-	float radians = DEG2RAD(degrees);
-	set_sin_cos(_PTR(matrix_ptr), sinf(radians), cosf(radians), 0, 0);
+	matrix_init_rotate(_PTR(matrix_ptr), degrees, 0, 0);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Matrix_native_1setSinCos__JFFFF(JNIEnv *env, jclass class, jlong matrix_ptr, jfloat sin_v, jfloat cos_v, jfloat px, jfloat py)

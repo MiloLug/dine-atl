@@ -16,31 +16,42 @@ public class Canvas {
 
 	public Canvas() {
 		if (!(this instanceof ATLCanvas)) {
-			atl_canvas = new ATLCanvas(0);
+			atl_canvas = new ATLCanvas(0, 0, 0);
 		}
 	}
 
 	public Canvas(Bitmap bmp) {
 		this.bitmap = bmp;
-		atl_canvas = new ATLCanvas(bmp.getSnapshot());
+		atl_canvas = new ATLCanvas(bmp.getSnapshot(), bmp.getWidth(), bmp.getHeight());
+	}
+
+	// without a bitmap a canvas draws nowhere: ATLCanvas skips handle 0
+	private Object lock() {
+		return bitmap != null ? bitmap : this;
+	}
+
+	// a bitmap's latest snapshot is the target
+	private void refresh() {
+		if (bitmap != null)
+			atl_canvas.handle = bitmap.getSnapshot();
 	}
 
 	public int save() {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.save();
 		}
 	}
 	public void restore() {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.restore();
 		}
 	}
 
 	public int getSaveCount() {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.getSaveCount();
 		}
 	}
@@ -80,17 +91,18 @@ public class Canvas {
 	 * @param paint  The paint used to draw the rect
 	 */
 	public void drawRect(float left, float top, float right, float bottom, Paint paint) {
-		synchronized (bitmap) {
+		synchronized (lock()) {
 			if (paint != null && paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
 				int oldSaveCount = atl_canvas.getSaveCount();
 				atl_canvas.restoreToCount(1);
-				bitmap.eraseColor(0);
-				atl_canvas.handle = bitmap.getSnapshot();
+				if (bitmap != null)
+					bitmap.eraseColor(0);
+				refresh();
 				while (atl_canvas.getSaveCount() < oldSaveCount)
 					atl_canvas.save();
 				return;
 			}
-			atl_canvas.handle = bitmap.getSnapshot();
+			refresh();
 			atl_canvas.drawRect(left, top, right, bottom, paint);
 		}
 	}
@@ -102,8 +114,8 @@ public class Canvas {
 	 * @param degrees The amount to rotate, in degrees
 	 */
 	public void rotate(float degrees) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.rotate(degrees);
 		}
 	}
@@ -131,8 +143,8 @@ public class Canvas {
 	 * @param paint The paint used for the text (e.g. color, size, style)
 	 */
 	public void drawText(String text, float x, float y, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawText(text, x, y, paint);
 		}
 	}
@@ -230,8 +242,8 @@ public class Canvas {
 	 * @param sy The amount to scale in Y
 	 */
 	public /*native*/ void scale(float sx, float sy) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.scale(sx, sy);
 		}
 	}
@@ -323,8 +335,8 @@ public class Canvas {
 	 * @param paint  May be null. The paint used to draw the bitmap
 	 */
 	public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = this.bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawBitmap(bitmap, src, dst, paint);
 		}
 	}
@@ -413,8 +425,8 @@ public class Canvas {
 	 * @param paint  The paint used to draw the line
 	 */
 	public void drawLine(float startX, float startY, float stopX, float stopY, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawLine(startX, startY, stopX, stopY, paint);
 		}
 	}
@@ -424,8 +436,8 @@ public class Canvas {
 	}
 
 	public void drawLines(float[] points, int offset, int count, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawLines(points, offset, count, paint);
 		}
 	}
@@ -436,11 +448,12 @@ public class Canvas {
 		}
 		this.bitmap = bitmap;
 		atl_canvas.handle = bitmap == null ? 0 : bitmap.getSnapshot();
+		atl_canvas.atlReset(bitmap == null ? 0 : bitmap.getWidth(), bitmap == null ? 0 : bitmap.getHeight());
 	}
 
 	public void drawPath(Path path, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawPath(path, paint);
 		}
 	}
@@ -453,19 +466,20 @@ public class Canvas {
 	}
 
 	public void drawRoundRect(float left, float top, float right, float bottom, float rx, float ry, Paint paint) {
-		synchronized (bitmap) {
+		synchronized (lock()) {
 			if (paint.getShader() instanceof BitmapShader) {
 				BitmapShader shader = (BitmapShader)paint.getShader();
 				drawBitmap(shader.bitmap, 0, 0, paint);
 			} else if (paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
 				int oldSaveCount = atl_canvas.getSaveCount();
 				atl_canvas.restoreToCount(1);
-				bitmap.eraseColor(0);
-				atl_canvas.handle = bitmap.getSnapshot();
+				if (bitmap != null)
+					bitmap.eraseColor(0);
+				refresh();
 				while (atl_canvas.getSaveCount() < oldSaveCount)
 					atl_canvas.save();
 			} else {
-				atl_canvas.handle = bitmap.getSnapshot();
+				refresh();
 				atl_canvas.drawRoundRect(left, top, right, bottom, rx, ry, paint);
 			}
 		}
@@ -476,8 +490,8 @@ public class Canvas {
 	}
 
 	public void getMatrix(Matrix matrix) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.getMatrix(matrix);
 		}
 	}
@@ -489,22 +503,22 @@ public class Canvas {
 	}
 
 	public void translate(float dx, float dy) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.translate(dx, dy);
 		}
 	}
 
 	public void drawCircle(float cx, float cy, float radius, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawCircle(cx, cy, radius, paint);
 		}
 	}
 
 	public void drawOval(float left, float top, float right, float bottom, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawOval(left, top, right, bottom, paint);
 		}
 	}
@@ -516,8 +530,8 @@ public class Canvas {
 	}
 
 	public void concat(Matrix matrix) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.concat(matrix);
 		}
 	}
@@ -585,8 +599,8 @@ public class Canvas {
 
 	/** @hide every saveLayer's: bounds null for none; mode a PorterDuff.Mode's nativeInt, -1 for SRC_OVER */
 	public int atlSaveLayer(RectF bounds, int alpha, int mode) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.atlSaveLayer(bounds, alpha, mode);
 		}
 	}
@@ -616,15 +630,15 @@ public class Canvas {
 	}
 
 	public boolean clipPath(Path path) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.clipPath(path);
 		}
 	}
 
 	public boolean clipPath(Path path, Region.Op op) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.clipPath(path, op);
 		}
 	}
@@ -638,8 +652,8 @@ public class Canvas {
 	}
 
 	public boolean clipRect(float left, float top, float right, float bottom, Region.Op op) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			return atl_canvas.clipRect(left, top, right, bottom, op);
 		}
 	}
@@ -649,16 +663,16 @@ public class Canvas {
 	}
 
 	public void drawArc(float left, float top, float right, float bottom, float startAngle, float sweepAngle, boolean useCenter, Paint paint) {
-		synchronized (bitmap) {
-			atl_canvas.handle = bitmap.getSnapshot();
+		synchronized (lock()) {
+			refresh();
 			atl_canvas.drawArc(left, top, right, bottom, startAngle, sweepAngle, useCenter, paint);
 		}
 	}
 
 	public boolean getClipBounds(Rect outRect) {
-		/* UGLY HACK */
-		outRect.set(0, 0, Resources.getSystem().getDisplayMetrics().widthPixels, Resources.getSystem().getDisplayMetrics().heightPixels);
-		return true;
+		synchronized (lock()) {
+			return atl_canvas.getClipBounds(outRect);
+		}
 	}
 
 	public void drawPaint(Paint paint) {

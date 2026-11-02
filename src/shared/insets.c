@@ -108,8 +108,7 @@ static void insets_changed(void *data)
 	jobject window = activity_shown_window(env);
 	if (window) {
 		(*env)->CallVoidMethod(env, window, handle_cache.window.dispatchInsets);
-		if ((*env)->ExceptionCheck(env))
-			(*env)->ExceptionDescribe(env);
+		exit_on_exception(env);
 	}
 	(*env)->PopLocalFrame(env, NULL);
 	exclusion_update();

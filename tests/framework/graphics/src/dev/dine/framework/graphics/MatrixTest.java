@@ -157,4 +157,39 @@ public class MatrixTest extends TestCase {
 		matrix.setValues(new float[] {0, 0, 0, 0, 0, 0, 0, 0, 1});
 		assertFalse(matrix.rectStaysRect());
 	}
+
+	// Skia snaps a sin or cos near 0 to 0 when it makes a rotation from degrees
+	public void testQuarterTurnsAreExact() {
+		Matrix matrix = new Matrix();
+		matrix.setRotate(90);
+		assertTrue(matrix.rectStaysRect());
+		float[] values = new float[9];
+		matrix.getValues(values);
+		assertEquals(0f, values[Matrix.MSCALE_X]);
+		assertEquals(0f, values[Matrix.MSCALE_Y]);
+		RectF rect = new RectF(0, 0, 2, 1);
+		matrix.mapRect(rect);
+		assertEquals(new RectF(-1, 0, 0, 2), rect);
+
+		matrix.setRotate(180, 1, 1);
+		matrix.getValues(values);
+		assertEquals(0f, values[Matrix.MSKEW_X]);
+		matrix.reset();
+		matrix.preRotate(270);
+		assertTrue(matrix.rectStaysRect());
+		matrix.reset();
+		matrix.postRotate(90, 3, 4);
+		assertTrue(matrix.rectStaysRect());
+		matrix.getValues(values);
+		assertEquals(7f, values[Matrix.MTRANS_X]);
+		assertEquals(1f, values[Matrix.MTRANS_Y]);
+	}
+
+	public void testSetSinCosKeepsItsValues() {
+		Matrix matrix = new Matrix();
+		matrix.setSinCos(1, 1e-5f);
+		float[] values = new float[9];
+		matrix.getValues(values);
+		assertEquals(1e-5f, values[Matrix.MSCALE_X]);
+	}
 }

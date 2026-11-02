@@ -35,7 +35,7 @@ name another project.
 | `graphics/drawable/StateListDrawable.java` | `graphics/java/android/graphics/drawable/StateListDrawable.java` | `cloneConstantState`, `StateListState.newDrawable` (upstream ATL's copy has the rest) |
 | `graphics/drawable/ColorDrawable.java` | `graphics/java/android/graphics/drawable/ColorDrawable.java` | `draw`, `ColorState` for the color alone, `mutate`, `setColor`'s invalidate |
 | `graphics/drawable/LayerDrawable.java` | `graphics/java/android/graphics/drawable/LayerDrawable.java` | `ChildDrawable(orig, owner, res)`'s share of a child without a constant state, in `LayerState`'s copy constructor |
-| `widget/ImageView.java` | `core/java/android/widget/ImageView.java` | `configureBounds`, `onDraw` (as `atlDrawContent`), `drawableStateChanged` |
+| `widget/ImageView.java` | `core/java/android/widget/ImageView.java` | `configureBounds`, `onDraw` (as `atlDrawContent`), `drawableStateChanged`, `applyImageTint`, `applyColorMod` |
 | `widget/CompoundButton.java` | `core/java/android/widget/CompoundButton.java` | `toggle`, `performClick`, `setChecked`, `onCreateDrawableState` |
 | `widget/RadioButton.java` | `core/java/android/widget/RadioButton.java` | `toggle` |
 | `text/Editable.java` | `core/java/android/text/Editable.java` | the whole file |

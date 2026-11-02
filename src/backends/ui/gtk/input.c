@@ -273,6 +273,7 @@ static gboolean on_pointer_event(GtkEventControllerLegacy *controller, GdkEvent 
 #define KEYCODE_INSERT        124
 #define KEYCODE_F1            131 /* KEYCODE_F[2-12] = [132-142] */
 #define KEYCODE_NUMPAD_0      144 /* KEYCODE_NUMPAD_[1-9] = [145-153] */
+#define KEYCODE_NUMPAD_ENTER  160
 
 static int map_key_code(int key_code)
 {
@@ -304,9 +305,10 @@ static int map_key_code(int key_code)
 		case GDK_KEY_space:
 			return KEYCODE_SPACE;
 		case GDK_KEY_Return:
-		case GDK_KEY_KP_Enter:
 		case GDK_KEY_ISO_Enter:
 			return KEYCODE_ENTER;
+		case GDK_KEY_KP_Enter:
+			return KEYCODE_NUMPAD_ENTER;
 		case GDK_KEY_BackSpace:
 			return KEYCODE_DEL;
 		case GDK_KEY_grave:
