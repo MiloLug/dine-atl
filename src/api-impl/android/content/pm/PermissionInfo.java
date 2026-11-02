@@ -16,12 +16,15 @@
 
 package android.content.pm;
 
+
+import android.os.Parcel;
+import android.os.Parcelable;
 /**
  * Information you can retrieve about a particular security permission
  * known to the system.  This corresponds to information collected from the
  * AndroidManifest.xml's &lt;permission&gt; tags.
  */
-public class PermissionInfo extends PackageItemInfo {
+public class PermissionInfo extends PackageItemInfo implements Parcelable {
 	/**
 	 * A normal application value for {@link #protectionLevel}, corresponding
 	 * to the <code>normal</code> value of
@@ -199,4 +202,34 @@ public class PermissionInfo extends PackageItemInfo {
 	public int describeContents() {
 		return 0;
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeInt(protectionLevel);
+		dest.writeString(group);
+		dest.writeInt(flags);
+		dest.writeInt(descriptionRes);
+		writeCharSequence(dest, nonLocalizedDescription);
+	}
+
+	/** @hide */
+	public PermissionInfo(Parcel source) {
+		super(source);
+		protectionLevel = source.readInt();
+		group = source.readString();
+		flags = source.readInt();
+		descriptionRes = source.readInt();
+		nonLocalizedDescription = readCharSequence(source);
+	}
+
+	public static final Parcelable.Creator<PermissionInfo> CREATOR = new Parcelable.Creator<PermissionInfo>() {
+		public PermissionInfo createFromParcel(Parcel source) {
+			return new PermissionInfo(source);
+		}
+
+		public PermissionInfo[] newArray(int size) {
+			return new PermissionInfo[size];
+		}
+	};
 }

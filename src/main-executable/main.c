@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 
 #include <cairo-svg.h>
+#include <glib/gstdio.h>
 #include <gdk/wayland/gdkwayland.h>
 #include <gtk/gtk.h>
 #include <libportal/portal.h>
@@ -126,6 +127,9 @@ struct jni_callback_data {
 	uint32_t window_height;
 	gboolean install;
 	gboolean install_internal;
+	gboolean allow_fake_signature;
+	char *package;
+	char *uninstall;
 	char *prgname;
 	char **extra_jvm_options;
 	char **extra_string_keys;
@@ -213,45 +217,68 @@ static gboolean install_dbus_service_file(const char *package_name, const char *
 	return TRUE;
 }
 
-static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *hint, struct jni_callback_data *d)
+static void remove_dbus_service_file(const char *package_name)
 {
-	if (window) { // this is not the first launch, but a DBus request to open an URI in the running app
-		fprintf(stderr, "opening uri over DBus %p\n", files[0]);
-		char *uri = g_file_get_uri(files[0]);
-		JNIEnv *env = get_jni_env();
-		fprintf(stderr, "opening uri over DBus: %s\n", uri);
-		activity_start(env, atl_activity_create_main(env, d->apk_main_activity_class, uri));
-		return;
+	char *service_name = g_strdup_printf("%s.service", package_name);
+	char *service_path = g_build_filename(g_get_user_data_dir(), "dbus-1", "services", service_name, NULL);
+	g_unlink(service_path);
+	g_free(service_name);
+	g_free(service_path);
+}
+
+static JNIEnv *start_vm(struct atl_paths *paths, struct jni_callback_data *d)
+{
+	return atl_vm_start(paths, d->extra_jvm_options,
+	                    &(struct atl_window_config){d->window_width, d->window_height, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN});
+}
+
+// --uninstall: the registry's row, the app's files and data, its desktop entry and D-Bus service
+static void uninstall(struct jni_callback_data *d)
+{
+	struct atl_paths paths;
+	atl_prepare(&paths, NULL, 0, NULL, false);
+	JNIEnv *env = start_vm(&paths, d);
+	int status = atl_uninstall(env, d->uninstall);
+	if (status == 0) {
+		remove_dbus_service_file(d->uninstall);
+		char *desktop_file_id = g_strdup_printf("%s.desktop", d->uninstall);
+		xdp_portal_dynamic_launcher_uninstall(xdp_portal_new(), desktop_file_id, NULL);
+		g_free(desktop_file_id);
 	}
+	atl_exit(env, status);
+}
+
+/* A run of apks (a path run: installed when the registry doesn't hold them yet) or of an installed
+ * package. */
+static void start_app(GtkApplication *app, char **apks, int napks, const char *package, struct jni_callback_data *d)
+{
 	const char *package_name;
 	jobject activity_object;
 	jobject application_object;
 	struct atl_paths paths;
 
-	char *apk_name = g_file_get_basename(files[0]);
-	char **apks = g_new0(char *, nfiles);
-	for (int i = 0; i < nfiles; i++) {
-		apks[i] = g_file_get_path(files[i]);
-		if (apks[i] == NULL) {
-			fprintf(stderr, "error: the specified file path (%s) doesn't seem to be valid\n", g_file_get_uri(files[i]));
-			exit(1);
-		}
+	if (d->install_internal) {
+		atl_prepare(&paths, NULL, 0, NULL, false);
+		JNIEnv *env = start_vm(&paths, d);
+		atl_exit(env, atl_install(env, apks, napks, d->allow_fake_signature));
 	}
-	atl_prepare(&paths, apks, nfiles, d->apk_instrumentation_class);
-	g_free(apks);
+	atl_prepare(&paths, apks, napks, package, d->apk_instrumentation_class);
+	JNIEnv *env = start_vm(&paths, d);
+	// before the path run's own install, which grants no fake signature
+	if (d->install && d->allow_fake_signature && atl_install(env, apks, napks, true))
+		atl_exit(env, 1);
+	if (atl_app_prepare(env, &paths) < 0)
+		atl_exit(env, 1);
 
 	// Apps which extract libraries on their own can place them anywhere in app_data_dir. Therefore, we add app_data_dir/** to the
 	// BIONIC_LD_LIBRARY_PATH. While app_data_dir/lib is already matched by the wildcard, it needs to be specified again to allow loading
 	// libraries by libname from app_data_dir/lib
 	char *ld_path = getenv("BIONIC_LD_LIBRARY_PATH");
 	ld_path = (ld_path ? ld_path : "");
-	ld_path = g_strdup_printf("%s:%s**:%s", paths.app_lib_dir, app_data_dir, ld_path);
+	ld_path = g_strdup_printf("%s:%s/**:%s", paths.app_lib_dir, app_data_dir, ld_path);
 	// calling directly into the shim bionic linker to whitelist the app's lib dir as containing bionic-linked libraries
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);
-
-	JNIEnv *env = atl_vm_start(&paths, d->extra_jvm_options,
-	                  &(struct atl_window_config){d->window_width, d->window_height, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN});
 
 	/* -- misc -- */
 
@@ -311,7 +338,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	}
 
 	// construct main Activity
-	if (!d->apk_instrumentation_class && !d->install_internal) {
+	if (!d->apk_instrumentation_class) {
 		activity_object = atl_activity_create_main(env, d->apk_main_activity_class, (uri_option && *uri_option) ? uri_option : NULL);
 		if (uri_option)
 			g_free(uri_option);
@@ -334,7 +361,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	const char *app_icon_path = app_icon_path_jstr ? _CSTRING(app_icon_path_jstr) : NULL;
 	exit_on_exception(env);
 
-	if (d->install || d->install_internal) {
+	if (d->install) {
 		if (d->apk_instrumentation_class) {
 			fprintf(stderr, "error: --instrument supplied together with --install, exiting\n");
 			exit(1);
@@ -346,7 +373,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		exit_on_exception(env);
 
 		GVariant *icon_serialized = NULL;
-		if (!d->install_internal) {
+		{
 			if (app_icon_path) {
 				/* we can import the icon as-is */
 				extract_from_apk(app_icon_path, app_icon_path);
@@ -382,19 +409,6 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 			}
 		}
 
-		gchar *dest_name = g_strdup_printf("%s.apk", package_name);
-		GFile *dest = g_file_new_build_filename(paths.data_dir_base, "_installed_apks_", d->install_internal ? dest_name : apk_name, NULL);
-		free(dest_name);
-		printf("installing %s to %s\n", apk_name, g_file_get_path(dest));
-		g_file_make_directory(g_file_get_parent(dest), NULL, NULL);
-		GError *err = NULL;
-		g_file_copy(files[0], dest, G_FILE_COPY_OVERWRITE, NULL, NULL, NULL, &err);
-		if (err)
-			fprintf(stderr, "error copying apk: %s\n", err->message);
-
-		if (d->install_internal)
-			exit(0);
-
 		jmethodID get_supported_mime_types = _METHOD(handle_cache.application.class, "get_supported_mime_types", "()Ljava/lang/String;");
 		jstring supported_mime_types_jstr = (*env)->CallObjectMethod(env, application_object, get_supported_mime_types);
 		const char *supported_mime_types = supported_mime_types_jstr ? _CSTRING(supported_mime_types_jstr) : NULL;
@@ -405,21 +419,20 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 			printf("WARNING: RUN_FROM_BUILDDIR set and --install given: using current directory in desktop entry\n");
 			g_string_append_printf(exec_cmd, "-C %s ", g_get_current_dir());
 		}
-		char *envs[] = {"RUN_FROM_BUILDDIR", "LD_LIBRARY_PATH", "ANDROID_APP_DATA_DIR", "ATL_UGLY_ENABLE_LOCATION", "ATL_UGLY_ENABLE_MICROPHONE", "ATL_UGLY_ENABLE_WEBVIEW", "ATL_DISABLE_WINDOW_DECORATIONS", "ATL_FORCE_FULLSCREEN", "ATL_IS_AUTOMOTIVE", "ATL_IS_TELEVISION", "ATL_IS_WATCH"};
+		char *envs[] = {"RUN_FROM_BUILDDIR", "LD_LIBRARY_PATH", "DINE_PREFIX", "ATL_UGLY_ENABLE_LOCATION", "ATL_UGLY_ENABLE_MICROPHONE", "ATL_UGLY_ENABLE_WEBVIEW", "ATL_DISABLE_WINDOW_DECORATIONS", "ATL_FORCE_FULLSCREEN", "ATL_IS_AUTOMOTIVE", "ATL_IS_TELEVISION", "ATL_IS_WATCH"};
 		for (int i = 0; i < ARRAY_SIZE(envs); i++) {
 			if (getenv(envs[i])) {
 				g_string_append_printf(exec_cmd, "%s=%s ", envs[i], getenv(envs[i]));
 			}
 		}
 		g_string_append_printf(exec_cmd, "%s ", d->prgname);
-		g_string_append_printf(exec_cmd, "--gapplication-app-id %s ", package_name);
 		if (d->apk_main_activity_class)
 			g_string_append_printf(exec_cmd, "-l %s ", d->apk_main_activity_class);
 		if (d->window_width)
 			g_string_append_printf(exec_cmd, "-w %d ", d->window_width);
 		if (d->window_height)
 			g_string_append_printf(exec_cmd, "-h %d ", d->window_height);
-		g_string_append_printf(exec_cmd, "%s", g_file_get_path(dest));
+		g_string_append_printf(exec_cmd, "--package %s", package_name);
 
 		gboolean dbus_activatable = install_dbus_service_file(package_name, exec_cmd->str);
 
@@ -509,13 +522,45 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 	}
 }
 
+static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *hint, struct jni_callback_data *d)
+{
+	if (window) { // this is not the first launch, but a DBus request to open an URI in the running app
+		fprintf(stderr, "opening uri over DBus %p\n", files[0]);
+		char *uri = g_file_get_uri(files[0]);
+		JNIEnv *env = get_jni_env();
+		fprintf(stderr, "opening uri over DBus: %s\n", uri);
+		activity_start(env, atl_activity_create_main(env, d->apk_main_activity_class, uri));
+		return;
+	}
+	if (d->package || d->uninstall) {
+		fprintf(stderr, "error: --package and --uninstall take no apk\n");
+		exit(1);
+	}
+	char **apks = g_new0(char *, nfiles + 1);
+	for (int i = 0; i < nfiles; i++) {
+		apks[i] = g_file_get_path(files[i]);
+		if (apks[i] == NULL) {
+			fprintf(stderr, "error: the specified file path (%s) doesn't seem to be valid\n", g_file_get_uri(files[i]));
+			exit(1);
+		}
+	}
+	start_app(app, apks, nfiles, NULL, d);
+	g_strfreev(apks);
+}
+
 static void activate(GtkApplication *app, struct jni_callback_data *d)
 {
 	if (window) { // this is not the first launch, but a DBus activate request to the running app
 		gtk_window_present(GTK_WINDOW(window));
 		return;
 	}
-	fprintf(stderr, "error: usage: ./android-translation-layer [app.apk] [-l path/to/activity]\n"
+	if (d->uninstall && !d->package && !d->install && !d->install_internal) {
+		uninstall(d);
+	} else if (d->package && !d->uninstall && !d->install && !d->install_internal) {
+		start_app(app, NULL, 0, d->package, d);
+		return;
+	}
+	fprintf(stderr, "error: usage: ./android-translation-layer [app.apk] [-l path/to/activity] | --package PACKAGE | --uninstall PACKAGE\n"
 	                "you can specify --help to see the list of options\n");
 	exit(1);
 }
@@ -536,8 +581,11 @@ void init_cmd_parameters(GApplication *app, struct jni_callback_data *d)
 		{ "instrument",        0,  0, G_OPTION_ARG_STRING,       &d->apk_instrumentation_class, "the fully qualifed name of the instrumentation you wish to launch",                            "CLASS_NAME"    },
 		{ "window-width",     'w', 0, G_OPTION_ARG_INT,          &d->window_width,              "window width to launch with (some apps react poorly to runtime window size adjustments)",      "WIDTH"         },
 		{ "window-height",    'h', 0, G_OPTION_ARG_INT,          &d->window_height,             "window height to launch with (some apps react poorly to runtime window size adjustments)",     "HEIGHT"        },
-		{ "install",          'i', 0, G_OPTION_ARG_NONE,         &d->install,                   "install .desktop file for the given apk",                                                      NULL            },
-		{ "install-internal",  0 , 0, G_OPTION_ARG_NONE,         &d->install_internal,          "copy an apk to _installed_apks_ but don't create a desktop entry",                             NULL            },
+		{ "install",          'i', 0, G_OPTION_ARG_NONE,         &d->install,                   "install the given apk into the prefix with a .desktop file",                                    NULL            },
+		{ "install-internal",  0 , 0, G_OPTION_ARG_NONE,         &d->install_internal,          "install the given apk into the prefix without a desktop entry",                                NULL            },
+		{ "allow-fake-signature", 0, 0, G_OPTION_ARG_NONE,       &d->allow_fake_signature,      "with --install: grant the apk's FAKE_PACKAGE_SIGNATURE request",                               NULL            },
+		{ "package",           0 , 0, G_OPTION_ARG_STRING,       &d->package,                   "run an installed package (sets the app id)",                                                   "PACKAGE"       },
+		{ "uninstall",         0 , 0, G_OPTION_ARG_STRING,       &d->uninstall,                 "remove an installed package, its data and its desktop entry",                                  "PACKAGE"       },
 		{ "extra-jvm-option", 'X', 0, G_OPTION_ARG_STRING_ARRAY, &d->extra_jvm_options,         "pass an additional option directly to art (e.g -X \"-verbose:jni\")",                          "\"OPTION\""    },
 		{ "extra-string-key", 'e', 0, G_OPTION_ARG_STRING_ARRAY, &d->extra_string_keys,         "pass a string extra (-e key=value)",                                                           "\"KEY=VALUE\"" },
 		/* long_name | short_name | flags                     | arg                  | arg_data     | description                                                                              | arg_desc */
@@ -570,11 +618,21 @@ int main(int argc, char **argv)
 	callback_data->window_height = ATL_WINDOW_HEIGHT_DEFAULT;
 	callback_data->install = FALSE;
 	callback_data->install_internal = FALSE;
+	callback_data->allow_fake_signature = FALSE;
+	callback_data->package = NULL;
+	callback_data->uninstall = NULL;
 	callback_data->prgname = argv[0];
 	callback_data->extra_jvm_options = NULL;
 	callback_data->extra_string_keys = NULL;
 
-	app = gtk_application_new("com.example.demo_application", G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN | G_APPLICATION_CAN_OVERRIDE_APP_ID);
+	// a run by package is that package's app, so its id must be known before GApplication registers
+	const char *app_id = "com.example.demo_application";
+	for (int i = 1; i < argc; i++) {
+		const char *package = !strcmp(argv[i], "--package") && i + 1 < argc ? argv[i + 1] : !strncmp(argv[i], "--package=", 10) ? argv[i] + 10 : NULL;
+		if (package && g_application_id_is_valid(package))
+			app_id = package;
+	}
+	app = gtk_application_new(app_id, G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN | G_APPLICATION_CAN_OVERRIDE_APP_ID);
 
 	// cmdline related setup
 	init_cmd_parameters(G_APPLICATION(app), callback_data);

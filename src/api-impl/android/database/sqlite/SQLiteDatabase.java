@@ -693,6 +693,14 @@ public final class SQLiteDatabase extends SQLiteClosable {
 		return db;
 	}
 
+	/** @hide syncMode as SQLiteDatabaseConfiguration.syncMode */
+	public static SQLiteDatabase openDatabase(String path, int flags, String syncMode) {
+		SQLiteDatabase db = new SQLiteDatabase(path, flags, null, null);
+		db.mConfigurationLocked.syncMode = syncMode;
+		db.open();
+		return db;
+	}
+
 	/**
 	 * Equivalent to openDatabase(file.getPath(), factory, CREATE_IF_NECESSARY).
 	 */

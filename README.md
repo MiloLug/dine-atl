@@ -26,41 +26,44 @@ cd builddir
 meson install
 ```
 
-To run with the default data dir `~/.local/share/android_translation_layer/`:
+To run an apk (it is installed first, unless the prefix already holds that exact file):
 ```sh
 android-translation-layer [path to apk] [-l activity to launch]
 ```
-For custom data dir:
+To run an installed package:
 ```sh
-ANDROID_APP_DATA_DIR=[data dir] android-translation-layer [path to apk] [-l activity to launch]
+android-translation-layer --package [package name] [-l activity to launch]
+```
+The prefix is `~/.dine`, or `DINE_PREFIX`:
+```sh
+DINE_PREFIX=[dir] android-translation-layer [path to apk]
 ```
 
-### App data
-As mentioned, the default data dir is `~/.local/share/android_translation_layer/`. The data for each
-app is then stored in `~/.local/share/android_translation_layer/[apk-name]_`. What this means
-in practice is that:
- - we pass this directory to the app where AOSP would pass `/data/data/[app-id]`, and extract native
-libs in `lib/`
- - we pass this directory to the app where AOSP would pass `/storage/emulated/0` (this means OBBs
-will be under `Android/obb/[app-id]/`, and various litter that the app would happily dump on the
-"sdcard" on AOSP will end up here as well)
- - we pass this directory as an additional resource directory to `libandroidfw`, so you can
-for example put something in `assets/file.txt` and if the app tries to load `assets/file.txt` from
-it's apk file, it will be preferentially loaded from here instead (do note that some apps read files
-from the apk by themselves, and some apps do weird things like only load the file in order to find
-it's offset in the apk to then read it out by themselves, so not only will this not always work but
-you will sometimes find out by having the app crash)
- - we extract some additional files from the apk here for our purposes
+### The prefix
+Everything an install keeps sits in the prefix:
+ - `registry.sqlite`: one row per installed package, which every app's `PackageManager` reads. It
+starts with stand-ins for `com.google.android.gms`, `gsf` and `vending`; installing a package of
+the same name (microG) replaces one.
+ - `apps/[package]/`: the installed apks, byte for byte.
+ - `data/[package]/`: the app's data. We pass this directory to the app where AOSP would pass
+`/data/data/[package]`, and extract native libs in `lib/`. We also pass it where AOSP would pass
+`/storage/emulated/0` (OBBs end up under `Android/obb/[package]/`, and whatever the app would dump
+on the "sdcard" on AOSP ends up here as well). It is also an additional resource directory for
+`libandroidfw`: put something in `assets/file.txt`, and if the app loads `assets/file.txt` from its
+apk, this file wins (some apps read their apk by themselves, so this doesn't always work, and you
+may find out by the app crashing). Some other files from the apk are extracted here for our
+purposes.
 
-The reason that we don't use `[app-id]` for the directory name is simply that we don't have access
-to the app id at an early enough point. However, this also allows you to have multiple versions
-of the same app not clash. Feel free to rename the apk to `[app-id]_[version].apk`, or simply
-`[app-id].apk` if you wish to replace it with a different version later and reuse the data dir.
-
-### "install" an apk
-You can pass `--install` on the cmdline to "install" an apk instead of launching it. This will copy
-the apk to `_installed_apks_` in the data dir (`~/.local/share/android_translation_layer/` by default),
-and use the xdp portal to install a `.desktop` file.
+### Installing and uninstalling
+```sh
+android-translation-layer --install [path to apk]...           # also a .desktop file, through the xdp portal
+android-translation-layer --install-internal [path to apk]...  # no .desktop file
+android-translation-layer --uninstall [package name]           # its apks, its data and its .desktop file
+```
+Several apks are one package, the base apk first. An apk that asks for
+`android.permission.FAKE_PACKAGE_SIGNATURE` (microG) is reported with the signature in its
+`fake-signature` meta-data only with `--allow-fake-signature`; an app that installs one asks the
+user instead. The .desktop file runs `--package [package name]`.
 
 ### Tweaks
 ##### Resolution Changes

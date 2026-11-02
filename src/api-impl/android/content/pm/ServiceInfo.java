@@ -16,6 +16,8 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.util.Printer;
 
 /**
@@ -23,7 +25,7 @@ import android.util.Printer;
  * service. This corresponds to information collected from the
  * AndroidManifest.xml's &lt;service&gt; tags.
  */
-public class ServiceInfo extends ComponentInfo {
+public class ServiceInfo extends ComponentInfo implements Parcelable {
 	/**
 	 * Optional name of a permission required to be able to access this
 	 * Service.  From the "permission" attribute.
@@ -83,4 +85,28 @@ public class ServiceInfo extends ComponentInfo {
 	public int describeContents() {
 		return 0;
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeString(permission);
+		dest.writeInt(flags);
+	}
+
+	/** @hide */
+	public ServiceInfo(Parcel source) {
+		super(source);
+		permission = source.readString();
+		flags = source.readInt();
+	}
+
+	public static final Parcelable.Creator<ServiceInfo> CREATOR = new Parcelable.Creator<ServiceInfo>() {
+		public ServiceInfo createFromParcel(Parcel source) {
+			return new ServiceInfo(source);
+		}
+
+		public ServiceInfo[] newArray(int size) {
+			return new ServiceInfo[size];
+		}
+	};
 }

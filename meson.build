@@ -79,6 +79,8 @@ endif
 
 # code shared by every build: JNI, ART/libcore, androidfw, sqlite, graphene and libc only
 atl_shared = static_library('atl_shared', [
+	'src/api-impl-jni/android_atl_ATLInstaller.c',
+	'src/api-impl-jni/android_atl_ATLPaths.c',
 	'src/api-impl-jni/android_content_res_AssetManager.c',
 	'src/api-impl-jni/android_os_Environment.c',
 	'src/api-impl-jni/android_os_SystemClock.c',

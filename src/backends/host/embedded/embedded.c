@@ -31,7 +31,7 @@ JavaVMOption *atl_embedded_vm_options(const struct atl_embedded_config *config, 
 		.api_impl_jar = (char *)config->api_impl_jar,
 		.framework_res_apk = (char *)config->framework_res_apk,
 	};
-	if (atl_set_app(&paths, (char *const[]){(char *)config->apk}, 1) < 0)
+	if (atl_set_app(&paths, (char *const[]){(char *)config->apk}, 1, NULL) < 0)
 		return NULL;
 	return atl_vm_options(&paths, count);
 }
@@ -80,7 +80,7 @@ int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 		.density_dpi = config->density_dpi ?: ATL_DENSITY_DPI_DEFAULT,
 		.night = config->night ?: UI_DISPLAY_UNKNOWN,
 	};
-	if (atl_vm_init(env, &window) < 0)
+	if (atl_vm_init(env, &window) < 0 || atl_app_prepare(env, &paths) < 0)
 		return exited(-1);
 
 	atl_app_create(env, ui_window_new(config->surface));

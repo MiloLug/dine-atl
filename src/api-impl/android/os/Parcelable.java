@@ -3,6 +3,9 @@ package android.os;
 public interface Parcelable {
 	public static final int CONTENTS_FILE_DESCRIPTOR = 1;
 
+	/** @hide AOSP's value: a container writes a shared object once and its children leave it out */
+	public static final int PARCELABLE_ELIDE_DUPLICATES = 2;
+
 	public static interface Creator<T> {
 		public T createFromParcel(Parcel parcel);
 

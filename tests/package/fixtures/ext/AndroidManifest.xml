@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.dine.pkg.ext"
+		android:versionCode="1" android:versionName="1.0">
+	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="27"/>
+	<uses-feature android:name="dine.test.extension" android:required="true"/>
+	<application android:label="package ext" android:hasCode="true">
+		<meta-data android:name="dine.test.ext.class" android:value=".Ext"/>
+	</application>
+</manifest>

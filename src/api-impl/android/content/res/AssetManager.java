@@ -114,6 +114,15 @@ public final class AssetManager {
 	 * {@hide}
 	 */
 	public AssetManager(String class_path) {
+		this(class_path, true);
+	}
+
+	/** @hide for reading an APK's manifest: without the running app's data dir among the asset paths */
+	public static AssetManager forParsing() {
+		return new AssetManager(System.getProperty("java.class.path"), false);
+	}
+
+	private AssetManager(String class_path, boolean with_app_data_dir) {
 		synchronized (this) {
 			if (DEBUG_REFS) {
 				mNumRefs = 0;
@@ -128,7 +137,10 @@ public final class AssetManager {
 			String[] paths = class_path.split(":");
 			for (int i = paths.length - 1; i >= 0; i--)
 				asset_paths.add(paths[i]);
-			asset_paths.add(android.os.Environment.getExternalStorageDirectory().getAbsolutePath() + "/");
+			// absent while installing, before any app is set
+			String app_data_dir = with_app_data_dir ? android.os.Environment.peekAppDataDir() : null;
+			if (app_data_dir != null)
+				asset_paths.add(new java.io.File(app_data_dir).getAbsolutePath() + "/");
 			/*String*/ Object[] asset_paths_arr = asset_paths.toArray();
 			native_setApkAssets(asset_paths_arr, asset_paths_arr.length);
 		}

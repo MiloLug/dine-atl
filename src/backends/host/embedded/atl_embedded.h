@@ -11,7 +11,7 @@ extern "C" {
 
 /* ATL inside an app that owns the VM. The embedder creates the one VM with its boot class path,
  * VM-wide flags and atl_embedded_vm_options, then calls atl_embedded_main on the thread that
- * becomes Android's main thread. Once per process. The app data dir is ANDROID_APP_DATA_DIR. */
+ * becomes Android's main thread. Once per process. Its prefix (registry, apps, data) is DINE_PREFIX. */
 
 struct atl_embedded_config {
 	const char *api_impl_jar;

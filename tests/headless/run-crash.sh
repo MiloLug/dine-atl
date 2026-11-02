@@ -18,7 +18,7 @@ for activity in CreateActivity:onCreate ResumeActivity:onResume "PostActivity:a 
   activity="${activity%%:*}"
   mkdir "$work/$activity"
   rc=0
-  env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/$activity" timeout 60 \
+  env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/$activity" timeout 60 \
     ./android-translation-layer "$apk" -l "dev/dine/crash/$activity" -X -Xint >"$work/$activity.log" 2>&1 || rc=$?
   ! grep -q "JNI DETECTED ERROR" "$work/$activity.log" || fail "$activity: CheckJNI abort (exit status $rc)"
   grep -q "hacky_uncaught_exception_handler" "$work/$activity.log" || fail "$activity: no uncaught handler (exit status $rc)"

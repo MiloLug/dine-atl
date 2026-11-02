@@ -11,15 +11,15 @@
 struct ui_window;
 
 struct atl_paths {
-	char *apk_classpath; // the apks joined with ':', the main apk first
-	char *data_dir_base; // ANDROID_APP_DATA_DIR, or android_translation_layer in the XDG data dir
-	char *app_lib_dir;   // <app data dir>/lib
+	char **apks;   // a run by path: the apks, the main one first
+	int napks;
+	char *package; // a run by package
+	char *app_lib_dir; // <app data dir>/lib, set by atl_app_prepare
 	char *api_impl_jar;
 	char *framework_res_apk;
 	char *test_runner_jar; // NULL unless instrumenting
 	char *natives_dir;
 };
-
 #define ATL_WINDOW_WIDTH_DEFAULT  960
 #define ATL_WINDOW_HEIGHT_DEFAULT 540
 #define ATL_DENSITY_DPI_DEFAULT   160
@@ -28,11 +28,11 @@ struct atl_paths {
 extern struct ui_window *atl_window;
 extern struct atl_window_config atl_window_config;
 
-/* Sets the apk class path and creates the data dirs; sets apk_path and app_data_dir.
- * -1 on error, after printing it. */
-int atl_set_app(struct atl_paths *paths, char *const *apks, int napks);
+/* Opens the prefix ($DINE_PREFIX, else ~/.dine) and records the app: apks for a run by path, or
+ * an installed package; neither for an install or uninstall. -1 on error, after printing it. */
+int atl_set_app(struct atl_paths *paths, char *const *apks, int napks, const char *package);
 /* atl_set_app plus the jars of a Linux install or build dir. Exits on error. */
-void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, bool instrument);
+void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, const char *package, bool instrument);
 /* ATL's options for JNI_CreateJavaVM, without VM-wide ones such as -Xcheck:jni; NULL on error.
  * Free with atl_vm_options_free once the VM exists. */
 JavaVMOption *atl_vm_options(const struct atl_paths *paths, int *count);
@@ -42,9 +42,16 @@ JNIEnv *atl_vm_start(const struct atl_paths *paths, char *const *extra_jvm_optio
 /* On a VM created with atl_vm_options: loads translation_layer_main and fills the handle cache.
  * -1 on error. */
 int atl_vm_init(JNIEnv *env, const struct atl_window_config *window);
+/* After atl_vm_init: installs a run by path's apks unless the registry holds them, makes the app
+ * the primary one and sets apk_path, app_data_dir and paths->app_lib_dir. -1 on error. */
+int atl_app_prepare(JNIEnv *env, struct atl_paths *paths);
 /* Main looper, Application, content providers, Application.onCreate. */
 jobject atl_app_create(JNIEnv *env, struct ui_window *window);
 jobject atl_activity_create_main(JNIEnv *env, const char *activity_class, const char *uri);
+/* The hosts' --install (the apks are one package, the base first) and --uninstall, on a VM started
+ * without an app; they print the result and return the process's exit status. */
+int atl_install(JNIEnv *env, char *const *apks, int napks, bool allow_fake_signature);
+int atl_uninstall(JNIEnv *env, const char *package);
 /* System.exit(status): shuts the VM down and exits the process. */
 void atl_exit(JNIEnv *env, int status);
 

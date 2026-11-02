@@ -108,10 +108,6 @@ public class Environment {
 		 */
 		private final File[] mExternalDirsForVold = null;
 		/**
-		 * External storage dirs, as visible to apps
-		 */
-		private final File[] mExternalDirsForApp = {Environment.getExternalStorageDirectory()};
-		/**
 		 * Primary emulated storage dir for direct access
 		 */
 		private final File mEmulatedDirForDirect = null;
@@ -120,9 +116,15 @@ public class Environment {
 			// TODO
 		}
 
+		// External storage dirs, as visible to apps; read on use: Environment's <clinit> builds this
+		// before an install or a run sets the app
+		private File[] externalDirsForApp() {
+			return new File[] {Environment.getExternalStorageDirectory()};
+		}
+
 		@Deprecated
 		public File getExternalStorageDirectory() {
-			return mExternalDirsForApp[0];
+			return externalDirsForApp()[0];
 		}
 
 		@Deprecated
@@ -135,7 +137,7 @@ public class Environment {
 		}
 
 		public File[] getExternalDirsForApp() {
-			return mExternalDirsForApp;
+			return externalDirsForApp();
 		}
 
 		public File getMediaDir() {
@@ -143,19 +145,19 @@ public class Environment {
 		}
 
 		public File[] buildExternalStoragePublicDirs(String type) {
-			return buildPaths(mExternalDirsForApp, type);
+			return buildPaths(externalDirsForApp(), type);
 		}
 
 		public File[] buildExternalStorageAndroidDataDirs() {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_DATA);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_DATA);
 		}
 
 		public File[] buildExternalStorageAndroidObbDirs() {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_OBB);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_OBB);
 		}
 
 		public File[] buildExternalStorageAppDataDirs(String packageName) {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_DATA, packageName);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_DATA, packageName);
 		}
 
 		public File[] buildExternalStorageAppDataDirsForVold(String packageName) {
@@ -163,11 +165,11 @@ public class Environment {
 		}
 
 		public File[] buildExternalStorageAppMediaDirs(String packageName) {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_MEDIA, packageName);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_MEDIA, packageName);
 		}
 
 		public File[] buildExternalStorageAppObbDirs(String packageName) {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_OBB, packageName);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_OBB, packageName);
 		}
 
 		public File[] buildExternalStorageAppObbDirsForVold(String packageName) {
@@ -175,11 +177,11 @@ public class Environment {
 		}
 
 		public File[] buildExternalStorageAppFilesDirs(String packageName) {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_DATA, packageName, DIR_FILES);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_DATA, packageName, DIR_FILES);
 		}
 
 		public File[] buildExternalStorageAppCacheDirs(String packageName) {
-			return buildPaths(mExternalDirsForApp, DIR_ANDROID, DIR_DATA, packageName, DIR_CACHE);
+			return buildPaths(externalDirsForApp(), DIR_ANDROID, DIR_DATA, packageName, DIR_CACHE);
 		}
 	}
 
@@ -327,10 +329,18 @@ public class Environment {
 	 */
 	public static File getExternalStorageDirectory() {
 		if (app_data_dir_file == null) {
-			app_data_dir_file = new File(native_get_app_data_dir());
+			String dir = native_get_app_data_dir();
+			if (dir == null)
+				throw new IllegalStateException("no app data dir yet: it is set with the app");
+			app_data_dir_file = new File(dir);
 		}
 
 		return app_data_dir_file;
+	}
+
+	/** @hide the app data dir, or null before an app is set */
+	public static String peekAppDataDir() {
+		return native_get_app_data_dir();
 	}
 
 	private static native String native_get_app_data_dir();

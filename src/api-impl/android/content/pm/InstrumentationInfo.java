@@ -16,12 +16,15 @@
 
 package android.content.pm;
 
+
+import android.os.Parcel;
+import android.os.Parcelable;
 /**
  * Information you can retrieve about a particular piece of test
  * instrumentation.  This corresponds to information collected
  * from the AndroidManifest.xml's &lt;instrumentation&gt; tag.
  */
-public class InstrumentationInfo extends PackageItemInfo {
+public class InstrumentationInfo extends PackageItemInfo implements Parcelable {
 	/**
 	 * The name of the application package being instrumented.  From the
 	 * "package" attribute.
@@ -82,4 +85,38 @@ public class InstrumentationInfo extends PackageItemInfo {
 	public int describeContents() {
 		return 0;
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeString(targetPackage);
+		dest.writeString(sourceDir);
+		dest.writeString(publicSourceDir);
+		dest.writeString(dataDir);
+		dest.writeString(nativeLibraryDir);
+		dest.writeInt(handleProfiling ? 1 : 0);
+		dest.writeInt(functionalTest ? 1 : 0);
+	}
+
+	/** @hide */
+	public InstrumentationInfo(Parcel source) {
+		super(source);
+		targetPackage = source.readString();
+		sourceDir = source.readString();
+		publicSourceDir = source.readString();
+		dataDir = source.readString();
+		nativeLibraryDir = source.readString();
+		handleProfiling = source.readInt() != 0;
+		functionalTest = source.readInt() != 0;
+	}
+
+	public static final Parcelable.Creator<InstrumentationInfo> CREATOR = new Parcelable.Creator<InstrumentationInfo>() {
+		public InstrumentationInfo createFromParcel(Parcel source) {
+			return new InstrumentationInfo(source);
+		}
+
+		public InstrumentationInfo[] newArray(int size) {
+			return new InstrumentationInfo[size];
+		}
+	};
 }

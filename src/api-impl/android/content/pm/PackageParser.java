@@ -524,7 +524,7 @@ public class PackageParser {
 		Resources res = null;
 		boolean assetError = true;
 		try {
-			assmgr = new AssetManager();
+			assmgr = AssetManager.forParsing();
 			int cookie = 1;
 			assmgr.addAssetPath(mArchiveSourcePath);
 			if (cookie != 0) {
@@ -759,7 +759,7 @@ public class PackageParser {
 	     final XmlResourceParser parser;
 	     final Resources res;
 	     try {
-		 assmgr = new AssetManager();
+		 assmgr = AssetManager.forParsing();
 		 assmgr.setConfiguration(0, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			 Build.VERSION.RESOURCES_SDK_INT);
 
@@ -3447,6 +3447,13 @@ public class PackageParser {
 			className = null;
 		}
 
+		/** For PackageCodec. */
+		Component(Package _owner, String _className) {
+			owner = _owner;
+			intents = new ArrayList<II>(0);
+			className = _className;
+		}
+
 		public Component(final ParsePackageItemArgs args, final PackageItemInfo outInfo) {
 			owner = args.owner;
 			intents = new ArrayList<II>(0);
@@ -3727,6 +3734,12 @@ public class PackageParser {
 			info.applicationInfo = args.owner.applicationInfo;
 		}
 
+		Activity(Package _owner, String _className, ActivityInfo _info) {
+			super(_owner, _className);
+			info = _info;
+			info.applicationInfo = _owner.applicationInfo;
+		}
+
 		public void setPackageName(String packageName) {
 			super.setPackageName(packageName);
 			info.packageName = packageName;
@@ -3767,6 +3780,12 @@ public class PackageParser {
 			super(args, _info);
 			info = _info;
 			info.applicationInfo = args.owner.applicationInfo;
+		}
+
+		Service(Package _owner, String _className, ServiceInfo _info) {
+			super(_owner, _className);
+			info = _info;
+			info.applicationInfo = _owner.applicationInfo;
 		}
 
 		public void setPackageName(String packageName) {
@@ -3811,6 +3830,12 @@ public class PackageParser {
 			info = _info;
 			info.applicationInfo = args.owner.applicationInfo;
 			syncable = false;
+		}
+
+		Provider(Package _owner, String _className, ProviderInfo _info) {
+			super(_owner, _className);
+			info = _info;
+			info.applicationInfo = _owner.applicationInfo;
 		}
 
 		public Provider(Provider existingProvider) {
@@ -3860,6 +3885,11 @@ public class PackageParser {
 
 		public Instrumentation(final ParsePackageItemArgs args, final InstrumentationInfo _info) {
 			super(args, _info);
+			info = _info;
+		}
+
+		Instrumentation(Package _owner, String _className, InstrumentationInfo _info) {
+			super(_owner, _className);
 			info = _info;
 		}
 

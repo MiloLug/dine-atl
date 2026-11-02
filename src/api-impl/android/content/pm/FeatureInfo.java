@@ -16,12 +16,15 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
+
 /**
  * A single feature that can be requested by an application. This corresponds
  * to information collected from the
  * AndroidManifest.xml's &lt;uses-feature&gt; tag.
  */
-public class FeatureInfo {
+public class FeatureInfo implements Parcelable {
 	/**
 	 * The name of this feature, for example "android.hardware.camera".  If
 	 * this is null, then this is an OpenGL ES version feature as described
@@ -83,4 +86,27 @@ public class FeatureInfo {
 		int minor = reqGlEsVersion & 0x0000ffff;
 		return String.valueOf(major) + "." + String.valueOf(minor);
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		dest.writeString(name);
+		dest.writeInt(reqGlEsVersion);
+		dest.writeInt(flags);
+	}
+
+	private FeatureInfo(Parcel source) {
+		name = source.readString();
+		reqGlEsVersion = source.readInt();
+		flags = source.readInt();
+	}
+
+	public static final Parcelable.Creator<FeatureInfo> CREATOR = new Parcelable.Creator<FeatureInfo>() {
+		public FeatureInfo createFromParcel(Parcel source) {
+			return new FeatureInfo(source);
+		}
+
+		public FeatureInfo[] newArray(int size) {
+			return new FeatureInfo[size];
+		}
+	};
 }

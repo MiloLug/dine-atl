@@ -93,7 +93,7 @@ public abstract class Context {
 
 	public static Vibrator vibrator;
 
-	public static PackageManager package_manager;
+	private static PackageManager package_manager;
 	public static Configuration sys_config;
 
 	// TODO: Migrate to ATLLoadedApp, cannot remove yet due to being called by native
@@ -113,25 +113,22 @@ public abstract class Context {
 	static {
 		sys_config = new Configuration();
 		native_updateConfig(sys_config);
-		ATLLoadedApp primary_application = ATLLoadedApp.getPrimaryApplication();
-
-		ApplicationInfo application_info = primary_application.pkg.applicationInfo;
-		application_info.dataDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-		application_info.nativeLibraryDir = (new File(Environment.getExternalStorageDirectory(), "lib")).getAbsolutePath();
-		package_manager = new PackageManager();
 
 		Provider provider = new Provider("AndroidKeyStore", 1.0, "Android KeyStore provider") {};
 		provider.put("KeyStore.AndroidKeyStore", "android.security.keystore.AndroidKeyStore");
 		provider.put("KeyGenerator.AES", "android.security.keystore.KeyGenerator$AES");
 		provider.put("KeyGenerator.HmacSHA512", "android.security.keystore.KeyGenerator$HmacSHA512");
 		Security.addProvider(provider);
+	}
 
-		for (PackageParser.Activity receiver : primary_application.pkg.receivers) {
+	/** @hide called once the primary app is known */
+	public static void exportUnifiedPush(PackageParser.Package pkg) {
+		for (PackageParser.Activity receiver : pkg.receivers) {
 			if (receiver.intents == null)
 				continue;
 			for (PackageParser.ActivityIntentInfo intent : receiver.intents) {
 				if (intent.matchAction("org.unifiedpush.android.connector.MESSAGE")) {
-					nativeExportUnifiedPush(application_info.packageName);
+					nativeExportUnifiedPush(pkg.packageName);
 					break;
 				}
 			}
@@ -209,7 +206,11 @@ public abstract class Context {
 	}
 
 	public PackageManager getPackageManager() {
-		return package_manager;
+		synchronized (Context.class) {
+			if (package_manager == null)
+				package_manager = new PackageManager();
+			return package_manager;
+		}
 	}
 
 	public abstract Resources getResources();
@@ -486,9 +487,12 @@ public abstract class Context {
 		if ("org.unifiedpush.android.distributor.REGISTER".equals(intent.getAction())) {
 			nativeRegisterUnifiedPush(intent.getStringExtra("token"), intent.getStringExtra("application"));
 		}
-		for (IntentFilter filter : receiverMap.keySet()) {
-			if (filter.matchAction(intent.getAction())) {
-				receiverMap.get(filter).onReceive(this, intent);
+		// an explicit broadcast reaches only its manifest receiver
+		if (intent.getComponent() == null) {
+			for (IntentFilter filter : receiverMap.keySet()) {
+				BroadcastReceiver receiver = receiverMap.get(filter);
+				if (receiver != null && filter.match(null, intent, false, TAG) >= 0)
+					receiver.onReceive(this, intent);
 			}
 		}
 		ATLLoadedApp.getPrimaryApplication().receiveBroadcast(this, intent);

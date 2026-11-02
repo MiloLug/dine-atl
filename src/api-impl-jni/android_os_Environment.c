@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #include "defines.h"
 #include "util.h"
 
@@ -5,5 +7,5 @@
 
 JNIEXPORT jstring JNICALL Java_android_os_Environment_native_1get_1app_1data_1dir(JNIEnv *env, jclass this)
 {
-	return _JSTRING(get_app_data_dir());
+	return get_app_data_dir() ? _JSTRING(get_app_data_dir()) : NULL;
 }

@@ -17,6 +17,8 @@
 package android.content.pm;
 
 // import android.content.res.Configuration;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.util.Printer;
 
 /**
@@ -25,7 +27,7 @@ import android.util.Printer;
  * from the AndroidManifest.xml's &lt;activity&gt; and
  * &lt;receiver&gt; tags.
  */
-public class ActivityInfo extends ComponentInfo {
+public class ActivityInfo extends ComponentInfo implements Parcelable {
 	/**
 	 * A style resource identifier (in the package's resources) of this
 	 * activity's theme.  From the "theme" attribute or, if not set, 0.
@@ -584,4 +586,46 @@ public class ActivityInfo extends ComponentInfo {
 	public int describeContents() {
 		return 0;
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeInt(theme);
+		dest.writeInt(launchMode);
+		dest.writeString(permission);
+		dest.writeString(taskAffinity);
+		dest.writeString(targetActivity);
+		dest.writeInt(flags);
+		dest.writeInt(screenOrientation);
+		dest.writeInt(configChanges);
+		dest.writeInt(softInputMode);
+		dest.writeInt(uiOptions);
+		dest.writeString(parentActivityName);
+	}
+
+	/** @hide */
+	public ActivityInfo(Parcel source) {
+		super(source);
+		theme = source.readInt();
+		launchMode = source.readInt();
+		permission = source.readString();
+		taskAffinity = source.readString();
+		targetActivity = source.readString();
+		flags = source.readInt();
+		screenOrientation = source.readInt();
+		configChanges = source.readInt();
+		softInputMode = source.readInt();
+		uiOptions = source.readInt();
+		parentActivityName = source.readString();
+	}
+
+	public static final Parcelable.Creator<ActivityInfo> CREATOR = new Parcelable.Creator<ActivityInfo>() {
+		public ActivityInfo createFromParcel(Parcel source) {
+			return new ActivityInfo(source);
+		}
+
+		public ActivityInfo[] newArray(int size) {
+			return new ActivityInfo[size];
+		}
+	};
 }

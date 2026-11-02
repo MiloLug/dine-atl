@@ -25,7 +25,7 @@ mkdir "$work/data"
 log="$work/log"
 expected="$here/draw.displaylist"
 
-env=(RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data" ATL_DUMP_DISPLAYLIST=1)
+env=(RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data" ATL_DUMP_DISPLAYLIST=1)
 ((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}")
 rc=0
 (cd "$build" && env "${env[@]}" timeout 60 ./android-translation-layer "$apk" -l dev/dine/widgets/DrawActivity \

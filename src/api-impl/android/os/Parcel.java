@@ -230,7 +230,8 @@ public class Parcel {
 			throw new ArrayIndexOutOfBoundsException();
 		writeInt(length);
 		// Copy AOSP bug to pass CTS test
-		if (ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.targetSdkVersion < 11)
+		ATLLoadedApp primary = ATLLoadedApp.peekPrimaryApplication();
+		if (primary != null && primary.pkg.applicationInfo.targetSdkVersion < 11)
 			offset = 0;
 		for (int i = 0; i < length; i++)
 			writeByte(value[offset + i]);

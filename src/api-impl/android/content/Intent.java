@@ -12,6 +12,7 @@ import com.android.internal.R;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import org.xmlpull.v1.XmlPullParser;
@@ -491,13 +492,20 @@ public class Intent implements Parcelable {
 	private String type;
 	private String packageName;
 	private Intent selector;
+	private HashSet<String> categories;
 
 	public Intent() {}
 	public Intent(Intent o) {
 		this.action = o.action;
 		this.data = o.data;
-		this.extras = o.extras;
+		this.extras = o.extras != null ? new Bundle(o.extras) : new Bundle();
 		this.component = o.component;
+		this.flags = o.flags;
+		this.type = o.type;
+		this.packageName = o.packageName;
+		this.selector = o.selector;
+		if (o.categories != null)
+			this.categories = new HashSet<>(o.categories);
 	}
 	public Intent(String action) {
 		this.action = action;
@@ -750,8 +758,16 @@ public class Intent implements Parcelable {
 		return extras;
 	}
 
-	public Intent addCategory(String action) {
+	public Intent addCategory(String category) {
+		if (categories == null)
+			categories = new HashSet<>();
+		categories.add(category);
 		return this;
+	}
+
+	public void removeCategory(String category) {
+		if (categories != null)
+			categories.remove(category);
 	}
 
 	@Override
@@ -837,7 +853,7 @@ public class Intent implements Parcelable {
 	}
 
 	public Set<String> getCategories() {
-		return Collections.emptySet();
+		return categories != null ? categories : Collections.<String>emptySet();
 	}
 
 	public byte[] getByteArrayExtra(String name) {

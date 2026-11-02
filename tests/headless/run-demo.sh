@@ -28,7 +28,7 @@ mkdir "$work/data"
 cd "$build"
 coproc ATL {
   exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ATL_DUMP_VIEWTREE=1 \
-    ANDROID_APP_DATA_DIR="$work/data" timeout 120 ./android-translation-layer "${density[@]}" "$apk" \
+    DINE_PREFIX="$work/data" timeout 120 ./android-translation-layer "${density[@]}" "$apk" \
     -l com/example/demo_application/MainActivity -X -Xint -X -verbose:jni 2>&1
 }
 pid=$ATL_PID

@@ -45,7 +45,10 @@ public class Instrumentation {
 			System.out.println("targetPackage: " + target_package);
 
 			if (target_package != null) {
-				String target_path = android.os.Environment.getExternalStorageDirectory() + "/../_installed_apks_/" + target_package + ".apk";
+				PackageParser.Package target = android.atl.ATLRegistry.get().pkg(target_package);
+				if (target == null)
+					throw new IllegalStateException("instrumentation target " + target_package + " is not installed");
+				String target_path = target.applicationInfo.sourceDir;
 
 				ATLLoadedApp.getPrimaryApplication().default_resources.getAssets().addAssetPath(target_path);
 

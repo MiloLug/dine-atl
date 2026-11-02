@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <libgen.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +37,7 @@
 char *apk_path;
 // the equivalent of /data/data/com.example.app/
 char *app_data_dir;
+static char *prefix_dir;
 
 struct ui_window *atl_window;
 struct atl_window_config atl_window_config;
@@ -43,6 +45,11 @@ struct atl_window_config atl_window_config;
 char *get_app_data_dir(void)
 {
 	return app_data_dir;
+}
+
+char *get_prefix_dir(void)
+{
+	return prefix_dir;
 }
 
 static char *construct_classpath(char *prefix, char *const *cp_array, size_t len)
@@ -87,33 +94,42 @@ static char *find_jar_or_die(char *builddir_path, char *installed_path, char *in
 	return path;
 }
 
-// NULL on error
-static char *data_dir_base(void)
+static int make_dir(const char *path)
 {
-	char *base = getenv("ANDROID_APP_DATA_DIR");
-	if (base)
-		return base;
-
-	const char *xdg_data_home = getenv("XDG_DATA_HOME");
-	const char *home = getenv("HOME");
-	if (xdg_data_home && *xdg_data_home) {
-		if (asprintf(&base, "%s/android_translation_layer", xdg_data_home) < 0)
-			return NULL;
-	} else if (home) {
-		if (asprintf(&base, "%s/.local/share/android_translation_layer", home) < 0)
-			return NULL;
-	} else {
-		fprintf(stderr, "error: ANDROID_APP_DATA_DIR not set, and HOME is not set either so we can't construct the default path\n");
-		return NULL;
+	if (mkdir(path, DIR_MODE) && errno != EEXIST) {
+		fprintf(stderr, "error: can't create %s (%s)\n", path, strerror(errno));
+		return -1;
 	}
-	if (mkdir(base, DIR_MODE) && errno != EEXIST) {
-		fprintf(stderr, "error: ANDROID_APP_DATA_DIR not set, and the default directory (%s) couldn't be created (error: %s)\n", base, strerror(errno));
-		return NULL;
-	}
-	return base;
+	return 0;
 }
 
-int atl_set_app(struct atl_paths *paths, char *const *apks, int napks)
+// $DINE_PREFIX, else ~/.dine, with its apps/ and data/; NULL on error
+static char *open_prefix(void)
+{
+	char *prefix = getenv("DINE_PREFIX");
+	if (prefix && *prefix) {
+		prefix = strdup(prefix);
+	} else {
+		const char *home = getenv("HOME");
+		if (!home) {
+			fprintf(stderr, "error: neither DINE_PREFIX nor HOME is set\n");
+			return NULL;
+		}
+		if (asprintf(&prefix, "%s/.dine", home) < 0)
+			return NULL;
+	}
+	char *apps, *data;
+	if (asprintf(&apps, "%s/apps", prefix) < 0)
+		return NULL;
+	if (asprintf(&data, "%s/data", prefix) < 0)
+		return NULL;
+	int ret = make_dir(prefix) | make_dir(apps) | make_dir(data);
+	free(apps);
+	free(data);
+	return ret ? NULL : prefix;
+}
+
+int atl_set_app(struct atl_paths *paths, char *const *apks, int napks, const char *package)
 {
 	for (int i = 0; i < napks; i++) {
 		if (access(apks[i], F_OK) < 0) {
@@ -121,36 +137,56 @@ int atl_set_app(struct atl_paths *paths, char *const *apks, int napks)
 			return -1;
 		}
 	}
-	paths->apk_classpath = construct_classpath("", apks, napks);
-	// some apps need the apk path since they directly read their apk
-	apk_path = strdup(paths->apk_classpath);
-
-	paths->data_dir_base = data_dir_base();
-	if (!paths->data_dir_base)
+	prefix_dir = open_prefix();
+	if (!prefix_dir)
 		return -1;
-
-	// TODO: we should possibly use the app id instead, but we don't currently have a way to get that soon enough
-	// arguably both the app id and the apk name might have an issue with duplicates, but if two apks use the same app id, chances are it's less of an issue than when two apks have the same name
-	// !IMPORTANT! Unity can't comprehend that a directory name could end in .apk, so we have to avoid that here by adding `_`
-	char *main_apk = strdup(apks[0]);
-	int ret = asprintf(&app_data_dir, "%s/%s_/", paths->data_dir_base, basename(main_apk));
-	free(main_apk);
-	if (ret < 0)
-		return -1;
-	if (mkdir(app_data_dir, DIR_MODE) && errno != EEXIST) {
-		fprintf(stderr, "can't create app data dir %s (%s)\n", app_data_dir, strerror(errno));
-		return -1;
-	}
-
-	if (asprintf(&paths->app_lib_dir, "%s/lib", app_data_dir) < 0)
-		return -1;
-	mkdir(paths->app_lib_dir, DIR_MODE);
+	paths->apks = calloc(napks + 1, sizeof(*paths->apks));
+	for (int i = 0; i < napks; i++)
+		paths->apks[i] = strdup(apks[i]);
+	paths->napks = napks;
+	paths->package = package ? strdup(package) : NULL;
+	paths->app_lib_dir = NULL;
 	return 0;
 }
 
-void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, bool instrument)
+int atl_app_prepare(JNIEnv *env, struct atl_paths *paths)
 {
-	if (atl_set_app(paths, apks, napks) < 0)
+	jobjectArray apks = NULL;
+	if (paths->napks) {
+		apks = (*env)->NewObjectArray(env, paths->napks, (*env)->FindClass(env, "java/lang/String"), NULL);
+		for (int i = 0; i < paths->napks; i++)
+			(*env)->SetObjectArrayElement(env, apks, i, _JSTRING(paths->apks[i]));
+	}
+	jclass installer = (*env)->FindClass(env, "android/atl/ATLInstaller");
+	jmethodID prepare = installer ? (*env)->GetStaticMethodID(env, installer, "prepareApp", "([Ljava/lang/String;Ljava/lang/String;)V") : NULL;
+	if (prepare)
+		(*env)->CallStaticVoidMethod(env, installer, prepare, apks, paths->package ? _JSTRING(paths->package) : NULL);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env); // ART's ExceptionDescribe leaves it pending
+		return -1;
+	}
+	if (asprintf(&paths->app_lib_dir, "%s/lib", app_data_dir) < 0)
+		return -1;
+	return 0;
+}
+
+void atl_set_app_dirs(const char *apk_classpath, const char *data_dir)
+{
+	free(apk_path);
+	apk_path = strdup(apk_classpath);
+	free(app_data_dir);
+	app_data_dir = strdup(data_dir);
+	char *lib;
+	if (make_dir(app_data_dir) == 0 && asprintf(&lib, "%s/lib", app_data_dir) >= 0) {
+		make_dir(lib);
+		free(lib);
+	}
+}
+
+void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, const char *package, bool instrument)
+{
+	if (atl_set_app(paths, apks, napks, package) < 0)
 		exit(1);
 
 	Dl_info libart_so_dl_info;
@@ -181,16 +217,11 @@ JavaVMOption *atl_vm_options(const struct atl_paths *paths, int *count)
 	JavaVMOption *options = calloc(4, sizeof(*options));
 	int n = 0;
 
-	if (getenv("RUN_FROM_BUILDDIR")) {
-		options[n++].optionString = construct_classpath("-Djava.library.path=", (char *[]){"./", paths->app_lib_dir}, 2);
-	} else {
-		options[n++].optionString = construct_classpath("-Djava.library.path=", (char *[]){paths->natives_dir, paths->app_lib_dir}, 2);
-	}
+	// the app's own lib dir is its class loader's (ATLLoadedApp.load), set once the app is known
+	char *natives = getenv("RUN_FROM_BUILDDIR") ? "./" : paths->natives_dir;
+	options[n++].optionString = construct_classpath("-Djava.library.path=", (char *[]){natives}, 1);
 	// ATLPaths relies on the first element in java.class.path being api-impl.jar
 	options[n++].optionString = construct_classpath("-Djava.class.path=", (char *[]){paths->api_impl_jar, paths->framework_res_apk, paths->test_runner_jar}, 3);
-	// ATLLoadedApp relies on the first element in atl.app.class.path being the main apk
-	options[n++].optionString = construct_classpath("-Datl.app.class.path=", (char *[]){paths->apk_classpath}, 1);
-	options[n++].optionString = construct_classpath("-Datl.app.library.path=", (char *[]){paths->natives_dir, paths->app_lib_dir}, 2);
 
 	*count = n;
 	return options;
@@ -331,4 +362,38 @@ void atl_exit(JNIEnv *env, int status)
 	jclass system = (*env)->FindClass(env, "java/lang/System");
 	jmethodID exit = (*env)->GetStaticMethodID(env, system, "exit", "(I)V");
 	(*env)->CallStaticVoidMethod(env, system, exit, status);
+}
+
+static int call_installer(JNIEnv *env, const char *name, const char *signature, ...)
+{
+	jclass installer = (*env)->FindClass(env, "android/atl/ATLInstaller");
+	if (!installer) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+		return 1;
+	}
+	jmethodID method = (*env)->GetStaticMethodID(env, installer, name, signature);
+	va_list args;
+	va_start(args, signature);
+	int status = (*env)->CallStaticIntMethodV(env, installer, method, args);
+	va_end(args);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+		return 1;
+	}
+	return status;
+}
+
+int atl_install(JNIEnv *env, char *const *apks, int napks, bool allow_fake_signature)
+{
+	jobjectArray array = (*env)->NewObjectArray(env, napks, (*env)->FindClass(env, "java/lang/String"), NULL);
+	for (int i = 0; i < napks; i++)
+		(*env)->SetObjectArrayElement(env, array, i, _JSTRING(apks[i]));
+	return call_installer(env, "cliInstall", "([Ljava/lang/String;Z)I", array, (jboolean)allow_fake_signature);
+}
+
+int atl_uninstall(JNIEnv *env, const char *package)
+{
+	return call_installer(env, "cliUninstall", "(Ljava/lang/String;)I", _JSTRING(package));
 }

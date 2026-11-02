@@ -10,7 +10,7 @@ The following environment variables are recognized by the main executable:
 
 ---
 
-`ANDROID_APP_DATA_DIR=<path>` - if set, overrides the default path of `~/.local/android_translation_layer` for storing app data
+`DINE_PREFIX=<path>` - if set, overrides the default prefix `~/.dine`, which holds the package registry, the installed apks and each app's data
 
 ---
 

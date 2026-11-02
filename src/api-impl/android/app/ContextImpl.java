@@ -4,6 +4,7 @@ import android.annotation.Nullable;
 import android.annotation.UnsupportedAppUsage;
 import android.app.SearchManager;
 import android.app.job.JobScheduler;
+import android.atl.ATLInstallerUi;
 import android.atl.ATLLoadedApp;
 import android.atl.ATLLoadedAppManager;
 import android.bluetooth.BluetoothManager;
@@ -311,6 +312,8 @@ public final class ContextImpl extends Context {
 	@Override
 	public void startActivity(Intent intent) {
 		Slog.i(TAG, "startActivity(" + intent + ") called");
+		if (ATLInstallerUi.startActivity(this, intent, null, -1))
+			return;
 		if (intent.getAction() != null && intent.getAction().equals("android.intent.action.CHOOSER")) {
 			intent = (Intent)intent.getExtras().get("android.intent.extra.INTENT");
 		}

@@ -16,6 +16,8 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.graphics.drawable.Drawable;
 import android.util.Printer;
 
@@ -170,5 +172,30 @@ public class ComponentInfo extends PackageItemInfo {
 	@Override
 	protected ApplicationInfo getApplicationInfo() {
 		return applicationInfo;
+	}
+
+	/** With Parcelable.PARCELABLE_ELIDE_DUPLICATES the applicationInfo is left out; the reader sets it. */
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		if ((parcelableFlags & Parcelable.PARCELABLE_ELIDE_DUPLICATES) != 0 || applicationInfo == null) {
+			dest.writeInt(0);
+		} else {
+			dest.writeInt(1);
+			applicationInfo.writeToParcel(dest, parcelableFlags);
+		}
+		dest.writeString(processName);
+		dest.writeInt(descriptionRes);
+		dest.writeInt(enabled ? 1 : 0);
+		dest.writeInt(exported ? 1 : 0);
+	}
+
+	protected ComponentInfo(Parcel source) {
+		super(source);
+		if (source.readInt() != 0)
+			applicationInfo = ApplicationInfo.CREATOR.createFromParcel(source);
+		processName = source.readString();
+		descriptionRes = source.readInt();
+		enabled = source.readInt() != 0;
+		exported = source.readInt() != 0;
 	}
 }

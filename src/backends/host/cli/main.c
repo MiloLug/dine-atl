@@ -16,9 +16,11 @@
 #include "src/slots/ui.h"
 
 /* Plain C entry for builds without a desktop toolkit: one app, and its main activity or an
- * instrumentation. */
+ * instrumentation; or an install or uninstall into the prefix. */
 
-#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY | --instrument CLASS] [-X JVM_OPTION]... APK...\n"
+#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY | --instrument CLASS] [-X JVM_OPTION]... APK... | --package PACKAGE\n" \
+              "       %s --install [--allow-fake-signature] [-X JVM_OPTION]... APK...\n"           \
+              "       %s --uninstall PACKAGE [-X JVM_OPTION]...\n"
 
 // "insets" and 12 dp: system gestures, mandatory gestures, navigation bars, each left top right bottom
 static bool parse_insets(const char *line, struct atl_window_insets *insets)
@@ -159,8 +161,16 @@ int main(int argc, char **argv)
 	struct atl_window_config window = {ATL_WINDOW_WIDTH_DEFAULT, ATL_WINDOW_HEIGHT_DEFAULT, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN};
 	char **jvm_options = calloc(argc, sizeof(*jvm_options));
 	int n_jvm_options = 0;
+	bool install = false;
+	bool allow_fake_signature = false;
+	const char *uninstall = NULL;
+	const char *package = NULL;
 	static const struct option long_options[] = {
 		{"instrument", required_argument, NULL, 'I'},
+		{"install", no_argument, NULL, 'i'},
+		{"allow-fake-signature", no_argument, NULL, 'F'},
+		{"uninstall", required_argument, NULL, 'U'},
+		{"package", required_argument, NULL, 'P'},
 		{0},
 	};
 	int opt;
@@ -172,10 +182,22 @@ int main(int argc, char **argv)
 			case 'I':
 				instrumentation = optarg;
 				break;
+			case 'i':
+				install = true;
+				break;
+			case 'F':
+				allow_fake_signature = true;
+				break;
+			case 'U':
+				uninstall = optarg;
+				break;
+			case 'P':
+				package = optarg;
+				break;
 			case 'd':
 				window.density_dpi = atoi(optarg);
 				if (window.density_dpi <= 0) {
-					fprintf(stderr, USAGE, argv[0]);
+					fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
 					return 1;
 				}
 				break;
@@ -186,18 +208,28 @@ int main(int argc, char **argv)
 				jvm_options[n_jvm_options++] = optarg;
 				break;
 			default:
-				fprintf(stderr, USAGE, argv[0]);
+				fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
 				return 1;
 		}
 	}
-	if (optind == argc || (instrumentation && activity)) {
-		fprintf(stderr, USAGE, argv[0]);
+	bool app = !install && !uninstall;
+	bool apks = optind < argc;
+	if (apks + (package != NULL) + (uninstall != NULL) != 1 || (instrumentation && activity) || (install && !apks) ||
+	    (!app && (commands || activity || instrumentation)) || (allow_fake_signature && !install)) {
+		fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
 		return 1;
 	}
 
 	struct atl_paths paths;
-	atl_prepare(&paths, &argv[optind], argc - optind, instrumentation != NULL);
+	if (!app) {
+		atl_prepare(&paths, NULL, 0, NULL, false);
+		JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
+		atl_exit(env, install ? atl_install(env, &argv[optind], argc - optind, allow_fake_signature) : atl_uninstall(env, uninstall));
+	}
+	atl_prepare(&paths, &argv[optind], argc - optind, package, instrumentation != NULL);
 	JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
+	if (atl_app_prepare(env, &paths) < 0)
+		atl_exit(env, 1);
 
 	atl_app_create(env, ui_window_new(NULL));
 	if (commands) {

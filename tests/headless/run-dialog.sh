@@ -24,7 +24,7 @@ fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 run() {
   log="$work/$1.log"
   mkdir -p "$work/data-$1"
-  local env=(RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data-$1" ATL_DIALOG_ANSWERS="$2")
+  local env=(RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-$1" ATL_DIALOG_ANSWERS="$2")
   ((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}")
   rc=0
   (cd "$build" && env "${env[@]}" timeout 60 ./android-translation-layer "$apk" -l "dev/dine/dialog/${3:-MainActivity}" \

@@ -413,9 +413,9 @@ public class Process {
 	 * a uid identifies a specific app sandbox in a specific user.
 	 */
 	public static final int myUid() {
-		// HACK: provide wrong Uid, as some applications like Whatsapp don't accept files with their own Uid for security reasons
-		return -1;
-		// return Libcore.os.getuid();
+		// the registry's uid, never the OS one: apps like WhatsApp refuse files owned by their own uid
+		android.atl.ATLLoadedApp app = android.atl.ATLLoadedApp.peekPrimaryApplication();
+		return app != null ? app.pkg.applicationInfo.uid : -1;
 	}
 
 	/**

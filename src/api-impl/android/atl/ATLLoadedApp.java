@@ -6,12 +6,13 @@ import android.app.Application;
 import android.app.ContextImpl;
 import android.app.Service;
 import android.content.*;
-import android.content.pm.PackageManager;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageParser;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
@@ -21,9 +22,7 @@ import dalvik.system.PathClassLoader;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import org.xmlpull.v1.XmlPullParserException;
 
 /**
@@ -31,8 +30,6 @@ import org.xmlpull.v1.XmlPullParserException;
  */
 public final class ATLLoadedApp {
 	private final static String TAG = "ATLLoadedApp";
-	static final HashSet<String> play_services = new HashSet<>(Arrays.asList(
-	    "com.android.vending", "com.google.android.gms", "com.google.android.gsf"));
 	private static ATLLoadedApp system_application;
 	private static ATLLoadedApp primary_application;
 	public final Resources default_resources;
@@ -77,55 +74,52 @@ public final class ATLLoadedApp {
 
 	@NonNull
 	public static synchronized ATLLoadedApp getPrimaryApplication() {
-		if (primary_application != null) {
-			return primary_application;
-		}
-		final String classLoaderPath = System.getProperty("atl.app.class.path");
-		final String nativePath = System.getProperty("atl.app.library.path");
-		if (classLoaderPath == null && nativePath == null) {
-			// Allow ATL test runner to not fail when no primary application is present
+		if (primary_application == null) {
+			// a VM without an app (an install) still has code that asks for one
 			Slog.w(TAG, "No primary application defined, using framework-res.apk as fallback");
-			return primary_application = getSystemApplication();
+			setPrimaryApplication(getSystemApplication());
 		}
-		final int pathsIndex = classLoaderPath.indexOf(':');
-		try {
-			return primary_application = loadFromPath(
-				   pathsIndex == -1 ? classLoaderPath : classLoaderPath.substring(0, pathsIndex),
-				   nativePath, classLoaderPath);
-		} catch (IOException e) {
-			// Failing to get the primary application should always be an error
-			throw new Error("Failed to parse primary application", e);
-		}
+		return primary_application;
 	}
 
+	/** The primary, or null before one is set; for code that also runs without an app (installs). */
+	public static synchronized ATLLoadedApp peekPrimaryApplication() {
+		return primary_application;
+	}
+
+	public static synchronized void setPrimaryApplication(@NonNull ATLLoadedApp app) {
+		if (primary_application != null)
+			throw new IllegalStateException("primary application already set");
+		primary_application = app;
+		if (Environment.peekAppDataDir() != null) {
+			ApplicationInfo info = app.pkg.applicationInfo;
+			info.dataDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+			info.nativeLibraryDir = new File(Environment.getExternalStorageDirectory(), "lib").getAbsolutePath();
+		}
+		Context.exportUnifiedPush(app.pkg);
+	}
+
+	/** The stored APKs, the base first, as a class path. */
+	public static String classPath(ApplicationInfo info) {
+		StringBuilder path = new StringBuilder(info.sourceDir);
+		if (info.splitSourceDirs != null)
+			for (String split : info.splitSourceDirs)
+				path.append(File.pathSeparator).append(split);
+		return path.toString();
+	}
+
+	/** An installed package's app: its APKs on the class path, ATL's natives and its own lib dir for native code. */
 	@NonNull
-	public static ATLLoadedApp loadFromPath(String mainApk, String nativePath, String classLoaderPath) throws IOException {
+	public static ATLLoadedApp load(PackageParser.Package pkg) {
+		String classLoaderPath = classPath(pkg.applicationInfo);
 		if (ATLToggles.ATL_GHAX) {
 			// Always load ghax.jar as the first element to override application library classes
 			classLoaderPath = ATLPaths.ghax_jar.getPath() + File.pathSeparator + classLoaderPath;
 		}
-		BaseDexClassLoader classLoader = new PathClassLoader(
-		    classLoaderPath, nativePath, ATLLoadedApp.class.getClassLoader());
+		String nativePath = System.getProperty("java.library.path") + File.pathSeparator + pkg.applicationInfo.nativeLibraryDir;
+		BaseDexClassLoader classLoader = new PathClassLoader(classLoaderPath, nativePath, ATLLoadedApp.class.getClassLoader());
 		AssetManager assetManager = new AssetManager(classLoaderPath + ":" + System.getProperty("java.class.path"));
-		PackageParser packageParser = new PackageParser(mainApk);
 		Resources resources = new Resources(assetManager, new DisplayMetrics(), Context.sys_config);
-		String[] outError = new String[1];
-		PackageParser.Package pkg;
-		try {
-			pkg = packageParser.parsePackage(resources,
-			                                 assetManager.openXmlResourceParser(1, "AndroidManifest.xml"), 0, outError);
-		} catch (XmlPullParserException e) {
-			throw new IOException(outError[0], e);
-		}
-		if (packageParser.getParseError() != PackageManager.INSTALL_SUCCEEDED) {
-			throw new IOException(outError[0]);
-		}
-		packageParser.collectCertificates(pkg, 0);
-		// Support for MicroG and other custom GMS implementations.
-		if (play_services.contains(pkg.packageName)) {
-			ATLSigHelper.addGMSSignatures(pkg);
-		}
-		pkg.applicationInfo.sourceDir = mainApk;
 		return new ATLLoadedApp(resources, classLoader, pkg);
 	}
 
@@ -295,19 +289,24 @@ public final class ATLLoadedApp {
 	}
 
 	public void receiveBroadcast(Context context, Intent intent) {
+		ComponentName target = intent.getComponent();
+		if ((target != null && !target.getPackageName().equals(pkg.packageName)) ||
+		    (intent.getPackage() != null && !intent.getPackage().equals(pkg.packageName)))
+			return;
 		for (PackageParser.Activity receiver : pkg.receivers) {
-			if (receiver.intents == null)
+			boolean matches = target != null ? target.getClassName().equals(receiver.className) : false;
+			if (target == null && receiver.intents != null) {
+				for (PackageParser.IntentInfo intentInfo : receiver.intents)
+					matches |= intentInfo.match(null, intent, false, TAG) >= 0;
+			}
+			if (!matches)
 				continue;
-			for (PackageParser.IntentInfo intentInfo : receiver.intents) {
-				if (intentInfo.matchAction(intent.getAction())) {
-					try {
-						Class<? extends BroadcastReceiver> cls = this.loadClass(receiver.className).asSubclass(BroadcastReceiver.class);
-						BroadcastReceiver receiverInstance = cls.newInstance();
-						receiverInstance.onReceive(context, intent);
-					} catch (ReflectiveOperationException e) {
-						Slog.e(TAG, "startService: failed to receive broadcast " + receiver.className, e);
-					}
-				}
+			try {
+				Class<? extends BroadcastReceiver> cls = this.loadClass(receiver.className).asSubclass(BroadcastReceiver.class);
+				BroadcastReceiver receiverInstance = cls.newInstance();
+				receiverInstance.onReceive(context, intent);
+			} catch (ReflectiveOperationException e) {
+				Slog.e(TAG, "startService: failed to receive broadcast " + receiver.className, e);
 			}
 		}
 	}

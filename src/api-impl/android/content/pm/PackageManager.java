@@ -19,15 +19,15 @@ package android.content.pm;
 import android.annotation.NonNull;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
+import android.atl.ATLInstaller;
 import android.atl.ATLLoadedApp;
 import android.atl.ATLLoadedAppManager;
+import android.atl.ATLRegistry;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.IntentSender;
-import android.content.pm.PackageParser.Service;
-import android.content.pm.PackageParser.ServiceIntentInfo;
 import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.graphics.drawable.Drawable;
@@ -123,6 +123,9 @@ public class PackageManager {
 	 * {@link ResolveInfo#filter}.
 	 */
 	public static final int GET_RESOLVED_FILTER = 0x00000040;
+
+	/** API 28: SigningInfo in PackageInfo.signingInfo. */
+	public static final int GET_SIGNING_CERTIFICATES = 0x08000000;
 
 	/**
 	 * {@link ComponentInfo} flag: return the {@link ComponentInfo#metaData}
@@ -1345,7 +1348,6 @@ public class PackageManager {
 	 */
 	public static final String ACTION_REQUEST_PERMISSION = "android.content.pm.action.REQUEST_PERMISSION";
 
-	PackageInfo package_info;
 
 	/**
 	 * Extra field name for the list of permissions, which the user must approve.
@@ -1355,7 +1357,6 @@ public class PackageManager {
 	public static final String EXTRA_REQUEST_PERMISSION_PERMISSION_LIST = "android.content.pm.extra.PERMISSION_LIST";
 
 	public PackageManager() {
-		package_info = PackageParser.generatePackageInfo(ATLLoadedApp.getPrimaryApplication().pkg, new int[0], PackageManager.GET_META_DATA, 0, 0, new HashSet<>(), new PackageUserState());
 	}
 
 	/**
@@ -1393,22 +1394,17 @@ public class PackageManager {
 	 * @see #GET_UNINSTALLED_PACKAGES
 	 */
 	public PackageInfo getPackageInfo(String packageName, int flags) throws NameNotFoundException {
-		ATLLoadedApp primary = ATLLoadedApp.getPrimaryApplication();
-		if (packageName.equals(primary.pkg.packageName)) {
-			return PackageParser.generatePackageInfo(primary.pkg, new int[0], flags, 0, 0, new HashSet<>(), new PackageUserState());
-		}
 		if (packageName.equals("atl") || packageName.equals("android")) {
 			PackageInfo info = new PackageInfo();
 			info.packageName = packageName;
 			info.signatures = new Signature[] {new Signature(new byte[0])};
 			return info;
 		}
-		PackageParser.Package pkg = ATLLoadedAppManager.getPackageFromPackageName(packageName);
-		if (pkg != null) {
-			return PackageParser.generatePackageInfo(pkg, new int[0],
-			                                         flags, 0, 0, new HashSet<>(), new PackageUserState());
-		}
-		throw new NameNotFoundException(packageName);
+		ATLRegistry.Entry entry = ATLRegistry.get().entry(packageName);
+		PackageInfo info = entry != null ? packageInfo(entry, flags) : null;
+		if (info == null)
+			throw new NameNotFoundException(packageName);
+		return info;
 	}
 
 	/**
@@ -1450,18 +1446,14 @@ public class PackageManager {
 	 * not contain such an activity.
 	 */
 	public Intent getLaunchIntentForPackage(String packageName) {
-		PackageParser.Package pkg = ATLLoadedApp.getPrimaryApplication().pkg;
-		if (!pkg.packageName.equals(packageName)) {
-			pkg = ATLLoadedAppManager.getPackageFromPackageName(packageName);
-		}
-		if (pkg == null) {
+		PackageParser.Package pkg = ATLRegistry.get().pkg(packageName);
+		if (pkg == null)
 			return null;
-		}
-		for (PackageParser.Activity activity : pkg.activities) {
-			for (PackageParser.IntentInfo intent : activity.intents) {
-				Slog.i(TAG, intent.toString());
-				if (intent.hasCategory("android.intent.category.LAUNCHER")) {
-					return new Intent("android.intent.action.MAIN", null).setComponent(new ComponentName(packageName, activity.className));
+		for (String category : new String[] {Intent.CATEGORY_INFO, Intent.CATEGORY_LAUNCHER}) {
+			for (PackageParser.Activity activity : pkg.activities) {
+				for (PackageParser.ActivityIntentInfo filter : activity.intents) {
+					if (filter.matchAction(Intent.ACTION_MAIN) && filter.hasCategory(category))
+						return new Intent(Intent.ACTION_MAIN).addCategory(category).setClassName(packageName, activity.className).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 				}
 			}
 		}
@@ -1501,7 +1493,7 @@ public class PackageManager {
 	 */
 	public int getPackageUid(String packageName, int userHandle)
 	    throws NameNotFoundException {
-		return -1;
+		return row(packageName).uid;
 	}
 
 	/**
@@ -1605,14 +1597,9 @@ public class PackageManager {
 	 */
 	public ApplicationInfo getApplicationInfo(String packageName,
 	                                          int flags) throws NameNotFoundException {
-		if (package_info.packageName.equals(packageName)) {
-			return package_info.applicationInfo;
-		}
-		PackageParser.Package pkg = ATLLoadedAppManager.getPackageFromPackageName(packageName);
-		if (pkg != null) {
-			return PackageParser.generateApplicationInfo(pkg, flags, new PackageUserState());
-		}
-		throw new NameNotFoundException(packageName);
+		if (packageName.equals("atl") || packageName.equals("android"))
+			return PackageParser.generateApplicationInfo(ATLLoadedApp.getSystemApplication().pkg, flags, new PackageUserState(), 0);
+		return PackageParser.generateApplicationInfo(installed(packageName), flags, new PackageUserState(), 0);
 	}
 
 	/**
@@ -1637,18 +1624,13 @@ public class PackageManager {
 	 */
 	public ActivityInfo getActivityInfo(ComponentName component,
 	                                    int flags) throws NameNotFoundException {
-
-		PackageInfo packageInfo = getPackageInfo(component.getPackageName(), PackageManager.GET_ACTIVITIES);
-		for (ActivityInfo info : packageInfo.activities) {
-			if (info.name.equals(component.getClassName())) {
-				/* Breeze Weather tries to override the night mode setting, but we don't implement configuration overriding yet.
-				 * AppCompatDelegateImpl.updateAppConfiguration() checks if the setting is correctly overridden and otherwise recreates the activity.
-				 * To prevent infinite recreation, we set the CONFIG_UI_MODE flag, indicating that the activity can handle night mode change without recreation. */
-				info.configChanges = ActivityInfo.CONFIG_UI_MODE;
-				return info;
-			}
-		}
-		throw new NameNotFoundException();
+		PackageParser.Activity activity = component(component, installed(component.getPackageName()).activities);
+		ActivityInfo info = new ActivityInfo(PackageParser.generateActivityInfo(activity, flags, new PackageUserState(), 0));
+		/* Breeze Weather tries to override the night mode setting, but we don't implement configuration overriding yet.
+		 * AppCompatDelegateImpl.updateAppConfiguration() checks if the setting is correctly overridden and otherwise recreates the activity.
+		 * To prevent infinite recreation, we set the CONFIG_UI_MODE flag, indicating that the activity can handle night mode change without recreation. */
+		info.configChanges = ActivityInfo.CONFIG_UI_MODE;
+		return info;
 	}
 
 	/**
@@ -1673,7 +1655,8 @@ public class PackageManager {
 	 */
 	public ActivityInfo getReceiverInfo(ComponentName component,
 	                                    int flags) throws NameNotFoundException {
-		return null;
+		PackageParser.Activity receiver = component(component, installed(component.getPackageName()).receivers);
+		return PackageParser.generateActivityInfo(receiver, flags, new PackageUserState(), 0);
 	}
 
 	/**
@@ -1697,12 +1680,8 @@ public class PackageManager {
 	 */
 	public ServiceInfo getServiceInfo(ComponentName component,
 	                                  int flags) throws NameNotFoundException {
-		for (PackageParser.Service s : ATLLoadedApp.getPrimaryApplication().pkg.services) {
-			if (s.className.equals(component.getClassName())) {
-				return s.info;
-			}
-		}
-		return new ServiceInfo();
+		PackageParser.Service service = component(component, installed(component.getPackageName()).services);
+		return PackageParser.generateServiceInfo(service, flags, new PackageUserState(), 0);
 	}
 
 	/**
@@ -1726,13 +1705,9 @@ public class PackageManager {
 	 * @see #GET_SHARED_LIBRARY_FILES
 	 */
 	public ProviderInfo getProviderInfo(ComponentName component,
-	                                    int flags) throws Exception {
-		for (PackageParser.Provider p : ATLLoadedApp.getPrimaryApplication().pkg.providers) {
-			if (p.className.equals(component.getClassName())) {
-				return p.info;
-			}
-		}
-		throw new NameNotFoundException();
+	                                    int flags) throws NameNotFoundException {
+		PackageParser.Provider provider = component(component, installed(component.getPackageName()).providers);
+		return PackageParser.generateProviderInfo(provider, flags, new PackageUserState(), 0);
 	}
 
 	/**
@@ -1770,9 +1745,14 @@ public class PackageManager {
 	 * @see #GET_UNINSTALLED_PACKAGES
 	 */
 	public List<PackageInfo> getInstalledPackages(int flags) {
-		List<PackageInfo> ret = new ArrayList<PackageInfo>();
-		ret.add(package_info);
-		return ret;
+		List<PackageInfo> infos = new ArrayList<PackageInfo>();
+		for (ATLRegistry.Row row : ATLRegistry.get().rows()) {
+			ATLRegistry.Entry entry = ATLRegistry.get().entry(row);
+			PackageInfo info = entry != null ? packageInfo(entry, flags) : null;
+			if (info != null)
+				infos.add(info);
+		}
+		return infos;
 	}
 
 	/**
@@ -1848,7 +1828,7 @@ public class PackageManager {
 	 * @hide
 	 */
 	public List<PackageInfo> getInstalledPackages(int flags, int userId) {
-		return null;
+		return getInstalledPackages(flags);
 	}
 
 	/**
@@ -2034,7 +2014,12 @@ public class PackageManager {
 	 * @see #SIGNATURE_UNKNOWN_PACKAGE
 	 */
 	public int checkSignatures(String pkg1, String pkg2) {
-		return -1;
+		ATLRegistry registry = ATLRegistry.get();
+		PackageParser.Package p1 = registry.pkg(pkg1);
+		PackageParser.Package p2 = registry.pkg(pkg2);
+		if (p1 == null || p2 == null)
+			return SIGNATURE_UNKNOWN_PACKAGE;
+		return compareSignatures(p1.mSignatures, p2.mSignatures);
 	}
 
 	/**
@@ -2058,7 +2043,11 @@ public class PackageManager {
 	 * @see #SIGNATURE_UNKNOWN_PACKAGE
 	 */
 	public int checkSignatures(int uid1, int uid2) {
-		return -1;
+		String[] p1 = getPackagesForUid(uid1);
+		String[] p2 = getPackagesForUid(uid2);
+		if (p1 == null || p2 == null)
+			return SIGNATURE_UNKNOWN_PACKAGE;
+		return checkSignatures(p1[0], p2[0]);
 	}
 
 	/**
@@ -2075,7 +2064,13 @@ public class PackageManager {
 	 * id, or null if there are no known packages with the given id.
 	 */
 	public String[] getPackagesForUid(int uid) {
-		return null;
+		List<ATLRegistry.Row> rows = ATLRegistry.get().rowsForUid(uid);
+		if (rows.isEmpty())
+			return null;
+		String[] names = new String[rows.size()];
+		for (int i = 0; i < names.length; i++)
+			names[i] = rows.get(i).name;
+		return names;
 	}
 
 	/**
@@ -2090,7 +2085,8 @@ public class PackageManager {
 	 * user id is not currently assigned.
 	 */
 	public String getNameForUid(int uid) {
-		return "example user";
+		String[] names = getPackagesForUid(uid);
+		return names != null ? names[0] : null;
 	}
 
 	/**
@@ -2132,7 +2128,14 @@ public class PackageManager {
 	 * @see #GET_UNINSTALLED_PACKAGES
 	 */
 	public List<ApplicationInfo> getInstalledApplications(int flags) {
-		return null;
+		List<ApplicationInfo> infos = new ArrayList<ApplicationInfo>();
+		for (ATLRegistry.Row row : ATLRegistry.get().rows()) {
+			ATLRegistry.Entry entry = ATLRegistry.get().entry(row);
+			ApplicationInfo info = entry != null ? PackageParser.generateApplicationInfo(entry.pkg, flags, new PackageUserState(), 0) : null;
+			if (info != null)
+				infos.add(info);
+		}
+		return infos;
 	}
 
 	/**
@@ -2230,34 +2233,8 @@ public class PackageManager {
 	 * @see #GET_RESOLVED_FILTER
 	 */
 	public ResolveInfo resolveActivity(Intent intent, int flags) {
-		ResolveInfo info = null;
-		ActivityInfo activity_info = null;
-
-		if (intent.getComponent() != null) {
-			for (PackageParser.Activity activity : ATLLoadedApp.getPrimaryApplication().pkg.activities) {
-				if (Objects.equals(intent.getComponent().getClassName(), activity.className))
-					activity_info = activity.info;
-			}
-		} else {
-			for (PackageParser.Activity activity : ATLLoadedApp.getPrimaryApplication().pkg.activities) {
-				for (PackageParser.IntentInfo intentInfo : activity.intents) {
-					if (intentInfo.matchAction(intent.getAction())) {
-						activity_info = activity.info;
-						break;
-					}
-				}
-			}
-		}
-
-		if (activity_info == null) {
-			return null;
-		}
-
-		info = new ResolveInfo();
-		info.activityInfo.exported = true;
-		info.activityInfo = activity_info;
-
-		return info;
+		List<ResolveInfo> infos = query(intent, flags, "activity");
+		return infos.isEmpty() ? null : infos.get(0);
 	}
 
 	/**
@@ -2327,12 +2304,7 @@ public class PackageManager {
 			ri.filter.addDataScheme("https");
 			return Arrays.asList(ri);
 		}
-		/* FIXME - we may need to return more than one */
-		ResolveInfo info = resolveActivity(intent, flags);
-		if (info != null)
-			return Arrays.asList(info);
-		else
-			return Collections.emptyList();
+		return query(intent, flags, "activity");
 	}
 
 	/**
@@ -2414,7 +2386,7 @@ public class PackageManager {
 			ri.activityInfo.exported = true;
 			return Arrays.asList(ri);
 		}
-		return new ArrayList<ResolveInfo>();
+		return query(intent, flags, "receiver");
 	}
 
 	/**
@@ -2454,7 +2426,8 @@ public class PackageManager {
 	 * @see #GET_RESOLVED_FILTER
 	 */
 	public ResolveInfo resolveService(Intent intent, int flags) {
-		return null;
+		List<ResolveInfo> infos = query(intent, flags, "service");
+		return infos.isEmpty() ? null : infos.get(0);
 	}
 
 	/**
@@ -2474,25 +2447,7 @@ public class PackageManager {
 	 */
 	public List<ResolveInfo> queryIntentServices(Intent intent,
 	                                             int flags) {
-		List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
-		String packageName;
-		PackageParser.Package pkg = null;
-		if ((packageName = intent.getPackage()) != null) {
-			pkg = ATLLoadedAppManager.getPackageFromPackageName(packageName);
-		}
-		if (pkg == null) {
-			pkg = ATLLoadedApp.getPrimaryApplication().pkg;
-		}
-		for (Service s : pkg.services) {
-			for (ServiceIntentInfo intentinfo : s.intents) {
-				if (s.getComponentName().equals(intent.getComponent()) || intentinfo.matchAction(intent.getAction())) {
-					ResolveInfo ri = new ResolveInfo();
-					ri.serviceInfo = s.info;
-					list.add(ri);
-				}
-			}
-		}
-		return list;
+		return query(intent, flags, "service");
 	}
 
 	/**
@@ -2539,7 +2494,7 @@ public class PackageManager {
 	 * @see #GET_RESOLVED_FILTER
 	 */
 	public List<ResolveInfo> queryIntentContentProviders(Intent intent, int flags) {
-		return null;
+		return query(intent, flags, "provider");
 	}
 
 	/**
@@ -2553,11 +2508,14 @@ public class PackageManager {
 	 * @throws Exception
 	 */
 	public ProviderInfo resolveContentProvider(String authority, int flags) {
-		for (PackageParser.Provider p : ATLLoadedApp.getPrimaryApplication().pkg.providers) {
-			if (p.info.authority.equals(authority))
-				return p.info;
+		String owner = ATLRegistry.get().packageForAuthority(authority);
+		PackageParser.Package pkg = owner != null ? ATLRegistry.get().pkg(owner) : null;
+		if (pkg != null) {
+			for (PackageParser.Provider p : pkg.providers) {
+				if (p.info.authority != null && Arrays.asList(p.info.authority.split(";")).contains(authority))
+					return PackageParser.generateProviderInfo(p, flags, new PackageUserState(), 0);
+			}
 		}
-
 		Slog.w(TAG, "Provider not found: " + authority);
 		return null;
 	}
@@ -2981,7 +2939,7 @@ public class PackageManager {
 			packageParser.collectCertificates(pkg, 0);
 		}
 		PackageUserState state = new PackageUserState();
-		return PackageParser.generatePackageInfo(pkg, null, flags, 0, 0, null, state);
+		return PackageParser.generatePackageInfo(pkg, null, flags, 0, 0, null, state, 0);
 	}
 
 	/**
@@ -3626,5 +3584,123 @@ public class PackageManager {
 
 	public boolean canRequestPackageInstalls() {
 		return false;
+	}
+
+	private static ATLRegistry.Row row(String packageName) throws NameNotFoundException {
+		ATLRegistry.Row row = ATLRegistry.get().row(packageName);
+		if (row == null)
+			throw new NameNotFoundException(packageName);
+		return row;
+	}
+
+	private static PackageParser.Package installed(String packageName) throws NameNotFoundException {
+		PackageParser.Package pkg = ATLRegistry.get().pkg(packageName);
+		if (pkg == null)
+			throw new NameNotFoundException(packageName);
+		return pkg;
+	}
+
+	private static <C extends PackageParser.Component<?>> C component(ComponentName name, List<C> components) throws NameNotFoundException {
+		for (C component : components)
+			if (name.getClassName().equals(component.className))
+				return component;
+		throw new NameNotFoundException(name.toString());
+	}
+
+	/** As flags ask; GET_SIGNATURES reports the fake signature the user granted at install. */
+	private static PackageInfo packageInfo(ATLRegistry.Entry entry, int flags) {
+		ATLRegistry.Row row = entry.row;
+		PackageParser.Package pkg = entry.pkg;
+		PackageInfo info = PackageParser.generatePackageInfo(pkg, null, flags, row.firstInstallTime, row.lastUpdateTime, null, new PackageUserState(), 0);
+		if (info == null)
+			return null;
+		Signature[] signatures = pkg.mSignatures;
+		// granted at install only for a fake-signature value that is hex (ATLInstaller.Staged)
+		String fake = row.fakeSignature ? ATLInstaller.fakeSignature(pkg) : null;
+		if (fake != null)
+			signatures = new Signature[] {new Signature(fake)};
+		if ((flags & GET_SIGNATURES) != 0)
+			info.signatures = signatures == null ? null : signatures.clone();
+		if ((flags & GET_SIGNING_CERTIFICATES) != 0 && signatures != null)
+			info.signingInfo = new SigningInfo(signatures.clone());
+		return info;
+	}
+
+	private static int compareSignatures(Signature[] s1, Signature[] s2) {
+		boolean signed1 = s1 != null && s1.length > 0;
+		boolean signed2 = s2 != null && s2.length > 0;
+		if (!signed1 && !signed2)
+			return SIGNATURE_NEITHER_SIGNED;
+		if (!signed1)
+			return SIGNATURE_FIRST_NOT_SIGNED;
+		if (!signed2)
+			return SIGNATURE_SECOND_NOT_SIGNED;
+		return ATLInstaller.sameSigners(s1, s2) ? SIGNATURE_MATCH : SIGNATURE_NO_MATCH;
+	}
+
+	private static List<? extends PackageParser.Component<? extends PackageParser.IntentInfo>> components(PackageParser.Package pkg, String kind) {
+		switch (kind) {
+			case "activity":
+				return pkg.activities;
+			case "receiver":
+				return pkg.receivers;
+			case "service":
+				return pkg.services;
+			default:
+				return pkg.providers;
+		}
+	}
+
+	/**
+	 * Components of one kind (activity, receiver, service, provider) across installed packages: by the
+	 * intent's component, else its package, else the packages whose filters name its action.
+	 */
+	private static List<ResolveInfo> query(Intent intent, int flags, String kind) {
+		ATLRegistry registry = ATLRegistry.get();
+		ComponentName target = intent.getComponent();
+		Collection<String> names;
+		if (target != null) {
+			names = Collections.singletonList(target.getPackageName());
+		} else if (intent.getPackage() != null) {
+			names = Collections.singletonList(intent.getPackage());
+		} else if (intent.getAction() != null) {
+			names = registry.packagesWithAction(kind, intent.getAction());
+		} else {
+			names = new ArrayList<>();
+			for (ATLRegistry.Row row : registry.rows())
+				names.add(row.name);
+		}
+		List<ResolveInfo> infos = new ArrayList<>();
+		for (String name : names) {
+			PackageParser.Package pkg = registry.pkg(name);
+			if (pkg == null)
+				continue;
+			for (PackageParser.Component<? extends PackageParser.IntentInfo> component : components(pkg, kind)) {
+				if (target != null) {
+					if (target.getClassName().equals(component.className))
+						infos.add(resolveInfo(component, null, flags));
+					continue;
+				}
+				for (PackageParser.IntentInfo filter : component.intents) {
+					if (filter.match(null, intent, false, TAG) >= 0 &&
+					    ((flags & MATCH_DEFAULT_ONLY) == 0 || filter.hasCategory(Intent.CATEGORY_DEFAULT))) {
+						infos.add(resolveInfo(component, filter, flags));
+						break;
+					}
+				}
+			}
+		}
+		return infos;
+	}
+
+	private static ResolveInfo resolveInfo(PackageParser.Component<?> component, PackageParser.IntentInfo filter, int flags) {
+		ResolveInfo info = new ResolveInfo();
+		PackageUserState state = new PackageUserState();
+		info.activityInfo = component instanceof PackageParser.Activity ? PackageParser.generateActivityInfo((PackageParser.Activity)component, flags, state, 0) : null;
+		info.serviceInfo = component instanceof PackageParser.Service ? PackageParser.generateServiceInfo((PackageParser.Service)component, flags, state, 0) : null;
+		info.providerInfo = component instanceof PackageParser.Provider ? PackageParser.generateProviderInfo((PackageParser.Provider)component, flags, state, 0) : null;
+		info.filter = (flags & GET_RESOLVED_FILTER) != 0 ? filter : null;
+		info.priority = filter != null ? filter.priority : 0;
+		return info;
 	}
 }

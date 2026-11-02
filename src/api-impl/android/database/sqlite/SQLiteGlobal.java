@@ -20,11 +20,6 @@
 
 package android.database.sqlite;
 
-import android.atl.ATLLoadedApp;
-import android.content.Context;
-import android.os.StatFs;
-import java.io.File;
-
 /**
  * Provides access to SQLite functions that affect all database connection,
  * such as memory management.
@@ -41,9 +36,6 @@ import java.io.File;
  */
 public final class SQLiteGlobal {
 	private static final String TAG = "SQLiteGlobal";
-
-	private static final Object sLock = new Object();
-	private static int sDefaultPageSize;
 
 	private static native int nativeReleaseMemory();
 
@@ -64,15 +56,7 @@ public final class SQLiteGlobal {
 	 * Gets the default page size to use when creating a database.
 	 */
 	public static int getDefaultPageSize() {
-		synchronized (sLock) {
-			if (sDefaultPageSize == 0) {
-				File filesDir = ATLLoadedApp.getPrimaryApplication().getApplication().getFilesDir();
-				// If there is an issue accessing /data, something is so seriously
-				// wrong that we just let the IllegalArgumentException propagate.
-				sDefaultPageSize = new StatFs(filesDir.getPath()).getBlockSize();
-			}
-			return 1024;
-		}
+		return 1024;
 	}
 
 	/**

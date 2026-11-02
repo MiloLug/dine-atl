@@ -16,12 +16,15 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
+
 /**
  * Information you can retrieve about hardware configuration preferences
  * declared by an application. This corresponds to information collected from the
  * AndroidManifest.xml's &lt;uses-configuration&gt; and &lt;uses-feature&gt; tags.
  */
-public class ConfigurationInfo {
+public class ConfigurationInfo implements Parcelable {
 	/**
 	 * The kind of touch screen attached to the device.
 	 * One of: {@link android.content.res.Configuration#TOUCHSCREEN_NOTOUCH},
@@ -108,4 +111,31 @@ public class ConfigurationInfo {
 		int minor = reqGlEsVersion & 0x0000ffff;
 		return String.valueOf(major) + "." + String.valueOf(minor);
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		dest.writeInt(reqTouchScreen);
+		dest.writeInt(reqKeyboardType);
+		dest.writeInt(reqNavigation);
+		dest.writeInt(reqInputFeatures);
+		dest.writeInt(reqGlEsVersion);
+	}
+
+	private ConfigurationInfo(Parcel source) {
+		reqTouchScreen = source.readInt();
+		reqKeyboardType = source.readInt();
+		reqNavigation = source.readInt();
+		reqInputFeatures = source.readInt();
+		reqGlEsVersion = source.readInt();
+	}
+
+	public static final Parcelable.Creator<ConfigurationInfo> CREATOR = new Parcelable.Creator<ConfigurationInfo>() {
+		public ConfigurationInfo createFromParcel(Parcel source) {
+			return new ConfigurationInfo(source);
+		}
+
+		public ConfigurationInfo[] newArray(int size) {
+			return new ConfigurationInfo[size];
+		}
+	};
 }

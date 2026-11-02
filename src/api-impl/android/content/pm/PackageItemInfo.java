@@ -16,6 +16,7 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
 import android.content.res.XmlResourceParser;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -264,5 +265,49 @@ public class PackageItemInfo {
 
 		private final Collator sCollator = Collator.getInstance();
 		private PackageManager mPM;
+	}
+
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		dest.writeString(name);
+		dest.writeString(packageName);
+		dest.writeInt(labelRes);
+		writeCharSequence(dest, nonLocalizedLabel);
+		dest.writeInt(icon);
+		dest.writeInt(logo);
+		dest.writeBundle(metaData);
+	}
+
+	protected PackageItemInfo(Parcel source) {
+		readPackageItemFields(source);
+	}
+
+	/** @hide not an override chain: a subclass's field initializers run after its super constructor */
+	protected final void readPackageItemFields(Parcel source) {
+		name = source.readString();
+		packageName = source.readString();
+		labelRes = source.readInt();
+		nonLocalizedLabel = readCharSequence(source);
+		icon = source.readInt();
+		logo = source.readInt();
+		metaData = readBundle(source);
+	}
+
+	/** @hide spans are dropped: labels from a manifest are plain */
+	protected static void writeCharSequence(Parcel dest, CharSequence value) {
+		dest.writeString(value == null ? null : value.toString());
+	}
+
+	/** @hide */
+	protected static CharSequence readCharSequence(Parcel source) {
+		return source.readString();
+	}
+
+	/** @hide */
+	protected static Bundle readBundle(Parcel source) {
+		try {
+			return source.readBundle(PackageItemInfo.class.getClassLoader());
+		} catch (ReflectiveOperationException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }

@@ -12,7 +12,7 @@ mkdir "$work/data"
 
 cd "$build"
 rc=0
-env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data" timeout 60 \
+env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data" timeout 60 \
   ./android-translation-layer "$apk" -l dev/dine/looper/MainActivity -X -Xint >"$work/log" 2>&1 || rc=$?
 
 fail() { echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }

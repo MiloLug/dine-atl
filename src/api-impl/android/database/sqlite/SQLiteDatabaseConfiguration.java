@@ -88,6 +88,12 @@ public final class SQLiteDatabaseConfiguration {
 	public boolean foreignKeyConstraintsEnabled;
 
 	/**
+	 * The synchronous mode for this database, or null for SQLiteGlobal's default. As in AOSP 9,
+	 * it applies to every connection the pool opens or reconfigures.
+	 */
+	public String syncMode;
+
+	/**
 	 * The custom functions to register.
 	 */
 	public final ArrayList<SQLiteCustomFunction> customFunctions =
@@ -148,6 +154,7 @@ public final class SQLiteDatabaseConfiguration {
 		maxSqlCacheSize = other.maxSqlCacheSize;
 		locale = other.locale;
 		foreignKeyConstraintsEnabled = other.foreignKeyConstraintsEnabled;
+		syncMode = other.syncMode;
 		customFunctions.clear();
 		customFunctions.addAll(other.customFunctions);
 	}

@@ -290,13 +290,15 @@ public final class SQLiteConnection implements CancellationSignal.OnCancelListen
 
 	private void setWalModeFromConfiguration() {
 		if (!mConfiguration.isInMemoryDb() && !mIsReadOnlyConnection) {
-			if ((mConfiguration.openFlags & SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING) != 0) {
-				setJournalMode("WAL");
-				setSyncMode(SQLiteGlobal.getWALSyncMode());
-			} else {
-				setJournalMode(SQLiteGlobal.getDefaultJournalMode());
-				setSyncMode(SQLiteGlobal.getDefaultSyncMode());
-			}
+			boolean wal = (mConfiguration.openFlags & SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING) != 0;
+			setJournalMode(wal ? "WAL" : SQLiteGlobal.getDefaultJournalMode());
+			if (mConfiguration.syncMode != null)
+				setSyncMode(mConfiguration.syncMode);
+			else
+				setSyncMode(wal ? SQLiteGlobal.getWALSyncMode() : SQLiteGlobal.getDefaultSyncMode());
+			// FULL alone doesn't reach the disk on Apple; elsewhere the pragma does nothing
+			if ("FULL".equalsIgnoreCase(mConfiguration.syncMode))
+				execute("PRAGMA fullfsync=1", null, null);
 		}
 	}
 

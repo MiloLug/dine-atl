@@ -16,6 +16,8 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.annotation.UnsupportedAppUsage;
 import android.content.pm.PackageManager.NameNotFoundException;
 // import android.content.res.Resources;
@@ -29,7 +31,7 @@ import java.util.Comparator;
  * corresponds to information collected from the AndroidManifest.xml's
  * &lt;application&gt; tag.
  */
-public class ApplicationInfo extends PackageItemInfo {
+public class ApplicationInfo extends PackageItemInfo implements Parcelable {
 
 	/**
 	 * Default task affinity of all activities in this application. See
@@ -677,4 +679,93 @@ public class ApplicationInfo extends PackageItemInfo {
 	}
 
 	public String[] splitPublicSourceDirs = new String[0];
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeString(taskAffinity);
+		dest.writeString(permission);
+		dest.writeString(processName);
+		dest.writeString(className);
+		dest.writeInt(descriptionRes);
+		dest.writeInt(theme);
+		dest.writeString(manageSpaceActivityName);
+		dest.writeString(backupAgentName);
+		dest.writeInt(uiOptions);
+		dest.writeInt(flags);
+		dest.writeInt(requiresSmallestWidthDp);
+		dest.writeInt(compatibleWidthLimitDp);
+		dest.writeInt(largestWidthLimitDp);
+		dest.writeString(sourceDir);
+		dest.writeString(publicSourceDir);
+		dest.writeStringArray(resourceDirs);
+		dest.writeString(seinfo);
+		dest.writeStringArray(sharedLibraryFiles);
+		dest.writeString(dataDir);
+		dest.writeString(nativeLibraryDir);
+		dest.writeString(primaryCpuAbi);
+		dest.writeString(secondaryCpuAbi);
+		dest.writeInt(uid);
+		dest.writeInt(minSdkVersion);
+		dest.writeInt(targetSdkVersion);
+		dest.writeInt(enabled ? 1 : 0);
+		dest.writeInt(enabledSetting);
+		dest.writeInt(installLocation);
+		dest.writeStringArray(splitSourceDirs);
+		dest.writeStringArray(splitPublicSourceDirs);
+	}
+
+	private ApplicationInfo(Parcel source) {
+		super(source);
+		readApplicationFields(source);
+	}
+
+	/** @hide fills this object, for a final ApplicationInfo field */
+	public void readFromParcel(Parcel source) {
+		readPackageItemFields(source);
+		readApplicationFields(source);
+	}
+
+	private void readApplicationFields(Parcel source) {
+		taskAffinity = source.readString();
+		permission = source.readString();
+		processName = source.readString();
+		className = source.readString();
+		descriptionRes = source.readInt();
+		theme = source.readInt();
+		manageSpaceActivityName = source.readString();
+		backupAgentName = source.readString();
+		uiOptions = source.readInt();
+		flags = source.readInt();
+		requiresSmallestWidthDp = source.readInt();
+		compatibleWidthLimitDp = source.readInt();
+		largestWidthLimitDp = source.readInt();
+		sourceDir = source.readString();
+		publicSourceDir = source.readString();
+		resourceDirs = source.createStringArray();
+		seinfo = source.readString();
+		sharedLibraryFiles = source.createStringArray();
+		dataDir = source.readString();
+		nativeLibraryDir = source.readString();
+		primaryCpuAbi = source.readString();
+		secondaryCpuAbi = source.readString();
+		uid = source.readInt();
+		minSdkVersion = source.readInt();
+		targetSdkVersion = source.readInt();
+		enabled = source.readInt() != 0;
+		enabledSetting = source.readInt();
+		installLocation = source.readInt();
+		splitSourceDirs = source.createStringArray();
+		splitPublicSourceDirs = source.createStringArray();
+	}
+
+	public static final Parcelable.Creator<ApplicationInfo> CREATOR = new Parcelable.Creator<ApplicationInfo>() {
+		public ApplicationInfo createFromParcel(Parcel source) {
+			return new ApplicationInfo(source);
+		}
+
+		public ApplicationInfo[] newArray(int size) {
+			return new ApplicationInfo[size];
+		}
+	};
 }

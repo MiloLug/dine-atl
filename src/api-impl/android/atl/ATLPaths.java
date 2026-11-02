@@ -3,8 +3,8 @@ package android.atl;
 import java.io.File;
 
 public final class ATLPaths {
-	public static final File app_data_dir_base;
-	public static final File installed_apks_dir;
+	/** $DINE_PREFIX or ~/.dine: the registry, apps/<pkg>/, data/<pkg>/ */
+	public static final File prefix_dir;
 	public static final File api_impl_jar;
 	public static final File gstub_jar;
 	public static final File ghax_jar;
@@ -17,18 +17,8 @@ public final class ATLPaths {
 		File extraJarsDirectory = ATLPaths.api_impl_jar.getParentFile();
 		gstub_jar = new File(extraJarsDirectory, "gstub.jar");
 		ghax_jar = new File(extraJarsDirectory, "ghax.jar");
-		// Mirror how main.c calculates app_data_dir_base
-		String ANDROID_APP_DATA_DIR = System.getenv("ANDROID_APP_DATA_DIR");
-		if (ANDROID_APP_DATA_DIR != null && !ANDROID_APP_DATA_DIR.isEmpty()) {
-			app_data_dir_base = new File(ANDROID_APP_DATA_DIR).getAbsoluteFile();
-		} else {
-			// Mirror g_get_user_data_dir(); behavior
-			String user_data_dir = System.getenv("XDG_DATA_HOME");
-			if (user_data_dir == null || user_data_dir.isEmpty()) {
-				user_data_dir = System.getenv("HOME") + "/.local/share";
-			}
-			app_data_dir_base = new File(user_data_dir + "/android_translation_layer").getAbsoluteFile();
-		}
-		installed_apks_dir = new File(app_data_dir_base, "_installed_apks_");
+		prefix_dir = new File(native_prefix_dir()).getAbsoluteFile();
 	}
+
+	private static native String native_prefix_dir();
 }

@@ -16,6 +16,9 @@
 
 package android.content.pm;
 
+
+import android.os.Parcel;
+import android.os.Parcelable;
 // import android.text.TextUtils;
 
 /**
@@ -23,7 +26,7 @@ package android.content.pm;
  * group known to the system.  This corresponds to information collected from the
  * AndroidManifest.xml's &lt;permission-group&gt; tags.
  */
-public class PermissionGroupInfo extends PackageItemInfo {
+public class PermissionGroupInfo extends PackageItemInfo implements Parcelable {
 	/**
 	 * A string resource identifier (in the package's resources) of this
 	 * permission's description.  From the "description" attribute or,
@@ -98,4 +101,32 @@ public class PermissionGroupInfo extends PackageItemInfo {
 	public int describeContents() {
 		return 0;
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeInt(descriptionRes);
+		writeCharSequence(dest, nonLocalizedDescription);
+		dest.writeInt(flags);
+		dest.writeInt(priority);
+	}
+
+	/** @hide */
+	public PermissionGroupInfo(Parcel source) {
+		super(source);
+		descriptionRes = source.readInt();
+		nonLocalizedDescription = readCharSequence(source);
+		flags = source.readInt();
+		priority = source.readInt();
+	}
+
+	public static final Parcelable.Creator<PermissionGroupInfo> CREATOR = new Parcelable.Creator<PermissionGroupInfo>() {
+		public PermissionGroupInfo createFromParcel(Parcel source) {
+			return new PermissionGroupInfo(source);
+		}
+
+		public PermissionGroupInfo[] newArray(int size) {
+			return new PermissionGroupInfo[size];
+		}
+	};
 }

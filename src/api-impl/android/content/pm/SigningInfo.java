@@ -1,16 +1,28 @@
 package android.content.pm;
 
+/** One signer, no key rotation: v1 signatures carry no history. */
 public final class SigningInfo {
+	private final Signature[] signers;
+
+	public SigningInfo() {
+		signers = null;
+	}
+
+	/** @hide */
+	public SigningInfo(Signature[] signers) {
+		this.signers = signers;
+	}
+
 	public Signature[] getApkContentsSigners() {
-		return null;
+		return signers;
 	}
 
 	public boolean hasMultipleSigners() {
-		return false;
+		return signers != null && signers.length > 1;
 	}
 
 	public Signature[] getSigningCertificateHistory() {
-		return null;
+		return signers;
 	}
 
 	public boolean hasPastSigningCertificates() {

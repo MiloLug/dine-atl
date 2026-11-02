@@ -16,6 +16,8 @@
 
 package android.content.pm;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.os.PatternMatcher;
 import android.util.Printer;
 
@@ -25,7 +27,7 @@ import android.util.Printer;
  * {@link android.content.pm.PackageManager#resolveContentProvider(java.lang.String, int)
  * PackageManager.resolveContentProvider()}.
  */
-public final class ProviderInfo extends ComponentInfo {
+public final class ProviderInfo extends ComponentInfo implements Parcelable {
 
 	/**
 	 * The name provider is published under content://
@@ -135,4 +137,65 @@ public final class ProviderInfo extends ComponentInfo {
 	public String toString() {
 		return "ContentProviderInfo{name=" + authority + " className=" + name + "}";
 	}
+
+	@Override
+	public void writeToParcel(Parcel dest, int parcelableFlags) {
+		super.writeToParcel(dest, parcelableFlags);
+		dest.writeString(authority);
+		dest.writeString(readPermission);
+		dest.writeString(writePermission);
+		dest.writeInt(grantUriPermissions ? 1 : 0);
+		dest.writeInt(uriPermissionPatterns == null ? -1 : uriPermissionPatterns.length);
+		if (uriPermissionPatterns != null)
+			for (PatternMatcher p : uriPermissionPatterns)
+				p.writeToParcel(dest, parcelableFlags);
+		dest.writeInt(pathPermissions == null ? -1 : pathPermissions.length);
+		if (pathPermissions != null) {
+			for (PathPermission p : pathPermissions) {
+				dest.writeString(p.getPath());
+				dest.writeInt(p.getType());
+				dest.writeString(p.getReadPermission());
+				dest.writeString(p.getWritePermission());
+			}
+		}
+		dest.writeInt(multiprocess ? 1 : 0);
+		dest.writeInt(initOrder);
+		dest.writeInt(flags);
+		dest.writeInt(isSyncable ? 1 : 0);
+	}
+
+	/** @hide */
+	public ProviderInfo(Parcel source) {
+		super(source);
+		authority = source.readString();
+		readPermission = source.readString();
+		writePermission = source.readString();
+		grantUriPermissions = source.readInt() != 0;
+		int n = source.readInt();
+		if (n >= 0) {
+			uriPermissionPatterns = new PatternMatcher[n];
+			for (int i = 0; i < n; i++)
+				uriPermissionPatterns[i] = new PatternMatcher(source);
+		}
+		n = source.readInt();
+		if (n >= 0) {
+			pathPermissions = new PathPermission[n];
+			for (int i = 0; i < n; i++)
+				pathPermissions[i] = new PathPermission(source.readString(), source.readInt(), source.readString(), source.readString());
+		}
+		multiprocess = source.readInt() != 0;
+		initOrder = source.readInt();
+		flags = source.readInt();
+		isSyncable = source.readInt() != 0;
+	}
+
+	public static final Parcelable.Creator<ProviderInfo> CREATOR = new Parcelable.Creator<ProviderInfo>() {
+		public ProviderInfo createFromParcel(Parcel source) {
+			return new ProviderInfo(source);
+		}
+
+		public ProviderInfo[] newArray(int size) {
+			return new ProviderInfo[size];
+		}
+	};
 }

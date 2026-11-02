@@ -21,7 +21,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
 log="$work/log"
 
-env=(RUN_FROM_BUILDDIR=1 ANDROID_APP_DATA_DIR="$work/data" MALLOC_PERTURB_=85 ATL_DUMP_VIEWTREE=1)
+env=(RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data" MALLOC_PERTURB_=85 ATL_DUMP_VIEWTREE=1)
 ((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}")
 rc=0
 (cd "$build" && env "${env[@]}" timeout 60 ./android-translation-layer "$apk" -l dev/dine/views/MainActivity \

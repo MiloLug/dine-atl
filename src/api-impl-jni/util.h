@@ -23,6 +23,10 @@ void extract_from_apk(const char *path, const char *target);
 extern char *apk_path;
 extern char *app_data_dir;
 char *get_app_data_dir(void);
+/* $DINE_PREFIX or ~/.dine, opened by atl_set_app */
+char *get_prefix_dir(void);
+/* From ATLInstaller.prepareApp: sets apk_path and app_data_dir, creates the data and lib dirs. */
+void atl_set_app_dirs(const char *apk_classpath, const char *data_dir);
 
 void prepare_main_looper(JNIEnv *env);
 

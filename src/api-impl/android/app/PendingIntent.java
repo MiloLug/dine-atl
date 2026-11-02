@@ -13,43 +13,51 @@ public class PendingIntent implements Parcelable {
 	private int requestCode;
 	Intent intent;
 	int type; // 0: activity, 1: service, 2: broadcast
+	private final Context context; // the creator's; it sends
 
-	private PendingIntent(int requestCode, Intent intent, int type) {
+	private PendingIntent(Context context, int requestCode, Intent intent, int type) {
+		this.context = context;
 		this.requestCode = requestCode;
 		this.intent = intent;
 		this.type = type;
 	}
 	public static PendingIntent getBroadcast(Context context, int requestCode, Intent intent, int flags) {
-		return new PendingIntent(requestCode, intent, 2);
+		return new PendingIntent(context, requestCode, intent, 2);
 	}
 
 	public IntentSender getIntentSender() {
-		return null;
+		return new IntentSender(this);
 	}
 
-	public void send(Context context, int code, Intent intent) {}
-
-	public void send() {
-		Context context = ATLLoadedApp.getPrimaryApplication().getApplication();
+	/** fillIn's extras are added to a copy of the intent; the creator's context sends it. */
+	public void send(Context context, int code, Intent fillIn) {
+		Intent sent = new Intent(intent);
+		if (fillIn != null && fillIn.getExtras() != null)
+			sent.getExtras().putAll(fillIn.getExtras());
+		Context sender = this.context != null ? this.context : ATLLoadedApp.getPrimaryApplication().getApplication();
 		if (type == 0) { // type Activity
-			context.startActivity(intent);
+			sender.startActivity(sent);
 		} else if (type == 1) { // type Service
-			context.startService(intent);
+			sender.startService(sent);
 		} else if (type == 2) { // type Broadcast
-			context.sendBroadcast(intent);
+			sender.sendBroadcast(sent);
 		}
 	}
 
+	public void send() {
+		send(null, 0, null);
+	}
+
 	public static PendingIntent getActivity(Context context, int requestCode, Intent intent, int flags) {
-		return new PendingIntent(requestCode, intent, 0);
+		return new PendingIntent(context, requestCode, intent, 0);
 	}
 
 	public static PendingIntent getService(Context context, int requestCode, Intent intent, int flags) {
-		return new PendingIntent(requestCode, intent, 1);
+		return new PendingIntent(context, requestCode, intent, 1);
 	}
 
 	public static PendingIntent getActivities(Context context, int requestCode, Intent[] intents, int flags, Bundle options) {
-		return new PendingIntent(requestCode, intents[0], 0);
+		return new PendingIntent(context, requestCode, intents[0], 0);
 	}
 
 	public String toString() {
