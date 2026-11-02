@@ -42,23 +42,23 @@ public final class ATLInstallerUi {
 	public static boolean startActivity(Context context, Intent intent, Activity resultTo, int requestCode) {
 		String action = intent.getAction();
 		if (PackageInstaller.ACTION_CONFIRM_INSTALL.equals(action)) {
-			onMain(() -> confirmSession(context, intent));
+			onMain(context, () -> confirmSession(context, intent));
 		} else if (Intent.ACTION_INSTALL_PACKAGE.equals(action)) {
-			onMain(() -> install(context, intent, resultTo, requestCode));
+			onMain(context, () -> install(context, intent, resultTo, requestCode));
 		} else if ((Intent.ACTION_UNINSTALL_PACKAGE.equals(action) || Intent.ACTION_DELETE.equals(action)) &&
 		           intent.getData() != null && "package".equals(intent.getData().getScheme())) {
-			onMain(() -> uninstall(context, intent, resultTo, requestCode));
+			onMain(context, () -> uninstall(context, intent, resultTo, requestCode));
 		} else {
 			return false;
 		}
 		return true;
 	}
 
-	private static void onMain(Runnable runnable) {
-		if (Looper.myLooper() == Looper.getMainLooper())
+	private static void onMain(Context context, Runnable runnable) {
+		if (Looper.myLooper() == context.getMainLooper())
 			runnable.run();
 		else
-			new Handler(Looper.getMainLooper()).post(runnable);
+			new Handler(context.getMainLooper()).post(runnable);
 	}
 
 	private static void ask(Context context, String title, String message, String yes, String no, Answer answer) {
@@ -199,10 +199,9 @@ public final class ATLInstallerUi {
 				app.sendBroadcast(new Intent(Intent.ACTION_PACKAGE_REPLACED, data).putExtra(Intent.EXTRA_UID, result.uid)
 				                      .putExtra(Intent.EXTRA_REPLACING, true));
 		}
-		ATLLoadedApp self = ATLLoadedApp.peekPrimaryApplication();
-		if (self != null && self.pkg.packageName.equals(result.packageName) && (removed || result.replaced)) {
+		if (context.getPackageName().equals(result.packageName) && (removed || result.replaced)) {
 			Slog.i(TAG, result.packageName + " " + (removed ? "removed" : "replaced") + " itself: ending");
-			new Handler(Looper.getMainLooper()).post(() -> System.exit(0));
+			new Handler(context.getMainLooper()).post(() -> System.exit(0));
 		}
 	}
 }

@@ -1,7 +1,6 @@
 package android.app;
 
 import android.R;
-import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.PackageParser;
@@ -116,7 +115,7 @@ public class Application extends ContextWrapper {
 	public void unregisterOnProvideAssistDataListener(OnProvideAssistDataListener callback) {
 	}
 	public static String getProcessName() {
-		// note: we currently don't set the process name
-		return ATLLoadedApp.getPrimaryApplication().pkg.packageName;
+		// the package: android:process is ignored
+		return ActivityThread.currentPackageName();
 	}
 }

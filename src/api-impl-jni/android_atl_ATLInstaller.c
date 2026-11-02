@@ -57,12 +57,3 @@ JNIEXPORT jboolean JNICALL Java_android_atl_ATLInstaller_native_1same_1file(JNIE
 	(*env)->ReleaseStringUTFChars(env, path_b, b_path);
 	return same;
 }
-
-JNIEXPORT void JNICALL Java_android_atl_ATLInstaller_native_1set_1app_1dirs(JNIEnv *env, jclass this, jstring apk_classpath, jstring data_dir)
-{
-	const char *apks = _CSTRING(apk_classpath);
-	const char *data = _CSTRING(data_dir);
-	atl_set_app_dirs(apks, data);
-	(*env)->ReleaseStringUTFChars(env, apk_classpath, apks);
-	(*env)->ReleaseStringUTFChars(env, data_dir, data);
-}

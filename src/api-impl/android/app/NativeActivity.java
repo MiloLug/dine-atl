@@ -172,7 +172,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback,
 
 		String path = null;
 
-		File libraryFile = new File(new File(android.os.Environment.getExternalStorageDirectory(), "lib"),
+		File libraryFile = new File(new File(getDataDir(), "lib"),
 		                            System.mapLibraryName(libname));
 		if (libraryFile.exists()) {
 			path = libraryFile.getPath();

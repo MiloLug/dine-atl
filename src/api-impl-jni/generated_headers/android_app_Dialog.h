@@ -63,7 +63,7 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside
  * Signature: ()Z
  */
 JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront
-  (JNIEnv *, jclass);
+  (JNIEnv *, jobject);
 
 #ifdef __cplusplus
 }

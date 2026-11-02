@@ -20,11 +20,9 @@
 
 #define MAX_PASSES_IN_A_ROW  8
 
-static struct ui_window *the_window;
-
 void ui_display_get(struct ui_display *display)
 {
-	const struct atl_window_config *config = atl_window_get();
+	const struct atl_window_config *config = atl_screen_get();
 	display->width = config->width;
 	display->height = config->height;
 	display->night = config->night;
@@ -40,7 +38,7 @@ static void lay_out(struct ui_window *window)
 		return;
 	}
 
-	const struct atl_window_config *config = atl_window_get();
+	const struct atl_window_config *config = atl_screen_get();
 	root->left = root->top = 0;
 	root->right = config->width;
 	root->bottom = config->height;
@@ -49,7 +47,7 @@ static void lay_out(struct ui_window *window)
 
 	if (!window->ready) {
 		window->ready = true;
-		atl_upcall_window_ready();
+		atl_upcall_window_ready(window->app);
 	}
 }
 
@@ -159,28 +157,24 @@ static void schedule_layout(struct ui_window *window)
 	loop_main_post(layout_pass, window);
 }
 
-struct ui_window *ui_window_new(void *surface)
+struct ui_window *ui_window_new(struct atl_app *app, void *surface)
 {
-	the_window = calloc(1, sizeof(*the_window));
-	records_window_created(the_window, surface);
-	return the_window;
+	struct ui_window *window = calloc(1, sizeof(*window));
+	window->app = app;
+	records_window_created(window, surface);
+	return window;
 }
 
-struct ui_window *records_app_window(void)
+void records_touch(struct ui_window *window, const struct atl_touch *touch)
 {
-	return the_window;
+	if (window->shown)
+		atl_upcall_touch(window->shown->ref, touch);
 }
 
-void records_touch(const struct atl_touch *touch)
+void records_key(struct ui_window *window, const struct atl_key *key)
 {
-	if (the_window && the_window->shown)
-		atl_upcall_touch(the_window->shown->ref, touch);
-}
-
-void records_key(const struct atl_key *key)
-{
-	if (the_window && the_window->shown)
-		atl_upcall_key(the_window->shown->ref, key);
+	if (window->shown)
+		atl_upcall_key(window->shown->ref, key);
 }
 
 void ui_window_set_title(struct ui_window *window, const char *title) {}
@@ -226,8 +220,8 @@ void ui_window_close(struct ui_window *window)
 
 void ui_window_get_size(struct ui_window *window, int *width, int *height)
 {
-	*width = atl_window_get()->width;
-	*height = atl_window_get()->height;
+	*width = atl_screen_get()->width;
+	*height = atl_screen_get()->height;
 }
 
 bool ui_window_is_multi_window(struct ui_window *window)
@@ -268,6 +262,7 @@ void records_observations_orphan(struct ui_window *window)
 static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits)
 {
 	struct ui_view *view = calloc(1, sizeof(*view));
+	view->window = atl_thread_app_window();
 	view->kind = kind;
 	view->ref = view_ref;
 	view->class_name = strdup(class_name);
@@ -276,7 +271,7 @@ static struct ui_view *view_new(enum node_kind kind, struct atl_ref *view_ref, c
 	view->enabled = true;
 	if (kind == NODE_TEXT) {
 		view->text = strdup("");
-		view->text_size = DEFAULT_TEXT_SIZE_SP * atl_window_get()->density_dpi / 160;
+		view->text_size = DEFAULT_TEXT_SIZE_SP * atl_screen_get()->density_dpi / 160;
 		view->max_lines = -1;
 	}
 	return view;
@@ -347,8 +342,8 @@ static void drawables_changed(struct ui_view *view)
 {
 	if (draws(view)) {
 		view->dirty = true;
-		if (the_window)
-			schedule_draw(the_window);
+		if (view->window)
+			schedule_draw(view->window);
 	} else if (view->list) {
 		gfx_canvas_free(view->list);
 		view->list = NULL;
@@ -409,8 +404,8 @@ void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, b
 {
 	// a subtree that shows again may hold views invalidated while hidden; Java requests a layout
 	// only for a change to or from GONE
-	if (visibility == UI_VIEW_VISIBLE && view->visibility != UI_VIEW_VISIBLE && the_window)
-		schedule_draw(the_window);
+	if (visibility == UI_VIEW_VISIBLE && view->visibility != UI_VIEW_VISIBLE && view->window)
+		schedule_draw(view->window);
 	view->visibility = visibility;
 	view->alpha = alpha;
 	view->enabled = enabled;
@@ -422,8 +417,8 @@ void ui_view_invalidate(struct ui_view *view)
 	if (!draws(view))
 		return;
 	view->dirty = true;
-	if (the_window)
-		schedule_draw(the_window);
+	if (view->window)
+		schedule_draw(view->window);
 }
 
 bool ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas) { return false; }
@@ -439,8 +434,8 @@ void ui_view_children_moved(struct ui_view *view)
 
 void ui_view_request_layout(struct ui_view *view)
 {
-	if (the_window)
-		schedule_layout(the_window);
+	if (view->window)
+		schedule_layout(view->window);
 }
 
 static int resolve(int natural, int spec)
@@ -474,7 +469,7 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 		content_height = view->image_height > 0 ? view->image_height : 0;
 	} else if (view->kind == NODE_PROGRESS) {
 		// Widget.ProgressBar's 48dp; a bar 20dp tall, as Widget.ProgressBar.Horizontal
-		int dp = atl_window_get()->density_dpi;
+		int dp = atl_screen_get()->density_dpi;
 		content_width = 48 * dp / 160;
 		content_height = (view->indeterminate ? 48 : 20) * dp / 160;
 	}

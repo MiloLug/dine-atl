@@ -1,7 +1,7 @@
 package android.app;
 
+import android.content.Context;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.text.format.DateUtils;
@@ -9,6 +9,11 @@ import android.util.Slog;
 
 public class AlarmManager {
 	private static final String TAG = "AlarmManager";
+	private final Context context;
+
+	public AlarmManager(Context context) {
+		this.context = context;
+	}
 
 	public static final int RTC = 1;
 	public static final int RTC_WAKEUP = 0;
@@ -32,7 +37,7 @@ public class AlarmManager {
 		Slog.i(TAG, "setInexactRepeating(" + type + ", " + triggerTime + ", " + interval + ", " + operation + ") called");
 		long delay = triggerTime - ((type == 2 || type == 3) ? SystemClock.elapsedRealtime() : System.currentTimeMillis());
 		Slog.i(TAG, "setInexactRepeating() delay: " + DateUtils.formatElapsedTime(delay) + " interval: " + DateUtils.formatElapsedTime(interval));
-		Handler handler = new Handler(Looper.getMainLooper());
+		Handler handler = new Handler(context.getMainLooper());
 		handler.postDelayed(new Runnable() {
 			@Override
 			public void run() {
@@ -47,7 +52,7 @@ public class AlarmManager {
 		Slog.i(TAG, "setExact(" + type + ", " + triggerTime + ", " + operation + ") called");
 		long delay = triggerTime - ((type == 2 || type == 3) ? SystemClock.elapsedRealtime() : System.currentTimeMillis());
 		Slog.i(TAG, "setExact() delay: " + DateUtils.formatElapsedTime(delay));
-		new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
 				Slog.i(TAG, "delivering alarm: " + operation);

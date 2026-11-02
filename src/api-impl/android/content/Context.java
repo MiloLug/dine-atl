@@ -72,9 +72,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.security.Provider;
 import java.security.Security;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class Context {
 	private final static String TAG = "Context";
@@ -93,13 +91,8 @@ public abstract class Context {
 
 	public static Vibrator vibrator;
 
-	private static PackageManager package_manager;
+	// the display's configuration; each app has its copy (ATLLoadedApp.config)
 	public static Configuration sys_config;
-
-	// TODO: Migrate to ATLLoadedApp, cannot remove yet due to being called by native
-	// The current replacement is ATLLoadedApp.getPrimaryApplication().getApplication()
-	@Deprecated
-	private static Application this_application;
 
 	File data_dir = null;
 	File prefs_dir = null;
@@ -107,8 +100,6 @@ public abstract class Context {
 	File obb_dir = null;
 	File cache_dir = null;
 	File nobackup_dir = null;
-
-	private static Map<IntentFilter, BroadcastReceiver> receiverMap = new ConcurrentHashMap<>();
 
 	static {
 		sys_config = new Configuration();
@@ -121,14 +112,14 @@ public abstract class Context {
 		Security.addProvider(provider);
 	}
 
-	/** @hide called once the primary app is known */
-	public static void exportUnifiedPush(PackageParser.Package pkg) {
-		for (PackageParser.Activity receiver : pkg.receivers) {
+	/** @hide at the app's start: a UnifiedPush receiver gets the app its connector */
+	public static void exportUnifiedPush(ATLLoadedApp app) {
+		for (PackageParser.Activity receiver : app.pkg.receivers) {
 			if (receiver.intents == null)
 				continue;
 			for (PackageParser.ActivityIntentInfo intent : receiver.intents) {
 				if (intent.matchAction("org.unifiedpush.android.connector.MESSAGE")) {
-					nativeExportUnifiedPush(pkg.packageName);
+					nativeExportUnifiedPush(app.pkg.packageName, app);
 					break;
 				}
 			}
@@ -138,16 +129,9 @@ public abstract class Context {
 	protected static native void native_updateConfig(Configuration config);
 	protected static native void nativeOpenFile(int fd);
 	protected static native void nativeShareFile(String text, int fd);
-	private static native void nativeExportUnifiedPush(String packageName);
+	private static native void nativeExportUnifiedPush(String packageName, ATLLoadedApp app);
 	private static native void nativeRegisterUnifiedPush(String token, String application);
 	protected static native void nativeStartExternalService(Intent service);
-
-	static Application createApplication(long native_window) throws Exception {
-		Application application = ATLLoadedApp.getPrimaryApplication().getApplication();
-		application.native_window = native_window;
-		this_application = application;
-		return application;
-	}
 
 	public Context() {
 		if (Log.isLoggable(TAG, Log.VERBOSE))
@@ -162,12 +146,14 @@ public abstract class Context {
 
 	public abstract ApplicationInfo getApplicationInfo();
 
+	/** The Context's own app's Application; null while that app isn't running (a package context). */
 	public Context getApplicationContext() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		ATLLoadedApp app = get_atl_loaded_app();
+		return app.started ? app.getApplication() : null;
 	}
 
 	public ContentResolver getContentResolver() {
-		return new ContentResolver();
+		return new ContentResolver(this);
 	}
 
 	public abstract Object getSystemService(String name);
@@ -177,7 +163,7 @@ public abstract class Context {
 	public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
 		if (receiver == null)
 			return null;
-		receiverMap.put(filter, receiver);
+		atl_process_app().receivers.put(filter, receiver);
 		return new Intent();
 	}
 
@@ -206,11 +192,7 @@ public abstract class Context {
 	}
 
 	public PackageManager getPackageManager() {
-		synchronized (Context.class) {
-			if (package_manager == null)
-				package_manager = new PackageManager();
-			return package_manager;
-		}
+		return get_atl_loaded_app().getPackageManager();
 	}
 
 	public abstract Resources getResources();
@@ -229,7 +211,7 @@ public abstract class Context {
 
 	private File getDataDirFile() {
 		if (data_dir == null) {
-			data_dir = android.os.Environment.getExternalStorageDirectory();
+			data_dir = new File(getApplicationInfo().dataDir);
 		}
 		return data_dir;
 	}
@@ -360,11 +342,10 @@ public abstract class Context {
 		return makeFilename(getPreferencesDir(), name + ".xml");
 	}
 
-	private static Map<String, SharedPreferences> sharedPrefs = new HashMap<String, SharedPreferences>();
-
 	public SharedPreferences getSharedPreferences(String name, int mode) {
 		if (Log.isLoggable(TAG, Log.VERBOSE))
 			Slog.v(TAG, "\n\n...> getSharedPreferences(" + name + ")\n\n");
+		Map<String, SharedPreferences> sharedPrefs = get_atl_loaded_app().shared_prefs;
 		if (sharedPrefs.containsKey(name)) {
 			return sharedPrefs.get(name);
 		} else {
@@ -391,7 +372,7 @@ public abstract class Context {
 	public FileOutputStream openFileOutput(String name, int mode) throws java.io.FileNotFoundException {
 		if (Log.isLoggable(TAG, Log.VERBOSE))
 			Slog.v(TAG, "openFileOutput called for: '" + name + "'");
-		return new FileOutputStream(android.os.Environment.getExternalStorageDirectory().getPath() + "/files/" + name);
+		return new FileOutputStream(new File(getDataDirFile(), "files/" + name));
 	}
 
 	public int checkCallingOrSelfPermission(String permission) {
@@ -408,15 +389,14 @@ public abstract class Context {
 
 	public abstract boolean bindService(final Intent intent, final ServiceConnection serviceConnection, int flags);
 
-	/* For use from native code */
-	static Activity resolveActivityInternal(Intent intent) throws ReflectiveOperationException {
+	/* For use from native code: an activity of app for intent */
+	static Activity resolveActivityInternal(ATLLoadedApp app, Intent intent) throws ReflectiveOperationException {
 		String className = null;
-		ATLLoadedApp primary = ATLLoadedApp.getPrimaryApplication();
 		if (intent.getComponent() != null) {
 			className = intent.getComponent().getClassName();
 		} else {
 			int best_score = -5;
-			for (PackageParser.Activity activity : primary.pkg.activities) {
+			for (PackageParser.Activity activity : app.pkg.activities) {
 				for (PackageParser.IntentInfo intentInfo : activity.intents) {
 					int score = intentInfo.match(intent.getAction(), intent.getType(), intent.getScheme(), intent.getData(), intent.getCategories(), "Context");
 					if (score > best_score && score > 0) {
@@ -427,7 +407,7 @@ public abstract class Context {
 			}
 		}
 		if (className != null) {
-			return Activity.internalCreateActivity(className, primary.getNativeWindow(), intent);
+			return Activity.internalCreateActivity(app, app, className, app.getNativeWindow(), intent);
 		} else {
 			return null;
 		}
@@ -487,15 +467,16 @@ public abstract class Context {
 		if ("org.unifiedpush.android.distributor.REGISTER".equals(intent.getAction())) {
 			nativeRegisterUnifiedPush(intent.getStringExtra("token"), intent.getStringExtra("application"));
 		}
-		// an explicit broadcast reaches only its manifest receiver
+		// the running app's receivers: an explicit broadcast reaches only its manifest receiver
+		ATLLoadedApp app = atl_process_app();
 		if (intent.getComponent() == null) {
-			for (IntentFilter filter : receiverMap.keySet()) {
-				BroadcastReceiver receiver = receiverMap.get(filter);
+			for (IntentFilter filter : app.receivers.keySet()) {
+				BroadcastReceiver receiver = app.receivers.get(filter);
 				if (receiver != null && filter.match(null, intent, false, TAG) >= 0)
 					receiver.onReceive(this, intent);
 			}
 		}
-		ATLLoadedApp.getPrimaryApplication().receiveBroadcast(this, intent);
+		app.receiveBroadcast(this, intent);
 	}
 
 	public void sendBroadcast(Intent intent, String receiverPermission) {
@@ -507,7 +488,7 @@ public abstract class Context {
 	public void unbindService(ServiceConnection serviceConnection) {}
 
 	public void unregisterReceiver(BroadcastReceiver receiver) {
-		while (receiverMap.values().remove(receiver))
+		while (atl_process_app().receivers.values().remove(receiver))
 			;
 	}
 
@@ -515,7 +496,7 @@ public abstract class Context {
 	public static final int CONTEXT_IGNORE_SECURITY = 0x00000002;
 	public static final int CONTEXT_RESTRICTED = 0x00000004;
 
-	public abstract Context createPackageContext(String packageName, int flags);
+	public abstract Context createPackageContext(String packageName, int flags) throws PackageManager.NameNotFoundException;
 
 	public void grantUriPermission(String dummy, Uri dummy2, int dummy3) {
 		System.out.println("grantUriPermission(" + dummy + ", " + dummy2 + ", " + dummy3 + ") called");
@@ -596,7 +577,7 @@ public abstract class Context {
 
 	public boolean deleteSharedPreferences(String name) {
 		getSharedPrefsFile(name).delete();
-		sharedPrefs.remove(name);
+		get_atl_loaded_app().shared_prefs.remove(name);
 		return true;
 	}
 
@@ -607,4 +588,10 @@ public abstract class Context {
 	public abstract int getThemeResId();
 
 	public abstract ATLLoadedApp get_atl_loaded_app();
+
+	/** The running app this context lives in: its creator's for a package context. Its window,
+	 * dialogs, keyboard, input state, providers and receivers are that app's. */
+	public ATLLoadedApp atl_process_app() {
+		return get_atl_loaded_app();
+	}
 }

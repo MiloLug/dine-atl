@@ -19,6 +19,12 @@ import java.util.List;
 public class ContentResolver {
 	public static final String SCHEME_CONTENT = "content";
 
+	private final Context context;
+
+	public ContentResolver(Context context) {
+		this.context = context;
+	}
+
 	public static final String SYNC_EXTRAS_IGNORE_SETTINGS = "ignore_settings";
 
 	public final void registerContentObserver(Uri uri, boolean notifyForDescendants, ContentObserver observer) {
@@ -37,7 +43,7 @@ public class ContentResolver {
 		if ("file".equals(uri.getScheme())) {
 			return ParcelFileDescriptor.open(new File(uri.getPath()), ParcelFileDescriptor.parseMode(mode));
 		} else {
-			ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+			ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 			if (provider != null)
 				return provider.openFile(uri, mode);
 			else
@@ -53,7 +59,7 @@ public class ContentResolver {
 		if ("file".equals(uri.getScheme())) {
 			return new AssetFileDescriptor(ParcelFileDescriptor.open(new File(uri.getPath()), ParcelFileDescriptor.parseMode(mode)), 0, AssetFileDescriptor.UNKNOWN_LENGTH);
 		} else {
-			ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+			ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 			if (provider != null)
 				return provider.openAssetFile(uri, mode);
 			else
@@ -97,7 +103,7 @@ public class ContentResolver {
 	}
 
 	public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 		if (provider != null) {
 			return provider.query(uri, projection, selection, selectionArgs, sortOrder);
 		} else if ("file".equals(uri.getScheme())) {
@@ -118,7 +124,7 @@ public class ContentResolver {
 	}
 
 	public int delete(Uri uri, String selection, String[] selectionArgs) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 		if (provider != null)
 			return provider.delete(uri, selection, selectionArgs);
 		else
@@ -126,7 +132,7 @@ public class ContentResolver {
 	}
 
 	public Uri insert(Uri uri, ContentValues values) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 		if (provider != null)
 			return provider.insert(uri, values);
 		else
@@ -134,7 +140,7 @@ public class ContentResolver {
 	}
 
 	public String getType(Uri uri) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 		if (provider != null)
 			return provider.getType(uri);
 		else
@@ -142,7 +148,7 @@ public class ContentResolver {
 	}
 
 	public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(uri.getAuthority());
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), uri.getAuthority());
 		if (provider != null)
 			return provider.update(uri, values, selection, selectionArgs);
 		else
@@ -158,7 +164,7 @@ public class ContentResolver {
 	}
 
 	public final ContentProviderClient acquireContentProviderClient(String name) {
-		ContentProvider provider = ContentProvider.atl_get_content_provider(name);
+		ContentProvider provider = ContentProvider.atl_get_content_provider(context.atl_process_app(), name);
 		return provider != null ? new ContentProviderClient(provider) : null;
 	}
 

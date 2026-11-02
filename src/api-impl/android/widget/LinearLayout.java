@@ -146,14 +146,10 @@ public class LinearLayout extends ViewGroup {
 	private int mShowDividers;
 	private int mDividerPadding;
 	/**
-	 * Signals that compatibility booleans have been initialized according to
-	 * target SDK versions.
+	 * Behavior change in P; always remeasure weighted children, regardless of excess space. From the
+	 * layout's app, which may differ between layouts in one VM.
 	 */
-	private static boolean sCompatibilityDone = false;
-	/**
-	 * Behavior change in P; always remeasure weighted children, regardless of excess space.
-	 */
-	private static boolean sRemeasureWeightedChildren = true;
+	private boolean remeasureWeightedChildren = true;
 
 	public LinearLayout(Context context) {
 		this(context, null);
@@ -169,11 +165,10 @@ public class LinearLayout extends ViewGroup {
 
 	public LinearLayout(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
 		super(context, attrs, defStyleAttr, defStyleRes);
-		if (!sCompatibilityDone && context != null) {
+		if (context != null) {
 			final int targetSdkVersion = context.getApplicationInfo().targetSdkVersion;
 			// Older apps only remeasure non-zero children
-			sRemeasureWeightedChildren = targetSdkVersion >= /*Build.VERSION_CODES.P*/ 28;
-			sCompatibilityDone = true;
+			remeasureWeightedChildren = targetSdkVersion >= /*Build.VERSION_CODES.P*/ 28;
 		}
 		final TypedArray a = context.obtainStyledAttributes(
 		    attrs, com.android.internal.R.styleable.LinearLayout, defStyleAttr, defStyleRes);
@@ -837,7 +832,7 @@ public class LinearLayout extends ViewGroup {
 		int remainingExcess = heightSize - mTotalLength
 		                    + (mAllowInconsistentMeasurement ? 0 : consumedExcessSpace);
 		if (skippedMeasure
-		    || ((sRemeasureWeightedChildren || remainingExcess != 0) && totalWeight > 0.0f)) {
+		    || ((remeasureWeightedChildren || remainingExcess != 0) && totalWeight > 0.0f)) {
 			float remainingWeightSum = mWeightSum > 0.0f ? mWeightSum : totalWeight;
 			mTotalLength = 0;
 			for (int i = 0; i < count; ++i) {
@@ -1163,7 +1158,7 @@ public class LinearLayout extends ViewGroup {
 		int remainingExcess = widthSize - mTotalLength
 		                    + (mAllowInconsistentMeasurement ? 0 : usedExcessSpace);
 		if (skippedMeasure
-		    || ((sRemeasureWeightedChildren || remainingExcess != 0) && totalWeight > 0.0f)) {
+		    || ((remeasureWeightedChildren || remainingExcess != 0) && totalWeight > 0.0f)) {
 			float remainingWeightSum = mWeightSum > 0.0f ? mWeightSum : totalWeight;
 			maxAscent[0] = maxAscent[1] = maxAscent[2] = maxAscent[3] = -1;
 			maxDescent[0] = maxDescent[1] = maxDescent[2] = maxDescent[3] = -1;

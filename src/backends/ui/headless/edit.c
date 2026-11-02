@@ -228,10 +228,9 @@ static struct ui_view *edit_at(struct ui_view *view, float x, float y)
 	return NULL;
 }
 
-static void tap(float x, float y)
+static void tap(struct ui_window *window, float x, float y)
 {
-	struct ui_window *window = records_app_window();
-	struct ui_view *view = window && window->shown ? edit_at(window->shown, x, y) : NULL;
+	struct ui_view *view = window->shown ? edit_at(window->shown, x, y) : NULL;
 	if (!view) {
 		printf("text: no field at %g,%g\n", x, y);
 		fflush(stdout);
@@ -243,16 +242,22 @@ static void tap(float x, float y)
 	atl_upcall_edit_focus(view->ref, true, true);
 }
 
+struct posted_text {
+	struct ui_window *window;
+	struct headless_text line;
+};
+
 static void on_text(void *data)
 {
-	struct headless_text *line = data;
+	struct posted_text *posted = data;
+	struct headless_text *line = &posted->line;
 	struct ui_view *view = target;
 	if (line->what == HEADLESS_TEXT_HOLD) {
 		holding = true;
 	} else if (line->what == HEADLESS_TEXT_RELEASE) {
 		release();
 	} else if (line->what == HEADLESS_TEXT_TAP) {
-		tap(line->x, line->y);
+		tap(posted->window, line->x, line->y);
 	} else if (!view) {
 		printf("text: no field\n");
 		fflush(stdout);
@@ -267,15 +272,15 @@ static void on_text(void *data)
 	} else {
 		edit(view, line);
 	}
-	free(line);
+	free(posted);
 }
 
-void headless_text(const struct headless_text *line)
+void headless_text(struct ui_window *window, const struct headless_text *line)
 {
 	size_t size = strlen(line->text) + 1;
-	struct headless_text *posted = malloc(sizeof(*posted) + size);
-	*posted = *line;
-	posted->text = memcpy((char *)(posted + 1), line->text, size);
+	struct posted_text *posted = malloc(sizeof(*posted) + size);
+	*posted = (struct posted_text){window, *line};
+	posted->line.text = memcpy((char *)(posted + 1), line->text, size);
 	if (!loop_main_post(on_text, posted))
 		free(posted);
 }

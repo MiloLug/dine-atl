@@ -5,7 +5,9 @@
 
 #include <stdbool.h>
 
+struct atl_app;
 struct atl_ref;
+struct ui_window;
 struct ui_display;
 struct gfx_canvas;
 
@@ -13,13 +15,14 @@ struct gfx_canvas;
 struct atl_ref *atl_ref_dup(struct atl_ref *ref);
 void atl_ref_free(struct atl_ref *ref);
 
-/* The app window the host asked for. */
+/* A window's size and density, as a host asks for it. */
 struct atl_window_config {
 	int width, height; // px
 	int density_dpi;
 	int night; // Configuration.UI_MODE_NIGHT_* value, or UI_DISPLAY_UNKNOWN
 };
-const struct atl_window_config *atl_window_get(void);
+/* The screen the host gave the VM: every app's window has its size until a window per task (MA6). */
+const struct atl_window_config *atl_screen_get(void);
 
 void atl_upcall_looper_loop(void);
 /* Applies the known fields to Context.sys_config. */
@@ -36,8 +39,11 @@ void atl_upcall_view_layout(struct atl_ref *view, int width, int height);
 /* View.atlDraw: the view's draw() into canvas, which only that call uses; an exception is printed
  * and cleared. */
 void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas);
+/* The window of the app the calling thread belongs to, NULL on a thread of no app: for the views an
+ * app makes. */
+struct ui_window *atl_thread_app_window(void);
 /* The app's window got its first layout: the activities regain focus. */
-void atl_upcall_window_ready(void);
+void atl_upcall_window_ready(struct atl_app *app);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. Returns whether the
  * dialog is still drawn afterwards; false after an exception, which is printed and cleared. */
 bool atl_upcall_dialog_result(struct atl_ref *dialog, int which);

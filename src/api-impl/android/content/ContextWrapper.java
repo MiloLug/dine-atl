@@ -2,8 +2,10 @@ package android.content;
 
 import android.atl.ATLLoadedApp;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.os.Looper;
 import android.view.Display;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Objects;
@@ -92,7 +94,7 @@ public class ContextWrapper extends Context {
 	}
 
 	@Override
-	public Context createPackageContext(String packageName, int flags) {
+	public Context createPackageContext(String packageName, int flags) throws PackageManager.NameNotFoundException {
 		return this.baseContext.createPackageContext(packageName, flags);
 	}
 
@@ -122,7 +124,17 @@ public class ContextWrapper extends Context {
 	}
 
 	@Override
+	public Looper getMainLooper() {
+		return this.baseContext.getMainLooper();
+	}
+
+	@Override
 	public ATLLoadedApp get_atl_loaded_app() {
 		return this.baseContext.get_atl_loaded_app();
+	}
+
+	@Override
+	public ATLLoadedApp atl_process_app() {
+		return this.baseContext.atl_process_app();
 	}
 }

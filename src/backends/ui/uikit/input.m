@@ -22,6 +22,7 @@ static UIView *gesture_surface; // the gesture's coordinates
 static int64_t key_down_times[512];
 
 struct posted_touch {
+	void *surface; // compared only: its window may have closed
 	struct atl_touch touch;
 };
 
@@ -35,9 +36,11 @@ static void deliver_touch(void *data)
 	if (pending_move == posted)
 		pending_move = NULL;
 	struct atl_touch touch = posted->touch;
+	struct ui_window *window = uikit_window_of(posted->surface);
 	pthread_mutex_unlock(&post_lock);
 	free(posted);
-	records_touch(&touch);
+	if (window)
+		records_touch(window, &touch);
 }
 
 static void post(int action)
@@ -51,6 +54,7 @@ static void post(int action)
 		return;
 	}
 	struct posted_touch *posted = malloc(sizeof(*posted));
+	posted->surface = (__bridge void *)gesture_surface;
 	posted->touch = gesture;
 	pending_move = action == ATL_ACTION_MOVE ? posted : NULL;
 	pthread_mutex_unlock(&post_lock);
@@ -75,7 +79,7 @@ static UIView *surface_of(UIView *view)
 
 static void locate(int index)
 {
-	CGFloat scale = atl_window_get()->density_dpi / 160.;
+	CGFloat scale = atl_screen_get()->density_dpi / 160.;
 	CGPoint point = [touches[index] locationInView:gesture_surface];
 	gesture.pointers[index].x = point.x * scale;
 	gesture.pointers[index].y = point.y * scale;
@@ -177,19 +181,30 @@ void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase
 	}
 }
 
+struct posted_key {
+	struct atl_key key;
+	void *surface; // compared only
+};
+
 static void deliver_key(void *data)
 {
-	records_key(data);
-	free(data);
+	struct posted_key *posted = data;
+	struct ui_window *window = uikit_window_of(posted->surface);
+	if (window)
+		records_key(window, &posted->key);
+	free(posted);
 }
 
-void input_presses(NSSet<UIPress *> *presses, bool down)
+void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down)
 {
+	void *surface = (__bridge void *)surface_of(view);
 	for (UIPress *press in presses) {
 		UIKey *key = press.key;
 		if (!key)
 			continue;
-		struct atl_key *posted = calloc(1, sizeof(*posted));
+		struct posted_key *posted_key = calloc(1, sizeof(*posted_key));
+		posted_key->surface = surface;
+		struct atl_key *posted = &posted_key->key;
 		posted->action = down ? ATL_KEY_DOWN : ATL_KEY_UP;
 		posted->code = keys_android_code(key.keyCode);
 		posted->meta = keys_android_meta(key.modifierFlags);
@@ -199,7 +214,7 @@ void input_presses(NSSet<UIPress *> *presses, bool down)
 		if (down)
 			*down_time = posted->time;
 		posted->down_time = *down_time;
-		if (!loop_main_post(deliver_key, posted))
-			free(posted);
+		if (!loop_main_post(deliver_key, posted_key))
+			free(posted_key);
 	}
 }

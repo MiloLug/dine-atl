@@ -12,7 +12,7 @@ void atl_display_apply(JNIEnv *env, jobject config, const struct ui_display *dis
 		config = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "sys_config", "Landroid/content/res/Configuration;");
 
 	if (display->width != UI_DISPLAY_UNKNOWN && display->height != UI_DISPLAY_UNKNOWN) {
-		int density_dpi = atl_window_get()->density_dpi;
+		int density_dpi = atl_screen_get()->density_dpi;
 		int width_dp = display->width * 160 / density_dpi;
 		int height_dp = display->height * 160 / density_dpi;
 		_SET_INT_FIELD(config, "screenWidthDp", width_dp);

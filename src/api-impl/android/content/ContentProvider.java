@@ -16,13 +16,13 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 public abstract class ContentProvider {
+	private Context context;
 
-	static final HashMap<String, ATLProvider> atl_providers = new HashMap<>();
-
-	static void createContentProviders() {
+	/** @hide the app's own providers, at its start */
+	public static void createContentProviders(ATLLoadedApp app) {
+		HashMap<String, ATLProvider> atl_providers = app.providers;
 		atl_providers.put("media", new ATLProvider(new ATLMediaContentProvider()));
-		ATLLoadedApp primary = ATLLoadedApp.getPrimaryApplication();
-		for (PackageParser.Provider provider_parsed : primary.pkg.providers) {
+		for (PackageParser.Provider provider_parsed : app.pkg.providers) {
 			String process_name = provider_parsed.info.processName;
 			if (process_name != null && process_name.contains(":")) {
 				/* NOTE: even if it doesn't contain `:`, if it's not null we probably
@@ -32,7 +32,7 @@ public abstract class ContentProvider {
 				continue;
 			}
 			atl_providers.put(provider_parsed.info.authority,
-			                  new ATLProvider(primary, provider_parsed));
+			                  new ATLProvider(app, provider_parsed));
 		}
 		// getContentProvider() initializes the content providers,
 		// we also opportunistically remove the ones that failed to load
@@ -44,15 +44,16 @@ public abstract class ContentProvider {
 		});
 	}
 
-	static ContentProvider atl_get_content_provider(String authority) {
-		ATLProvider atlProvider = atl_providers.get(authority);
+	// the app's own providers
+	static ContentProvider atl_get_content_provider(ATLLoadedApp app, String authority) {
+		ATLProvider atlProvider = app.providers.get(authority);
 		return atlProvider == null ? null : atlProvider.getContentProvider();
 	}
 
 	public boolean onCreate() { return false; }
 
 	public Context getContext() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		return context;
 	}
 
 	public abstract Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder);
@@ -72,9 +73,12 @@ public abstract class ContentProvider {
 		return fd != null ? new AssetFileDescriptor(fd, 0, -1) : null;
 	}
 
-	public void attachInfo(Context context, ProviderInfo provider) {}
+	public void attachInfo(Context context, ProviderInfo provider) {
+		this.context = context;
+	}
 
+	// calls come only from the provider's own app
 	public String getCallingPackage() {
-		return ATLLoadedApp.getPrimaryApplication().pkg.packageName;
+		return context != null ? context.getPackageName() : null;
 	}
 }

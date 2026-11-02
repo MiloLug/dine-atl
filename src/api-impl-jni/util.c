@@ -10,6 +10,8 @@
 #include "src/api-impl-jni/defines.h"
 #include "util.h"
 
+#include "../shared/app.h"
+
 char *jstring_to_utf8(JNIEnv *env, jstring string)
 {
 	if (!string)
@@ -146,10 +148,10 @@ void exit_on_exception(JNIEnv *env)
 	exit(10);
 }
 
-void extract_from_apk(const char *path, const char *target)
+void extract_from_apk(struct atl_app *app, const char *path, const char *target)
 {
 	JNIEnv *env = get_jni_env();
-	(*env)->CallStaticVoidMethod(env, handle_cache.asset_manager.class, handle_cache.asset_manager.extractFromAPK, _JSTRING(apk_path), _JSTRING(path), _JSTRING(target));
+	(*env)->CallStaticVoidMethod(env, handle_cache.asset_manager.class, handle_cache.asset_manager.extractFromAPK, _JSTRING(app->apk_class_path), _JSTRING(path), _JSTRING(target));
 }
 
 /* logging with fallback to stderr */

@@ -1,11 +1,11 @@
 package android.app;
 
-import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.os.Process;
 import android.view.GestureDetector;
 
 public class PendingIntent implements Parcelable {
@@ -34,7 +34,7 @@ public class PendingIntent implements Parcelable {
 		Intent sent = new Intent(intent);
 		if (fillIn != null && fillIn.getExtras() != null)
 			sent.getExtras().putAll(fillIn.getExtras());
-		Context sender = this.context != null ? this.context : ATLLoadedApp.getPrimaryApplication().getApplication();
+		Context sender = this.context != null ? this.context : android.atl.ATLLoadedApp.ofCurrentThreadOrThrow().getApplication();
 		if (type == 0) { // type Activity
 			sender.startActivity(sent);
 		} else if (type == 1) { // type Service
@@ -71,11 +71,11 @@ public class PendingIntent implements Parcelable {
 	}
 
 	public String getCreatorPackage() {
-		return ATLLoadedApp.getPrimaryApplication().pkg.packageName;
+		return context != null ? context.getPackageName() : ActivityThread.currentPackageName();
 	}
 
 	public int getCreatorUid() {
-		return ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.uid;
+		return context != null ? context.getApplicationInfo().uid : Process.myUid();
 	}
 
 	public static PendingIntent getForegroundService(Context context, int requestCode, Intent intent, int flags) {

@@ -510,9 +510,9 @@ public class EditText extends TextView {
 	protected void onFocusChanged(boolean gainFocus, int direction, android.graphics.Rect previouslyFocusedRect) {
 		super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
 		if (gainFocus)
-			InputMethodManager.atlFocusIn(this);
+			InputMethodManager.atlOf(getContext()).atlFocusIn(this);
 		else
-			InputMethodManager.atlFocusOut(this);
+			InputMethodManager.atlOf(getContext()).atlFocusOut(this);
 	}
 
 	// Editor.onTouchUpEvent: a tap on the focused field brings the keyboard
@@ -634,7 +634,7 @@ public class EditText extends TextView {
 
 	// atl_upcall_edit_focus
 	public void atlToolkitFocus(boolean focused, boolean keyboard) {
-		InputMethodManager.atlToolkitFocus(this, focused, keyboard);
+		InputMethodManager.atlOf(getContext()).atlToolkitFocus(this, focused, keyboard);
 	}
 
 	private static int clamp(int value, int min, int max) {

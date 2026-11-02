@@ -38,9 +38,10 @@ struct ui_layout_params {
 	int margin_left, margin_top, margin_right, margin_bottom;
 };
 
-/* For hosts other than gtk, whose host creates its GtkApplicationWindow itself. surface: the
- * platform view the app's views go in (uikit: a UIView, retained), or NULL. */
-struct ui_window *ui_window_new(void *surface);
+struct atl_app;
+/* For hosts other than gtk, whose host creates its GtkApplicationWindow itself: app's window.
+ * surface: the platform view the app's views go in (uikit: a UIView, retained), or NULL. */
+struct ui_window *ui_window_new(struct atl_app *app, void *surface);
 void ui_window_set_title(struct ui_window *window, const char *title);
 void ui_window_clear_background(struct ui_window *window);
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root);

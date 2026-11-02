@@ -12,7 +12,6 @@ import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
-import android.os.Looper;
 import android.transition.Transition;
 import android.widget.FrameLayout;
 import android.widget.Toolbar;
@@ -241,7 +240,7 @@ public class Window {
 		if (insets_requested)
 			return;
 		insets_requested = true;
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		new Handler(context.getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				dispatchInsets();
@@ -407,6 +406,6 @@ public class Window {
 	private native void set_frame(boolean has_color, int color, boolean light, boolean fullscreen);
 	private native void set_keep_screen_on(boolean keep);
 	private native void set_exclusion_rects(int[] rects);
-	private static native int[] get_insets();
+	private native int[] get_insets();
 	private native void set_screen_brightness(float brightness);
 }

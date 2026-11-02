@@ -8,6 +8,7 @@
 
 /* Start phases that every host runs, in this order, with host-specific steps between them. */
 
+struct atl_app;
 struct ui_window;
 
 struct atl_paths {
@@ -24,9 +25,8 @@ struct atl_paths {
 #define ATL_WINDOW_HEIGHT_DEFAULT 540
 #define ATL_DENSITY_DPI_DEFAULT   160
 
-/* Set by atl_vm_init and atl_app_create. */
-extern struct ui_window *atl_window;
-extern struct atl_window_config atl_window_config;
+/* The screen, set by atl_vm_init (atl_screen_get). */
+extern struct atl_window_config atl_screen;
 
 /* Opens the prefix ($DINE_PREFIX, else ~/.dine) and records the app: apks for a run by path, or
  * an installed package; neither for an install or uninstall. -1 on error, after printing it. */
@@ -42,12 +42,13 @@ JNIEnv *atl_vm_start(const struct atl_paths *paths, char *const *extra_jvm_optio
 /* On a VM created with atl_vm_options: loads translation_layer_main and fills the handle cache.
  * -1 on error. */
 int atl_vm_init(JNIEnv *env, const struct atl_window_config *window);
-/* After atl_vm_init: installs a run by path's apks unless the registry holds them, makes the app
- * the primary one and sets apk_path, app_data_dir and paths->app_lib_dir. -1 on error. */
-int atl_app_prepare(JNIEnv *env, struct atl_paths *paths);
-/* Main looper, Application, content providers, Application.onCreate. */
-jobject atl_app_create(JNIEnv *env, struct ui_window *window);
-jobject atl_activity_create_main(JNIEnv *env, const char *activity_class, const char *uri);
+/* After atl_vm_init: installs a run by path's apks unless the registry holds them, binds app to
+ * the package's record, makes its data and lib dirs and sets paths->app_lib_dir. -1 on error. */
+int atl_app_prepare(JNIEnv *env, struct atl_paths *paths, struct atl_app *app);
+/* On the thread that runs the app, which joins its thread group: main looper, then the record's
+ * start (Application, content providers, Application.onCreate). */
+jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *window);
+jobject atl_activity_create_main(JNIEnv *env, struct atl_app *app, const char *activity_class, const char *uri);
 /* The hosts' --install (the apks are one package, the base first) and --uninstall, on a VM started
  * without an app; they print the result and return the process's exit status. */
 int atl_install(JNIEnv *env, char *const *apks, int napks, bool allow_fake_signature);

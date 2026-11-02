@@ -2,13 +2,12 @@ package android.speech.tts;
 
 import android.content.Context;
 import android.os.Handler;
-import android.os.Looper;
 
 public class TextToSpeech {
 	public static final int ERROR = -1;
 
 	public TextToSpeech(Context context, TextToSpeech.OnInitListener listener) {
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		new Handler(context.getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				listener.onInit(ERROR);

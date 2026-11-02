@@ -7,29 +7,30 @@ package android.view;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.atl.ATLLoadedApp;
+import android.content.Context;
 import android.graphics.Rect;
 import android.view.inputmethod.InputMethodManager;
 
 /* What AOSP's ViewRootImpl does with input, for ATL's hosts: touch mode, and the entries the ui
  * backends call (atl_upcall_touch, atl_upcall_key) with the root view of the window that got the
- * event. */
+ * event. Its state is the app's (ATLLoadedApp): keys that went down unhandled, whose fallback
+ * stands in for them until their up; whether the IME took a Back, which then hides the keyboard
+ * and the window gets neither half. */
 public final class ATLInput {
-	// Android starts touch devices in touch mode (config_defaultInTouchMode)
-	private static boolean touchMode = true;
-	// keys that went down unhandled: their fallback stands in for them until their up
-	private static final java.util.Set<Integer> fallingBack = new java.util.HashSet<>();
-	// Android's IME takes Back while it shows: the keyboard hides and the window gets neither half
-	private static boolean keyboardTookBack;
-
 	private ATLInput() {}
 
-	static boolean isInTouchMode() {
-		return touchMode;
+	private static ATLLoadedApp app(View view) {
+		return view.getContext().atl_process_app();
+	}
+
+	static boolean isInTouchMode(Context context) {
+		return context.atl_process_app().touch_mode;
 	}
 
 	// Instrumentation.setInTouchMode: only the mode; focus follows at the next input
-	public static void setInTouchMode(boolean inTouchMode) {
-		touchMode = inTouchMode;
+	public static void setInTouchMode(ATLLoadedApp app, boolean inTouchMode) {
+		app.touch_mode = inTouchMode;
 	}
 
 	static boolean touch(View root, MotionEvent event) {
@@ -45,7 +46,7 @@ public final class ATLInput {
 	static boolean key(View root, KeyEvent event) {
 		Window window = root.decor_window;
 		if (window != null && window.getCallback() instanceof Activity) {
-			Dialog dialog = Dialog.atlTopDrawn();
+			Dialog dialog = Dialog.atlTopDrawn(app(root));
 			if (dialog != null)
 				window = dialog.getWindow();
 		}
@@ -53,6 +54,7 @@ public final class ATLInput {
 
 		if (checkForLeavingTouchModeAndConsume(event, decor))
 			return true;
+		java.util.Set<Integer> fallingBack = app(root).keys_falling_back;
 		boolean handled = deliver(window, decor, event);
 		int code = event.getKeyCode(), fallbackCode = fallbackKeyCode(code);
 		if (fallbackCode != KeyEvent.KEYCODE_UNKNOWN) {
@@ -77,22 +79,22 @@ public final class ATLInput {
 	}
 
 	private static boolean deliver(Window window, View decor, KeyEvent event) {
-		if (keyboardTakesBack(event))
+		if (keyboardTakesBack(app(decor), event))
 			return true;
 		Window.Callback callback = window != null ? window.getCallback() : null;
 		return callback != null ? callback.dispatchKeyEvent(event) : decor.dispatchKeyEvent(event);
 	}
 
-	private static boolean keyboardTakesBack(KeyEvent event) {
+	private static boolean keyboardTakesBack(ATLLoadedApp app, KeyEvent event) {
 		if (event.getKeyCode() != KeyEvent.KEYCODE_BACK)
 			return false;
 		if (event.getAction() == KeyEvent.ACTION_DOWN) {
-			if (event.getRepeatCount() == 0 && InputMethodManager.atlHideKeyboard())
-				keyboardTookBack = true;
-			return keyboardTookBack;
+			if (event.getRepeatCount() == 0 && app.input_method.atlHideKeyboard())
+				app.keyboard_took_back = true;
+			return app.keyboard_took_back;
 		}
-		boolean took = keyboardTookBack;
-		keyboardTookBack = false;
+		boolean took = app.keyboard_took_back;
+		app.keyboard_took_back = false;
 		return took;
 	}
 
@@ -116,9 +118,10 @@ public final class ATLInput {
 
 	// true when the mode changed and focus with it
 	static boolean ensureTouchMode(boolean inTouchMode, View root) {
-		if (touchMode == inTouchMode)
+		ATLLoadedApp app = app(root);
+		if (app.touch_mode == inTouchMode)
 			return false;
-		touchMode = inTouchMode;
+		app.touch_mode = inTouchMode;
 		Window window = root.decor_window;
 		if (window != null && window.view_tree_observer != null)
 			window.view_tree_observer.dispatchOnTouchModeChanged(inTouchMode);
@@ -182,7 +185,7 @@ public final class ATLInput {
 
 	private static boolean checkForLeavingTouchModeAndConsume(KeyEvent event, View root) {
 		// Only relevant in touch mode.
-		if (!touchMode) {
+		if (!app(root).touch_mode) {
 			return false;
 		}
 

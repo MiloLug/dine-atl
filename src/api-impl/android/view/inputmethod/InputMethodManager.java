@@ -1,21 +1,28 @@
 package android.view.inputmethod;
 
+import android.content.Context;
 import android.os.IBinder;
 import android.view.View;
 import android.widget.EditText;
 import java.util.ArrayList;
 import java.util.List;
 
-/* One keyboard per process: the EditText it types into follows Java's focus between EditTexts
- * while it shows; the toolkit's own focus changes come in through atlToolkitFocus. */
+/* One keyboard per app (ATLLoadedApp.input_method): the EditText it types into follows Java's
+ * focus between EditTexts while it shows; the toolkit's own focus changes come in through
+ * atlToolkitFocus. */
 public class InputMethodManager {
 
-	private static EditText served;
-	private static boolean shown;
+	private EditText served;
+	private boolean shown;
 
 	// gtk only: an IM context for a view with its own InputConnection, made on its first use
-	private static long im_context;
-	private static View activeView = null;
+	private long im_context;
+	private View activeView = null;
+
+	/** @hide the keyboard of the app the context lives in */
+	public static InputMethodManager atlOf(Context context) {
+		return context.atl_process_app().input_method;
+	}
 
 	private ArrayList<InputMethodInfo> input_method_list = new ArrayList<InputMethodInfo>();
 
@@ -86,7 +93,7 @@ public class InputMethodManager {
 	}
 
 	// true when a keyboard was shown and now hides; Java's focus stays
-	public static boolean atlHideKeyboard() {
+	public boolean atlHideKeyboard() {
 		if (!shown)
 			return false;
 		shown = false;
@@ -94,7 +101,7 @@ public class InputMethodManager {
 		return true;
 	}
 
-	public static void atlFocusIn(EditText view) {
+	public void atlFocusIn(EditText view) {
 		if (shown && served != view) {
 			served = view;
 			shown = view.atlSetKeyboard(true);
@@ -102,7 +109,7 @@ public class InputMethodManager {
 	}
 
 	// after the focus change: the keyboard hides unless another EditText took it
-	public static void atlFocusOut(final EditText view) {
+	public void atlFocusOut(final EditText view) {
 		view.post(new Runnable() {
 			@Override
 			public void run() {
@@ -113,7 +120,7 @@ public class InputMethodManager {
 	}
 
 	// the toolkit gave its input target to the field (keyboard: whether one shows) or took it away
-	public static void atlToolkitFocus(EditText view, boolean focused, boolean keyboard) {
+	public void atlToolkitFocus(EditText view, boolean focused, boolean keyboard) {
 		if (focused) {
 			served = view;
 			shown = keyboard;

@@ -18,7 +18,6 @@ package android.test;
 
 import android.app.Activity;
 import android.app.Application;
-import android.atl.ATLLoadedApp;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -138,7 +137,7 @@ public abstract class ActivityUnitTestCase<T extends Activity>
 				IBinder token = null;
 				if (mApplication == null) {
 					// setApplication(new MockApplication());
-					setApplication(ATLLoadedApp.getPrimaryApplication().getApplication());
+					setApplication(android.app.ActivityThread.currentApplication());
 				}
 				ComponentName cn = new ComponentName(mActivityClass.getPackage().getName(),
 				                                     mActivityClass.getName());

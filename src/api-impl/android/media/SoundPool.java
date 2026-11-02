@@ -27,7 +27,7 @@ public class SoundPool {
 	}
 
 	public int load(AssetFileDescriptor afd, int priority) throws IOException {
-		String packageCodePath = ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.sourceDir;
+		String packageCodePath = ATLLoadedApp.ofCurrentThreadOrThrow().pkg.applicationInfo.sourceDir;
 		AssetManager.extractFromAPK(packageCodePath, afd.fileName, afd.fileName);
 		return nativeLoad(nativePool, Environment.getExternalStorageDirectory().getPath() + "/" + afd.fileName);
 	}

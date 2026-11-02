@@ -2953,7 +2953,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public boolean canScrollVertically(int value) { return false; }
 
-	public boolean isInTouchMode() { return ATLInput.isInTouchMode(); }
+	public boolean isInTouchMode() { return ATLInput.isInTouchMode(getContext()); }
 
 	public void stopNestedScroll() {}
 
@@ -3015,7 +3015,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void forceLayout() {
-		if (Looper.myLooper() == Looper.getMainLooper()) {
+		if (Looper.myLooper() == getContext().getMainLooper()) {
 			requestLayout();
 		} else {
 			getHandler().post(new Runnable() {
@@ -3170,7 +3170,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public Handler getHandler() {
 		if (handler == null)
-			handler = new Handler(Looper.getMainLooper());
+			handler = new Handler(getContext().getMainLooper());
 		return handler;
 	}
 

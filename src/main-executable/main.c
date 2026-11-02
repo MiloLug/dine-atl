@@ -11,6 +11,7 @@
 #include "../api-impl-jni/util.h"
 #include "../api-impl-jni/app/android_app_Activity.h"
 #include "../api-impl-jni/content/android_content_Context.h"
+#include "../shared/app.h"
 #include "../shared/host_linux.h"
 #include "../shared/startup.h"
 #include "../backends/ui/gtk/gtk_ui.h"
@@ -45,12 +46,14 @@
 #endif
 
 GtkWidget *window;
+// the one app this process runs (libc_bio_path_overrides.c reads it too)
+struct atl_app *host_app;
 
 // standard Gtk Application stuff, more or less
 
 gboolean app_exit(GtkWindow *self, JNIEnv *env) // TODO: do more cleanup?
 {
-	activity_close_all();
+	activity_close_all(host_app);
 	return false;
 }
 
@@ -68,7 +71,7 @@ void icon_override(GtkWidget *window, GList *icon_list)
 gboolean hacky_on_window_focus_changed_callback(JNIEnv *env)
 {
 	if (gtk_widget_get_width(window) != 0) {
-		activity_window_ready();
+		activity_window_ready(host_app);
 #ifdef ATL_TEST_HOOKS
 		agent_start();
 #endif
@@ -172,11 +175,11 @@ static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, do
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING("android.intent.action.SEND"));
 	_SET_OBJ_FIELD(intent, "data", "Landroid/net/Uri;", (*env)->CallStaticObjectMethod(env, handle_cache.uri.class, handle_cache.uri.parse, _JSTRING(data)));
 
-	jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.context.class, handle_cache.context.resolveActivityInternal, intent);
+	jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.context.class, handle_cache.context.resolveActivityInternal, host_app->record, intent);
 	exit_on_exception(env);
 	gboolean resolved = activity != NULL;
 	if (resolved)
-		activity_start(env, activity);
+		activity_start(env, host_app, activity);
 	else
 		fprintf(stderr, "failed to resolve activity to handle URI: %s\n", data);
 	(*env)->PopLocalFrame(env, NULL);
@@ -267,15 +270,17 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	// before the path run's own install, which grants no fake signature
 	if (d->install && d->allow_fake_signature && atl_install(env, apks, napks, true))
 		atl_exit(env, 1);
-	if (atl_app_prepare(env, &paths) < 0)
+	host_app = atl_app_new();
+	if (atl_app_prepare(env, &paths, host_app) < 0)
 		atl_exit(env, 1);
+	atl_app_take_attaches(env, host_app);
 
-	// Apps which extract libraries on their own can place them anywhere in app_data_dir. Therefore, we add app_data_dir/** to the
-	// BIONIC_LD_LIBRARY_PATH. While app_data_dir/lib is already matched by the wildcard, it needs to be specified again to allow loading
-	// libraries by libname from app_data_dir/lib
+	// Apps which extract libraries on their own can place them anywhere in their data dir. Therefore, we add <data dir>/** to the
+	// BIONIC_LD_LIBRARY_PATH. While <data dir>/lib is already matched by the wildcard, it needs to be specified again to allow loading
+	// libraries by libname from <data dir>/lib
 	char *ld_path = getenv("BIONIC_LD_LIBRARY_PATH");
 	ld_path = (ld_path ? ld_path : "");
-	ld_path = g_strdup_printf("%s:%s/**:%s", paths.app_lib_dir, app_data_dir, ld_path);
+	ld_path = g_strdup_printf("%s:%s/**:%s", paths.app_lib_dir, host_app->data_dir, ld_path);
 	// calling directly into the shim bionic linker to whitelist the app's lib dir as containing bionic-linked libraries
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);
@@ -313,9 +318,9 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 
 	/* extract native libraries from apk*/
 	if (!getenv("ATL_SKIP_NATIVES_EXTRACTION"))
-		extract_from_apk("lib/" NATIVE_ARCH "/", "lib/");
+		extract_from_apk(host_app, "lib/" NATIVE_ARCH "/", "lib/");
 
-	application_object = atl_app_create(env, (struct ui_window *)window);
+	application_object = atl_app_create(env, host_app, (struct ui_window *)window);
 
 	if (d->apk_instrumentation_class) {
 		if (d->apk_main_activity_class) {
@@ -331,15 +336,15 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 		}
 
 		(*env)->CallStaticObjectMethod(env, handle_cache.instrumentation.class,
-		                               _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;"),
-		                               _JSTRING(d->apk_instrumentation_class), intent);
+		                               _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Landroid/atl/ATLLoadedApp;Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;"),
+		                               host_app->record, _JSTRING(d->apk_instrumentation_class), intent);
 
 		exit_on_exception(env);
 	}
 
 	// construct main Activity
 	if (!d->apk_instrumentation_class) {
-		activity_object = atl_activity_create_main(env, d->apk_main_activity_class, (uri_option && *uri_option) ? uri_option : NULL);
+		activity_object = atl_activity_create_main(env, host_app, d->apk_main_activity_class, (uri_option && *uri_option) ? uri_option : NULL);
 		if (uri_option)
 			g_free(uri_option);
 
@@ -376,8 +381,8 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 		{
 			if (app_icon_path) {
 				/* we can import the icon as-is */
-				extract_from_apk(app_icon_path, app_icon_path);
-				char *app_icon_path_full = g_strdup_printf("%s/%s", app_data_dir, app_icon_path);
+				extract_from_apk(host_app, app_icon_path, app_icon_path);
+				char *app_icon_path_full = g_strdup_printf("%s/%s", host_app->data_dir, app_icon_path);
 				GMappedFile *icon_file = g_mapped_file_new(app_icon_path_full, FALSE, NULL);
 				GBytes *icon_bytes = g_mapped_file_get_bytes(icon_file);
 				GIcon *icon = g_bytes_icon_new(icon_bytes);
@@ -479,10 +484,10 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	update_config_for_window(GTK_WINDOW(window));
 
 	if (!d->apk_instrumentation_class && app_icon_path) {
-		char *app_icon_path_full = malloc(strlen(app_data_dir) + 1 + strlen(app_icon_path) + 1); // +1 for /, +1 for NULL
-		sprintf(app_icon_path_full, "%s/%s", app_data_dir, app_icon_path);
+		char *app_icon_path_full = malloc(strlen(host_app->data_dir) + 1 + strlen(app_icon_path) + 1); // +1 for /, +1 for NULL
+		sprintf(app_icon_path_full, "%s/%s", host_app->data_dir, app_icon_path);
 
-		extract_from_apk(app_icon_path, app_icon_path);
+		extract_from_apk(host_app, app_icon_path, app_icon_path);
 
 		GError *error = NULL;
 		GList *icon_list = g_list_append(NULL, gdk_texture_new_from_filename(app_icon_path_full, &error));
@@ -496,7 +501,7 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	}
 
 	if (!d->apk_instrumentation_class) {
-		activity_start(env, activity_object);
+		activity_start(env, host_app, activity_object);
 
 		g_timeout_add(10, G_SOURCE_FUNC(hacky_on_window_focus_changed_callback), env);
 	}
@@ -529,7 +534,7 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		char *uri = g_file_get_uri(files[0]);
 		JNIEnv *env = get_jni_env();
 		fprintf(stderr, "opening uri over DBus: %s\n", uri);
-		activity_start(env, atl_activity_create_main(env, d->apk_main_activity_class, uri));
+		activity_start(env, host_app, atl_activity_create_main(env, host_app, d->apk_main_activity_class, uri));
 		return;
 	}
 	if (d->package || d->uninstall) {
@@ -640,7 +645,7 @@ int main(int argc, char **argv)
 
 	g_signal_connect(app, "activate", G_CALLBACK(activate), callback_data);
 	g_signal_connect(app, "open", G_CALLBACK(open), callback_data);
-	g_action_map_add_action_entries(G_ACTION_MAP(app), action_entries, action_entries_count, NULL);
+	g_action_map_add_action_entries(G_ACTION_MAP(app), action_entries, action_entries_count, &host_app);
 	status = g_application_run(G_APPLICATION(app), argc, argv);
 	remove_ongoing_notifications();
 	g_object_unref(app);

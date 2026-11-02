@@ -12,19 +12,22 @@ public class ActivityThread {
 		return new ActivityThread();
 	}
 	public static String currentPackageName() {
-		return ATLLoadedApp.getPrimaryApplication().pkg.packageName;
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		return app != null ? app.pkg.packageName : null;
 	}
 	public static String currentProcessName() {
 		return Application.getProcessName();
 	}
 	public static Application currentApplication() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		return app != null ? app.getApplication() : null;
 	}
 	public Application getApplication() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		return currentApplication();
 	}
 
 	public Configuration getConfiguration() {
-		return Context.sys_config;
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		return app != null ? app.config : Context.sys_config;
 	}
 }

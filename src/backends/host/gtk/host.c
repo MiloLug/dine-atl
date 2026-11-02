@@ -4,17 +4,17 @@
 
 /* A desktop window has no back: Back on the root activity finishes it. */
 
-bool host_task_to_back(void)
+bool host_task_to_back(struct atl_app *app)
 {
 	return false;
 }
 
-void host_task_moved(bool front, bool by_host) {}
+void host_task_moved(struct atl_app *app, bool front, bool by_host) {}
 
 // a desktop window has no gesture strips
-void host_gesture_exclusion_changed(const struct atl_gesture_exclusion *exclusion) {}
+void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gesture_exclusion *exclusion) {}
 
-void host_keep_screen_on(bool on)
+void host_keep_screen_on(struct atl_app *app, bool on)
 {
 	static guint cookie;
 	GtkApplication *application = GTK_APPLICATION(g_application_get_default());

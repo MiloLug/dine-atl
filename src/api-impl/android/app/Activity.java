@@ -62,8 +62,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	boolean destroyed = false;
 	private boolean finishing = false;
 
-	public static Activity internalCreateActivity(String className, long native_window, Intent intent) throws ReflectiveOperationException {
-		Activity activity = ATLLoadedApp.getPrimaryApplication().createActivity(className, intent);
+	public static Activity internalCreateActivity(ATLLoadedApp app, ATLLoadedApp processApp, String className, long native_window, Intent intent) throws ReflectiveOperationException {
+		Activity activity = app.createActivity(className, intent, processApp);
 		activity.window.set_native_window(native_window);
 		return activity;
 	}
@@ -75,10 +75,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	 * @return  instance of main activity class
 	 * @throws Exception
 	 */
-	private static Activity createMainActivity(String className, long native_window, String uriString) throws ReflectiveOperationException {
+	private static Activity createMainActivity(ATLLoadedApp app, String className, long native_window, String uriString) throws ReflectiveOperationException {
 		Uri uri = uriString != null ? Uri.parse(uriString) : null;
 		if (className == null) {
-			for (PackageParser.Activity activity : ATLLoadedApp.getPrimaryApplication().pkg.activities) {
+			for (PackageParser.Activity activity : app.pkg.activities) {
 				if (!activity.info.enabled)
 					continue;
 				boolean done = false;
@@ -104,7 +104,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 				System.err.println("Failed to find main Activity");
 			System.exit(1);
 		}
-		return internalCreateActivity(className, native_window, uri != null ? new Intent("android.intent.action.VIEW", uri) : new Intent());
+		return internalCreateActivity(app, app, className, native_window, uri != null ? new Intent("android.intent.action.VIEW", uri) : new Intent());
 	}
 
 	public Activity() {
@@ -285,10 +285,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public final void runOnUiThread(Runnable action) {
-		if (Looper.myLooper() == Looper.getMainLooper()) {
+		if (Looper.myLooper() == getMainLooper()) {
 			action.run();
 		} else {
-			new Handler(Looper.getMainLooper()).post(action);
+			new Handler(getMainLooper()).post(action);
 		}
 	}
 
@@ -317,7 +317,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 			return;
 		} else if (intent.getComponent() != null) {
 			try {
-				final Activity activity = internalCreateActivity(intent.getComponent().getClassName(), getWindow().native_window, intent);
+				final Activity activity = internalCreateActivity(get_atl_loaded_app(), atl_process_app(), intent.getComponent().getClassName(), getWindow().native_window, intent);
 				activity.resultRequestCode = requestCode;
 				activity.resultActivity = this;
 				runOnUiThread(new Runnable() {
@@ -388,7 +388,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	public void finish() {
 		finishing = true;
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		new Handler(getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				if (window != null && window.native_window != 0) {
@@ -515,7 +515,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		finishing = true;
 		try {
 			/* TODO: check if this is a toplevel activity */
-			Activity activity = internalCreateActivity(this.getClass().getName(), getWindow().native_window, intent);
+			Activity activity = internalCreateActivity(get_atl_loaded_app(), atl_process_app(), this.getClass().getName(), getWindow().native_window, intent);
 			new Handler().post(new Runnable() {
 				@Override
 				public void run() {
@@ -564,7 +564,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	public void overridePendingTransition(int enterAnim, int exitAnim) {}
 
 	public native boolean isTaskRoot();
-	private static native boolean nativeMoveTaskToBack();
+	private native boolean nativeMoveTaskToBack();
 
 	public void postponeEnterTransition() {}
 
@@ -578,7 +578,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	private native void nativeFinish(long native_window);
 	public static native void nativeStartActivity(Activity activity);
-	public static native boolean nativeResumeActivity(Class<? extends Activity> activityClass, Intent intent);
+	public static native boolean nativeResumeActivity(Context context, Class<? extends Activity> activityClass, Intent intent);
 	public static native void nativeOpenURI(String uri);
 	public native void nativeFileChooser(int action, String type, String title, int requestCode);
 	public void reportFullyDrawn() {}

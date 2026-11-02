@@ -147,7 +147,7 @@ GVariant *intent_serialize(JNIEnv *env, jobject intent)
 	return variant;
 }
 
-jobject intent_deserialize(JNIEnv *env, GVariant *variant)
+jobject intent_deserialize(JNIEnv *env, jobject context, GVariant *variant)
 {
 	char *action_copy;
 	char *className_copy;
@@ -161,7 +161,7 @@ jobject intent_deserialize(JNIEnv *env, GVariant *variant)
 	jobject intent = (*env)->NewObject(env, handle_cache.intent.class, handle_cache.intent.constructor);
 	_SET_OBJ_FIELD(intent, "action", "Ljava/lang/String;", _JSTRING(action));
 	if (className)
-		(*env)->CallObjectMethod(env, intent, handle_cache.intent.setClassName, _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;"), _JSTRING(className));
+		(*env)->CallObjectMethod(env, intent, handle_cache.intent.setClassName, context, _JSTRING(className));
 	if (data)
 		_SET_OBJ_FIELD(intent, "data", "Landroid/net/Uri;", (*env)->CallStaticObjectMethod(env, handle_cache.uri.class, handle_cache.uri.parse, _JSTRING(data)));
 	const char *key;
@@ -184,7 +184,7 @@ jobject intent_deserialize(JNIEnv *env, GVariant *variant)
 			g_variant_iter_init(&parcel_iter, value);
 			jobject parcel = (*env)->NewObject(env, handle_cache.iter_parcel.class, handle_cache.iter_parcel.constructor, _INTPTR(&parcel_iter));
 			jmethodID getClassLoader = _METHOD(handle_cache.context.class, "getClassLoader", "()Ljava/lang/ClassLoader;");
-			jobject class_loader = (*env)->CallObjectMethod(env, _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;"), getClassLoader);
+			jobject class_loader = (*env)->CallObjectMethod(env, context, getClassLoader);
 			jobject parcelable = (*env)->CallObjectMethod(env, parcel, handle_cache.parcel.readParcelable, class_loader);
 			if ((*env)->ExceptionCheck(env)) {
 				(*env)->ExceptionDescribe(env);

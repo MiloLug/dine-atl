@@ -37,7 +37,7 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_isTaskRoot
  * Signature: ()Z
  */
 JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeMoveTaskToBack
-  (JNIEnv *, jclass);
+  (JNIEnv *, jobject);
 
 /*
  * Class:     android_app_Activity
@@ -58,10 +58,10 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeStartActivity
 /*
  * Class:     android_app_Activity
  * Method:    nativeResumeActivity
- * Signature: (Ljava/lang/Class;Landroid/content/Intent;)Z
+ * Signature: (Landroid/content/Context;Ljava/lang/Class;Landroid/content/Intent;)Z
  */
 JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity
-  (JNIEnv *, jclass, jclass, jobject);
+  (JNIEnv *, jclass, jobject, jclass, jobject);
 
 /*
  * Class:     android_app_Activity

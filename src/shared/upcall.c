@@ -8,9 +8,9 @@
 #include "startup.h"
 #include "upcall.h"
 
-const struct atl_window_config *atl_window_get(void)
+const struct atl_window_config *atl_screen_get(void)
 {
-	return &atl_window_config;
+	return &atl_screen;
 }
 
 void atl_upcall_looper_loop(void)
@@ -25,6 +25,20 @@ void atl_upcall_display_changed(const struct ui_display *display)
 	JNIEnv *env = get_jni_env();
 	(*env)->PushLocalFrame(env, 16); // backends call it from the base JNI frame
 	atl_display_apply(env, NULL, display);
+	// and each app's copy
+	jclass manager = (*env)->FindClass(env, "android/atl/ATLLoadedAppManager");
+	jobjectArray apps = (*env)->CallStaticObjectMethod(env, manager, _STATIC_METHOD(manager, "loaded", "()[Landroid/atl/ATLLoadedApp;"));
+	jclass record_class = (*env)->FindClass(env, "android/atl/ATLLoadedApp");
+	jobject system = (*env)->CallStaticObjectMethod(env, record_class, _STATIC_METHOD(record_class, "getSystemApplication", "()Landroid/atl/ATLLoadedApp;"));
+	jobject system_config = _GET_OBJ_FIELD(system, "config", "Landroid/content/res/Configuration;");
+	atl_display_apply(env, system_config, display);
+	for (jsize i = 0; i < (*env)->GetArrayLength(env, apps); i++) {
+		jobject app = (*env)->GetObjectArrayElement(env, apps, i);
+		jobject config = _GET_OBJ_FIELD(app, "config", "Landroid/content/res/Configuration;");
+		atl_display_apply(env, config, display);
+		(*env)->DeleteLocalRef(env, config);
+		(*env)->DeleteLocalRef(env, app);
+	}
 	(*env)->PopLocalFrame(env, NULL);
 }
 
@@ -90,9 +104,9 @@ void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas)
 	(*env)->DeleteLocalRef(env, view_obj);
 }
 
-void atl_upcall_window_ready(void)
+void atl_upcall_window_ready(struct atl_app *app)
 {
-	activity_window_ready();
+	activity_window_ready(app);
 }
 
 static void call_observer(struct atl_ref *observer, jmethodID method)

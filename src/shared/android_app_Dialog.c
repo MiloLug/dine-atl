@@ -8,6 +8,7 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "app.h"
 #include "test_hooks.h"
 
 _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RESULT_CANCEL is the slot's cancel");
@@ -51,9 +52,12 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside(J
 	ui_dialog_set_cancel_on_touch_outside(_PTR(ptr), cancel);
 }
 
-JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront(JNIEnv *env, jclass class)
+JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront(JNIEnv *env, jobject this)
 {
-	return activity_task_front();
+	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
+	struct atl_app *app = atl_app_of(env, context);
+	(*env)->DeleteLocalRef(env, context);
+	return activity_task_front(app);
 }
 
 // array elements as strings, NULL for a NULL array; free with free_array

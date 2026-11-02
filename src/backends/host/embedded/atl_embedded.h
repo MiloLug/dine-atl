@@ -9,9 +9,13 @@
 extern "C" {
 #endif
 
-/* ATL inside an app that owns the VM. The embedder creates the one VM with its boot class path,
- * VM-wide flags and atl_embedded_vm_options, then calls atl_embedded_main on the thread that
- * becomes Android's main thread. Once per process. Its prefix (registry, apps, data) is DINE_PREFIX. */
+/* ATL inside an app that owns the VM. The embedder makes the app's handle with
+ * atl_embedded_app_new (nav.h takes it, also before the start), creates the one VM with its boot
+ * class path, VM-wide flags and atl_embedded_vm_options, then calls atl_embedded_main on the thread
+ * that becomes Android's main thread. Once per process. Its prefix (registry, apps, data) is
+ * DINE_PREFIX. */
+
+struct atl_app *atl_embedded_app_new(void);
 
 struct atl_embedded_config {
 	const char *api_impl_jar;
@@ -25,6 +29,7 @@ struct atl_embedded_config {
 	void *surface;        // the platform view the app's views go in (ui=uikit: a UIView, which
 	                      // may adopt ATLSurface from surface.h); NULL: none
 	const struct atl_embedded_listener *listener; // NULL: none; must outlive atl_embedded_main
+	struct atl_app *app; // from atl_embedded_app_new
 };
 
 /* NULL on error, after printing it to stderr. */

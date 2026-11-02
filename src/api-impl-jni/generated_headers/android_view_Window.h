@@ -73,7 +73,7 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects
  * Signature: ()[I
  */
 JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets
-  (JNIEnv *, jclass);
+  (JNIEnv *, jobject);
 
 /*
  * Class:     android_view_Window

@@ -33,8 +33,6 @@ class StorageVolume {}
 public class Environment {
 	private static final String TAG = "Environment";
 
-	private static File app_data_dir_file = null;
-
 	private static final String ENV_EXTERNAL_STORAGE = "EXTERNAL_STORAGE";
 	private static final String ENV_EMULATED_STORAGE_SOURCE = "EMULATED_STORAGE_SOURCE";
 	private static final String ENV_EMULATED_STORAGE_TARGET = "EMULATED_STORAGE_TARGET";
@@ -328,22 +326,8 @@ public class Environment {
 	 * @see #isExternalStorageRemovable()
 	 */
 	public static File getExternalStorageDirectory() {
-		if (app_data_dir_file == null) {
-			String dir = native_get_app_data_dir();
-			if (dir == null)
-				throw new IllegalStateException("no app data dir yet: it is set with the app");
-			app_data_dir_file = new File(dir);
-		}
-
-		return app_data_dir_file;
+		return new File(android.atl.ATLLoadedApp.ofCurrentThreadOrThrow().pkg.applicationInfo.dataDir);
 	}
-
-	/** @hide the app data dir, or null before an app is set */
-	public static String peekAppDataDir() {
-		return native_get_app_data_dir();
-	}
-
-	private static native String native_get_app_data_dir();
 
 	/**
 	 * {@hide}

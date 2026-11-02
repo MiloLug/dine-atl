@@ -36,7 +36,7 @@ public abstract class Service extends ContextWrapper {
 	public void stopForeground(boolean remove) {
 		System.out.println("stopForeground(" + remove + ") called");
 		if (remove)
-			new NotificationManager().cancel(notification_id);
+			new NotificationManager(this).cancel(notification_id);
 	}
 
 	public void stopForeground(int remove) {

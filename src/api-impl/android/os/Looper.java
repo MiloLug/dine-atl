@@ -56,7 +56,6 @@ public final class Looper {
 
 	// sThreadLocal.get() will return null unless you've called prepare().
 	static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
-	private static Looper sMainLooper; // guarded by Looper.class
 
 	final MessageQueue mQueue;
 	final Thread mThread;
@@ -88,24 +87,27 @@ public final class Looper {
 	 * to call this function yourself.  See also: {@link #prepare()}
 	 */
 	public static void prepareMainLooper() {
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		if (app == null)
+			throw new IllegalStateException("no app runs on this thread");
 		prepare(false);
 		synchronized (Looper.class) {
 			// following check was added in AOSP Jelly Bean release. Disable it based on targetSdk for compatibility with old CTS
-			if (sMainLooper != null
-			    && ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.JELLY_BEAN) {
+			if (app.main_looper != null
+			    && app.pkg.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.JELLY_BEAN) {
 				throw new IllegalStateException("The main Looper has already been prepared.");
 			}
-			sMainLooper = myLooper();
+			app.main_looper = myLooper();
 		}
 	}
 
 	/**
 	 * Returns the application's main looper, which lives in the main thread of the application.
+	 * Null on a thread that belongs to no app.
 	 */
 	public static Looper getMainLooper() {
-		synchronized (Looper.class) {
-			return sMainLooper;
-		}
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		return app != null ? app.main_looper : null;
 	}
 
 	/**

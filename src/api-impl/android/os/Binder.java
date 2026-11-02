@@ -1,6 +1,5 @@
 package android.os;
 
-import android.atl.ATLLoadedApp;
 import android.content.Context;
 
 public class Binder implements IBinder {
@@ -33,7 +32,7 @@ public class Binder implements IBinder {
 	@Override
 	public boolean transact(int code, Parcel data, Parcel reply, int flags) { return false; }
 
-	public static int getCallingUid() { return ATLLoadedApp.getPrimaryApplication().pkg.applicationInfo.uid; }
+	public static int getCallingUid() { return Process.myUid(); }
 
 	public static int getCallingPid() { return 0; }
 

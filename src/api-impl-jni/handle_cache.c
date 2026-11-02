@@ -96,7 +96,7 @@ void set_up_handle_cache(JNIEnv *env)
 
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
 	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)Z");
-	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Z)V");
+	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Landroid/atl/ATLLoadedApp;Z)V");
 
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));
 	handle_cache.window.updateFrame = _METHOD(handle_cache.window.class, "updateFrame", "()V");
@@ -111,7 +111,7 @@ void set_up_handle_cache(JNIEnv *env)
 	exit_on_exception(env);
 	handle_cache.context.sendBroadcast = _METHOD(handle_cache.context.class, "sendBroadcast", "(Landroid/content/Intent;)V");
 	handle_cache.context.startActivity = _METHOD(handle_cache.context.class, "startActivity", "(Landroid/content/Intent;)V");
-	handle_cache.context.resolveActivityInternal = _STATIC_METHOD(handle_cache.context.class, "resolveActivityInternal", "(Landroid/content/Intent;)Landroid/app/Activity;");
+	handle_cache.context.resolveActivityInternal = _STATIC_METHOD(handle_cache.context.class, "resolveActivityInternal", "(Landroid/atl/ATLLoadedApp;Landroid/content/Intent;)Landroid/app/Activity;");
 	handle_cache.context.startService = _METHOD(handle_cache.context.class, "startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;");
 
 	handle_cache.application.class = _REF((*env)->FindClass(env, "android/app/Application"));

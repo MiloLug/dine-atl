@@ -2,6 +2,7 @@ package android.atl;
 
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageParser;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import dalvik.system.PathClassLoader;
 import java.util.Arrays;
@@ -52,6 +53,6 @@ final class ATLGStub {
 	static synchronized ATLLoadedApp load(PackageParser.Package pkg) {
 		if (classLoader == null)
 			classLoader = new PathClassLoader(ATLPaths.gstub_jar.getPath(), null, ATLGStub.class.getClassLoader());
-		return new ATLLoadedApp(Resources.getSystem(), classLoader, pkg);
+		return new ATLLoadedApp(Resources.getSystem(), classLoader, pkg, new Configuration(android.content.Context.sys_config));
 	}
 }

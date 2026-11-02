@@ -1,6 +1,7 @@
 #include <gio/gdesktopappinfo.h>
 #include <gtk/gtk.h>
 
+#include "../../shared/app.h"
 #include "../defines.h"
 #include "../gtk_util.h"
 
@@ -121,8 +122,11 @@ JNIEXPORT void JNICALL Java_android_app_NotificationManager_nativeShowNotificati
 	}
 	if (icon_jstr) {
 		const char *icon_path = (*env)->GetStringUTFChars(env, icon_jstr, NULL);
-		extract_from_apk(icon_path, icon_path);
-		char *icon_path_full = g_strdup_printf("%s/%s", get_app_data_dir(), icon_path);
+		jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
+		struct atl_app *app = atl_app_of(env, context);
+		(*env)->DeleteLocalRef(env, context);
+		extract_from_apk(app, icon_path, icon_path);
+		char *icon_path_full = g_strdup_printf("%s/%s", app->data_dir, icon_path);
 		GMappedFile *icon_file = g_mapped_file_new(icon_path_full, FALSE, NULL);
 		if (icon_file) {
 			GBytes *icon_bytes = g_mapped_file_get_bytes(icon_file);

@@ -26,7 +26,10 @@ enum node_kind {
 	NODE_SCROLL,   // ui_scroll_new: laid out by Java; the toolkit scrolls its child
 };
 
+struct atl_app;
+
 struct ui_view {
+	struct ui_window *window; // its app's, from the thread that made it
 	enum node_kind kind;
 	char *class_name;
 	struct atl_ref *ref;
@@ -75,6 +78,7 @@ struct ui_observation {
 };
 
 struct ui_window {
+	struct atl_app *app;
 	struct ui_view *shown;
 	struct ui_observation *observations;
 	bool layout_pending;
@@ -83,6 +87,7 @@ struct ui_window {
 	bool ready;
 	struct ui_frame frame;
 	struct ui_dialog_state *dialog; // NULL for the app's window
+	void *surface; // an app window's platform view (uikit: a retained UIView), else NULL
 };
 
 /* What the backend does besides keeping the records, after the records changed. The view and
@@ -135,9 +140,8 @@ void records_draw_done(struct ui_window *window); // a draw pass ended
 void records_scroll_changed(struct ui_view *view, bool animated);
 
 /* The app's window, on the Android main thread: input goes to its shown activity. */
-struct ui_window *records_app_window(void);
-void records_touch(const struct atl_touch *touch);
-void records_key(const struct atl_key *key);
+void records_touch(struct ui_window *window, const struct atl_touch *touch);
+void records_key(struct ui_window *window, const struct atl_key *key);
 
 #ifdef ATL_TEST_HOOKS
 /* With ATL_DUMP_VIEWTREE set, prints a "viewfreed: " line with the view's class and text. */

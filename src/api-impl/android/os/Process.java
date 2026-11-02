@@ -414,7 +414,7 @@ public class Process {
 	 */
 	public static final int myUid() {
 		// the registry's uid, never the OS one: apps like WhatsApp refuse files owned by their own uid
-		android.atl.ATLLoadedApp app = android.atl.ATLLoadedApp.peekPrimaryApplication();
+		android.atl.ATLLoadedApp app = android.atl.ATLLoadedApp.ofCurrentThread();
 		return app != null ? app.pkg.applicationInfo.uid : -1;
 	}
 

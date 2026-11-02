@@ -46,10 +46,10 @@ JNIEXPORT void JNICALL Java_android_content_Context_nativeShareFile
 /*
  * Class:     android_content_Context
  * Method:    nativeExportUnifiedPush
- * Signature: (Ljava/lang/String;)V
+ * Signature: (Ljava/lang/String;Landroid/atl/ATLLoadedApp;)V
  */
 JNIEXPORT void JNICALL Java_android_content_Context_nativeExportUnifiedPush
-  (JNIEnv *, jclass, jstring);
+  (JNIEnv *, jclass, jstring, jobject);
 
 /*
  * Class:     android_content_Context

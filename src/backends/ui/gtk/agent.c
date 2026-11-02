@@ -12,6 +12,8 @@
 
 #include "gtk_ui.h"
 
+extern struct atl_app *host_app; // the gtk host's (main.c)
+
 /* Debug agent behind `tools/dine dbg ui …` on the gtk build (ATL_DBG_AGENT), with the iOS agent's
  * wire format (native/dev/dbgagent/agent.mm): one request line, one JSON reply line per connection.
  *   ls               {"labels": [[isElement, label], …]}: the shown text of the app window, then of
@@ -272,7 +274,7 @@ static gboolean run_action(gpointer data)
 {
 	struct action *action = data;
 	if (action->kind == ACTION_BACK)
-		result = atl_nav_back();
+		result = atl_nav_back(host_app);
 	else if (action->kind == ACTION_TAP)
 		result = tap(action->widget);
 	else

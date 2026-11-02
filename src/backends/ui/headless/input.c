@@ -16,6 +16,7 @@
 #define TOUCH_SLOP_DP 8 // ViewConfiguration's
 
 struct posted_touch {
+	struct ui_window *window;
 	enum headless_touch what;
 	int id;
 	float x, y;
@@ -77,11 +78,13 @@ static void pan(float x, float y)
 	atl_upcall_scrolled(scroll->ref, scroll_x, scroll_y);
 }
 
+static struct ui_window *touch_window; // the gesture's: its first pointer's
+
 static void deliver(int action)
 {
 	touch.action = action;
 	touch.time = atl_uptime_ms();
-	records_touch(&touch);
+	records_touch(touch_window, &touch);
 }
 
 static int pointer_index(int id)
@@ -105,8 +108,8 @@ static void pointer_down(const struct posted_touch *posted)
 		return;
 	}
 	touch.down_time = atl_uptime_ms();
-	struct ui_window *window = records_app_window();
-	scroll = window && window->shown ? scroll_at(window->shown, posted->x, posted->y) : NULL;
+	struct ui_window *window = touch_window = posted->window;
+	scroll = window->shown ? scroll_at(window->shown, posted->x, posted->y) : NULL;
 	panning = false;
 	start_x = posted->x;
 	start_y = posted->y;
@@ -123,7 +126,7 @@ static void pointer_move(const struct posted_touch *posted, int index)
 	touch.pointers[index].y = posted->y;
 	if (scroll && !panning && index == 0) {
 		float moved = scroll->horizontal ? posted->x - start_x : posted->y - start_y;
-		if (fabsf(moved) > TOUCH_SLOP_DP * atl_window_get()->density_dpi / 160.f) {
+		if (fabsf(moved) > TOUCH_SLOP_DP * atl_screen_get()->density_dpi / 160.f) {
 			panning = true;
 			deliver(ATL_ACTION_CANCEL);
 		}
@@ -169,31 +172,37 @@ static void on_touch(void *data)
 	free(posted);
 }
 
-void headless_touch(enum headless_touch what, int id, float x, float y)
+void headless_touch(struct ui_window *window, enum headless_touch what, int id, float x, float y)
 {
 	struct posted_touch *posted = malloc(sizeof(*posted));
-	*posted = (struct posted_touch){what, id, x, y};
+	*posted = (struct posted_touch){window, what, id, x, y};
 	if (!loop_main_post(on_touch, posted))
 		free(posted);
 }
 
+struct posted_key {
+	struct ui_window *window;
+	struct atl_key key;
+};
+
 static void on_key(void *data)
 {
-	struct atl_key *key = data;
+	struct posted_key *posted = data;
+	struct atl_key *key = &posted->key;
 	key->time = atl_uptime_ms();
 	if (key->action == ATL_KEY_DOWN)
 		key_down_time = key->time;
 	key->down_time = key_down_time;
-	records_key(key);
-	free(key);
+	records_key(posted->window, key);
+	free(posted);
 }
 
-void headless_key(int down, int code, int meta, int unicode)
+void headless_key(struct ui_window *window, int down, int code, int meta, int unicode)
 {
-	struct atl_key *key = malloc(sizeof(*key));
-	*key = (struct atl_key){.action = down ? ATL_KEY_DOWN : ATL_KEY_UP, .code = code, .meta = meta, .unicode = unicode};
-	if (!loop_main_post(on_key, key))
-		free(key);
+	struct posted_key *posted = malloc(sizeof(*posted));
+	*posted = (struct posted_key){window, {.action = down ? ATL_KEY_DOWN : ATL_KEY_UP, .code = code, .meta = meta, .unicode = unicode}};
+	if (!loop_main_post(on_key, posted))
+		free(posted);
 }
 
 void headless_input_view_freed(struct ui_view *view)

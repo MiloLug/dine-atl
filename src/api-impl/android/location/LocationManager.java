@@ -1,17 +1,21 @@
 package android.location;
 
+import android.atl.ATLLoadedApp;
+import android.atl.ATLLoadedAppManager;
+import android.content.Context;
+
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import java.lang.Runnable;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class LocationManager {
+	private final Context context;
 
-	static Set<LocationListener> listeners = new HashSet<>();
+	public LocationManager(Context context) {
+		this.context = context;
+	}
 
 	public String getBestProvider(Criteria criteria, boolean enabledOnly) {
 		return "xdgportal";
@@ -22,7 +26,7 @@ public class LocationManager {
 	}
 
 	public void requestLocationUpdates(String provider, long minTimeMs, float minDistanceM, LocationListener listener) {
-		listeners.add(listener);
+		context.get_atl_loaded_app().location_listeners.add(listener);
 		nativeGetLocation();
 	}
 
@@ -35,8 +39,9 @@ public class LocationManager {
 	                                    double speed,
 	                                    double bearing,
 	                                    long timestamp) {
-		for (LocationListener locationListener : listeners) {
-			locationListener.onLocationChanged(new Location(latitude, longitude, altitude, accuracy, speed, bearing, timestamp));
+		for (ATLLoadedApp app : ATLLoadedAppManager.loaded()) {
+			for (LocationListener locationListener : app.location_listeners)
+				locationListener.onLocationChanged(new Location(latitude, longitude, altitude, accuracy, speed, bearing, timestamp));
 		}
 	}
 
@@ -63,7 +68,7 @@ public class LocationManager {
 	}
 
 	public boolean registerGnssStatusCallback(GnssStatus.Callback callback, Handler handler) {
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		new Handler(context.getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				callback.onSatelliteStatusChanged(new GnssStatus());

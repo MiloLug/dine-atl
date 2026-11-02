@@ -139,7 +139,7 @@ JNIEXPORT void JNICALL Java_android_content_res_AssetManager_init(JNIEnv *env, j
 {
 	struct AssetManager *asset_manager = AssetManager_new();
 	const struct ResTable_config config = {
-		.density = atl_window_get()->density_dpi,
+		.density = atl_screen_get()->density_dpi,
 		.sdkVersion = sdk_version,
 	};
 	AssetManager_setConfiguration(asset_manager, &config);

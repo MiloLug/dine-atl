@@ -10,6 +10,7 @@ import android.atl.ATLLoadedAppManager;
 import android.bluetooth.BluetoothManager;
 import android.content.*;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -48,6 +49,7 @@ public final class ContextImpl extends Context {
 	private final static String TAG = "ContextImpl";
 	private final Resources resources;
 	private final ATLLoadedApp atl_loaded_app;
+	private final ATLLoadedApp process_app; // another than atl_loaded_app for a package context
 	/**
 	 * While not being part of the official Android API, some applications use it to reset/reload the theme in the context.
 	 */
@@ -65,24 +67,40 @@ public final class ContextImpl extends Context {
 	private final int atl_flags;
 
 	public ContextImpl(Resources resources, ATLLoadedApp loadedApp, Resources.Theme theme) {
-		this(resources, loadedApp, 0, 0);
+		this(resources, loadedApp, loadedApp, 0, 0);
 		getTheme().setTo(theme);
 	}
 
-	private ContextImpl(Resources resources, ATLLoadedApp loadedApp, Resources.Theme theme, int flags) {
-		this(resources, loadedApp, 0, flags);
+	private ContextImpl(Resources resources, ATLLoadedApp loadedApp, ATLLoadedApp processApp, Resources.Theme theme, int flags) {
+		this(resources, loadedApp, processApp, 0, flags);
 		getTheme().setTo(theme);
 	}
 
 	public ContextImpl(Resources resources, ATLLoadedApp loadedApp, int themeResource) {
-		this(resources, loadedApp, themeResource, 0);
+		this(resources, loadedApp, loadedApp, themeResource, 0);
 	}
 
-	private ContextImpl(Resources resources, ATLLoadedApp loadedApp, int themeResource, int flags) {
+	/** processApp: the running app the context lives in (atl_process_app) */
+	public ContextImpl(Resources resources, ATLLoadedApp loadedApp, ATLLoadedApp processApp, int themeResource) {
+		this(resources, loadedApp, processApp, themeResource, 0);
+	}
+
+	private ContextImpl(Resources resources, ATLLoadedApp loadedApp, ATLLoadedApp processApp, int themeResource, int flags) {
 		this.resources = resources;
 		this.atl_loaded_app = loadedApp;
+		this.process_app = processApp;
 		mThemeResource = themeResource;
 		this.atl_flags = flags;
+	}
+
+	@Override
+	public Looper getMainLooper() {
+		return process_app.main_looper;
+	}
+
+	@Override
+	public ATLLoadedApp atl_process_app() {
+		return process_app;
 	}
 
 	@Nullable
@@ -147,7 +165,7 @@ public final class ContextImpl extends Context {
 			case "clipboard":
 				return new ClipboardManager();
 			case "sensor":
-				return new SensorManager();
+				return new SensorManager(this);
 			case "connectivity":
 				return new ConnectivityManager();
 			case "keyguard":
@@ -157,7 +175,7 @@ public final class ContextImpl extends Context {
 			case "audio":
 				return new AudioManager();
 			case "activity":
-				return new ActivityManager();
+				return new ActivityManager(this);
 			case "usb":
 				return new UsbManager();
 			case "vibrator":
@@ -169,17 +187,17 @@ public final class ContextImpl extends Context {
 			case "media_router":
 				return new MediaRouter();
 			case "notification":
-				return new NotificationManager();
+				return new NotificationManager(this);
 			case "alarm":
-				return new AlarmManager();
+				return new AlarmManager(this);
 			case "input":
 				return new InputManager();
 			case "location":
-				return new LocationManager();
+				return new LocationManager(this);
 			case "uimode":
-				return new UiModeManager();
+				return new UiModeManager(this);
 			case "input_method":
-				return new InputMethodManager();
+				return process_app.input_method;
 			case "accessibility":
 				return new AccessibilityManager();
 			case "layout_inflater":
@@ -224,6 +242,21 @@ public final class ContextImpl extends Context {
 			return job_scheduler;
 		if (serviceClass == WindowManager.class)
 			return new WindowManagerImpl();
+		if (serviceClass == InputMethodManager.class)
+			return process_app.input_method;
+		// services that take their Context
+		if (serviceClass == SensorManager.class)
+			return getSystemService("sensor");
+		if (serviceClass == ActivityManager.class)
+			return getSystemService("activity");
+		if (serviceClass == NotificationManager.class)
+			return getSystemService("notification");
+		if (serviceClass == AlarmManager.class)
+			return getSystemService("alarm");
+		if (serviceClass == LocationManager.class)
+			return getSystemService("location");
+		if (serviceClass == UiModeManager.class)
+			return getSystemService("uimode");
 		return serviceClass.getConstructors()[0].newInstance();
 	}
 
@@ -264,7 +297,7 @@ public final class ContextImpl extends Context {
 				nativeStartExternalService(intent);
 			return null;
 		}
-		return targetApp.startOrBindService(intent, null);
+		return targetApp.startOrBindService(intent, null, process_app);
 	}
 
 	@Override
@@ -272,7 +305,7 @@ public final class ContextImpl extends Context {
 		// Two way Messenger interface for GCM. Request and response are send over Messenger.
 		// Wrap it on top of the old intent interface for compatibility with our gcm_service
 		if ("com.google.android.c2dm.intent.REGISTER".equals(intent.getAction())) {
-			Messenger requestMessenger = new Messenger(new Handler(Looper.getMainLooper()) {
+			Messenger requestMessenger = new Messenger(new Handler(getMainLooper()) {
 				@Override
 				public void handleMessage(Message requestMessage) {
 					int request_id = requestMessage.arg1;
@@ -306,7 +339,7 @@ public final class ContextImpl extends Context {
 		if (targetApp == null) {
 			return false;
 		}
-		return targetApp.startOrBindService(intent, serviceConnection) != null;
+		return targetApp.startOrBindService(intent, serviceConnection, process_app) != null;
 	}
 
 	@Override
@@ -347,10 +380,10 @@ public final class ContextImpl extends Context {
 						}
 					}
 				};
-				if (Looper.myLooper() == Looper.getMainLooper()) {
+				if (Looper.myLooper() == getMainLooper()) {
 					runnable.run();
 				} else {
-					new Handler(Looper.getMainLooper()).post(runnable);
+					new Handler(getMainLooper()).post(runnable);
 				}
 				return;
 			} else if (intent.getData() != null) {
@@ -383,20 +416,20 @@ public final class ContextImpl extends Context {
 		}
 		final String className_ = className;
 		final Intent intent_ = intent;
-		new Handler(Looper.getMainLooper()).post(new Runnable() {
+		new Handler(getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				try {
 					if ((intent_.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 && intent_.getComponent() != null) {
-						boolean found = Activity.nativeResumeActivity(
+						boolean found = Activity.nativeResumeActivity(ContextImpl.this,
 						    ContextImpl.this.atl_loaded_app.loadClass(intent_.getComponent().getClassName())
 							.asSubclass(Activity.class),
 						    intent_);
 						if (found)
 							return;
 					}
-					Activity activity = Activity.internalCreateActivity(
-					    className_, ContextImpl.this.atl_loaded_app.getNativeWindow(), intent_);
+					Activity activity = Activity.internalCreateActivity(ContextImpl.this.atl_loaded_app, process_app,
+					    className_, process_app.getNativeWindow(), intent_);
 					Activity.nativeStartActivity(activity);
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -406,18 +439,14 @@ public final class ContextImpl extends Context {
 	}
 
 	@Override
-	public Context createPackageContext(String packageName, int flags) {
+	public Context createPackageContext(String packageName, int flags) throws PackageManager.NameNotFoundException {
 		if (packageName.equals(atl_loaded_app.pkg.packageName)) {
 			return this;
-		}
-		ATLLoadedApp primaryApplication = ATLLoadedApp.getPrimaryApplication();
-		if (primaryApplication.pkg.packageName.equals(packageName)) {
-			return primaryApplication.getApplication();
 		}
 		if (packageName.equals("android")) {
 			// Shortcut for system application
 			ATLLoadedApp system = ATLLoadedApp.getSystemApplication();
-			return new ContextImpl(Resources.getSystem(), system,
+			return new ContextImpl(Resources.getSystem(), system, process_app,
 			                       Resources.selectDefaultTheme(0, Build.VERSION.SDK_INT));
 		}
 		ATLLoadedApp loadedApplication = ATLLoadedAppManager.getAppFromPackageName(packageName);
@@ -429,13 +458,10 @@ public final class ContextImpl extends Context {
 			if ((flags & Context.CONTEXT_RESTRICTED) != 0) {
 				atl_flags |= ATL_FLAG_RESTRICTED;
 			}
-			return new ContextImpl(loadedApplication.createDefaultResources(),
-			                       loadedApplication, loadedApplication.pkg.applicationInfo.theme,
-			                       atl_flags);
+			return new ContextImpl(loadedApplication.createDefaultResources(), loadedApplication, process_app,
+			                       loadedApplication.pkg.applicationInfo.theme, atl_flags);
 		}
-		// Return the application context as a fallback
-		Log.e(TAG, "!!!!!!! createPackageContext: case >" + packageName + "< is not implemented yet");
-		return primaryApplication.getApplication();
+		throw new PackageManager.NameNotFoundException(packageName);
 	}
 
 	@Override
@@ -444,12 +470,12 @@ public final class ContextImpl extends Context {
 		config.setTo(getResources().getConfiguration());
 		if (config_override != null)
 			config.updateFrom(config_override);
-		return this.atl_loaded_app.createContext(null, config, getTheme());
+		return new ContextImpl(this.atl_loaded_app.createResources(null, config), this.atl_loaded_app, process_app, getTheme(), 0);
 	}
 
 	@Override
 	public Context createDisplayContext(Display display) {
-		return new ContextImpl(getResources(), this.atl_loaded_app, getTheme(), this.atl_flags);
+		return new ContextImpl(getResources(), this.atl_loaded_app, process_app, getTheme(), this.atl_flags);
 	}
 
 	@Override
@@ -459,7 +485,7 @@ public final class ContextImpl extends Context {
 
 	@Override
 	public Context createDeviceProtectedStorageContext() {
-		return new ContextImpl(getResources(), this.atl_loaded_app, getTheme(),
+		return new ContextImpl(getResources(), this.atl_loaded_app, process_app, getTheme(),
 		                       this.atl_flags | ATL_FLAG_PROTECTED_STORAGE);
 	}
 

@@ -150,7 +150,7 @@ static gboolean on_new_endpoint(Connector1 *connector, GDBusMethodInvocation *in
 	g_free(token);
 	g_free(endpoint);
 
-	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
+	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD(_CLASS((jobject)user_data), "getApplication", "()Landroid/app/Application;"));
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
 	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
@@ -178,20 +178,22 @@ static gboolean on_message(Connector1 *connector, GDBusMethodInvocation *invocat
 	g_variant_unref(message_variant);
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraByteArray, _JSTRING("bytesMessage"), bytesMessage);
 
-	jobject context = _GET_STATIC_OBJ_FIELD(handle_cache.context.class, "this_application", "Landroid/app/Application;");
+	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD(_CLASS((jobject)user_data), "getApplication", "()Landroid/app/Application;"));
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
 	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
 	return TRUE;
 }
 
-JNIEXPORT void JNICALL Java_android_content_Context_nativeExportUnifiedPush(JNIEnv *env, jclass this, jstring application_jstr)
+// the callbacks' user_data: the app (ATLLoadedApp), a global ref kept for the process's life
+JNIEXPORT void JNICALL Java_android_content_Context_nativeExportUnifiedPush(JNIEnv *env, jclass this, jstring application_jstr, jobject app)
 {
 	const char *application = (*env)->GetStringUTFChars(env, application_jstr, NULL);
 
+	jobject record = _REF(app);
 	Connector1 *connector1 = connector1_skeleton_new();
-	g_signal_connect(connector1, "handle-new-endpoint", G_CALLBACK(on_new_endpoint), NULL);
-	g_signal_connect(connector1, "handle-message", G_CALLBACK(on_message), NULL);
+	g_signal_connect(connector1, "handle-new-endpoint", G_CALLBACK(on_new_endpoint), record);
+	g_signal_connect(connector1, "handle-message", G_CALLBACK(on_message), record);
 	g_bus_own_name(G_BUS_TYPE_SESSION, application, G_BUS_NAME_OWNER_FLAGS_NONE,
 	               on_bus_acquired, NULL, NULL, connector1, NULL);
 	(*env)->ReleaseStringUTFChars(env, application_jstr, application);

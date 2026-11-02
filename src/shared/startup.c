@@ -14,6 +14,7 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/util.h"
 
+#include "app.h"
 #include "startup.h"
 
 #ifndef DEFFILEMODE
@@ -34,18 +35,9 @@
 
 #define JDWP_ARG                          "-XjdwpOptions:transport=dt_socket,server=y,suspend=y,address="
 
-char *apk_path;
-// the equivalent of /data/data/com.example.app/
-char *app_data_dir;
 static char *prefix_dir;
 
-struct ui_window *atl_window;
-struct atl_window_config atl_window_config;
-
-char *get_app_data_dir(void)
-{
-	return app_data_dir;
-}
+struct atl_window_config atl_screen;
 
 char *get_prefix_dir(void)
 {
@@ -149,7 +141,7 @@ int atl_set_app(struct atl_paths *paths, char *const *apks, int napks, const cha
 	return 0;
 }
 
-int atl_app_prepare(JNIEnv *env, struct atl_paths *paths)
+int atl_app_prepare(JNIEnv *env, struct atl_paths *paths, struct atl_app *app)
 {
 	jobjectArray apks = NULL;
 	if (paths->napks) {
@@ -158,30 +150,20 @@ int atl_app_prepare(JNIEnv *env, struct atl_paths *paths)
 			(*env)->SetObjectArrayElement(env, apks, i, _JSTRING(paths->apks[i]));
 	}
 	jclass installer = (*env)->FindClass(env, "android/atl/ATLInstaller");
-	jmethodID prepare = installer ? (*env)->GetStaticMethodID(env, installer, "prepareApp", "([Ljava/lang/String;Ljava/lang/String;)V") : NULL;
-	if (prepare)
-		(*env)->CallStaticVoidMethod(env, installer, prepare, apks, paths->package ? _JSTRING(paths->package) : NULL);
+	jmethodID prepare = installer ? (*env)->GetStaticMethodID(env, installer, "prepareApp", "([Ljava/lang/String;Ljava/lang/String;)Landroid/atl/ATLLoadedApp;") : NULL;
+	jobject record = prepare ? (*env)->CallStaticObjectMethod(env, installer, prepare, apks, paths->package ? _JSTRING(paths->package) : NULL) : NULL;
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 		(*env)->ExceptionClear(env); // ART's ExceptionDescribe leaves it pending
 		return -1;
 	}
-	if (asprintf(&paths->app_lib_dir, "%s/lib", app_data_dir) < 0)
+	atl_app_bind(env, app, record);
+	(*env)->DeleteLocalRef(env, record);
+	// the data dir and its lib/, which app code expects to exist
+	if (make_dir(app->data_dir) < 0 || asprintf(&paths->app_lib_dir, "%s/lib", app->data_dir) < 0)
 		return -1;
+	make_dir(paths->app_lib_dir);
 	return 0;
-}
-
-void atl_set_app_dirs(const char *apk_classpath, const char *data_dir)
-{
-	free(apk_path);
-	apk_path = strdup(apk_classpath);
-	free(app_data_dir);
-	app_data_dir = strdup(data_dir);
-	char *lib;
-	if (make_dir(app_data_dir) == 0 && asprintf(&lib, "%s/lib", app_data_dir) >= 0) {
-		make_dir(lib);
-		free(lib);
-	}
 }
 
 void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, const char *package, bool instrument)
@@ -293,7 +275,7 @@ JNIEnv *atl_vm_start(const struct atl_paths *paths, char *const *extra_jvm_optio
 
 int atl_vm_init(JNIEnv *env, const struct atl_window_config *window)
 {
-	atl_window_config = *window;
+	atl_screen = *window;
 
 	// DisplayMetrics reads density_dpi once, in <clinit>: set before set_up_handle_cache initializes classes
 	jclass display_class = (*env)->FindClass(env, "android/view/Display");
@@ -325,34 +307,25 @@ int atl_vm_init(JNIEnv *env, const struct atl_window_config *window)
 	return 0;
 }
 
-jobject atl_app_create(JNIEnv *env, struct ui_window *window)
+jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *window)
 {
-	atl_window = window;
+	if (atl_app_join(env, app) < 0)
+		exit(1);
+	app->window = window;
+	app->running = true;
 
 	prepare_main_looper(env);
 
-	// construct Application
-	jobject application_object = (*env)->CallStaticObjectMethod(env, handle_cache.context.class,
-	                                                            _STATIC_METHOD(handle_cache.context.class, "createApplication", "(J)Landroid/app/Application;"), _INTPTR(window));
+	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD(_CLASS(app->record), "start", "(J)Landroid/app/Application;"), _INTPTR(window));
 	exit_on_exception(env);
-
-	jclass content_provider = (*env)->FindClass(env, "android/content/ContentProvider");
-	(*env)->CallStaticVoidMethod(env, content_provider, _STATIC_METHOD(content_provider, "createContentProviders", "()V"));
-	exit_on_exception(env);
-
-	jmethodID on_create_method = _METHOD(handle_cache.application.class, "onCreate", "()V");
-	exit_on_exception(env);
-	(*env)->CallVoidMethod(env, application_object, on_create_method);
-	exit_on_exception(env);
-
-	return application_object;
+	return application;
 }
 
-jobject atl_activity_create_main(JNIEnv *env, const char *activity_class, const char *uri)
+jobject atl_activity_create_main(JNIEnv *env, struct atl_app *app, const char *activity_class, const char *uri)
 {
 	jobject activity = (*env)->CallStaticObjectMethod(env, handle_cache.activity.class,
-	                                                  _STATIC_METHOD(handle_cache.activity.class, "createMainActivity", "(Ljava/lang/String;JLjava/lang/String;)Landroid/app/Activity;"),
-	                                                  _JSTRING(activity_class), _INTPTR(atl_window), uri ? _JSTRING(uri) : NULL);
+	                                                  _STATIC_METHOD(handle_cache.activity.class, "createMainActivity", "(Landroid/atl/ATLLoadedApp;Ljava/lang/String;JLjava/lang/String;)Landroid/app/Activity;"),
+	                                                  app->record, _JSTRING(activity_class), _INTPTR(app->window), uri ? _JSTRING(uri) : NULL);
 	exit_on_exception(env);
 	return activity;
 }

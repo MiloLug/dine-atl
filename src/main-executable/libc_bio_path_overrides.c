@@ -84,7 +84,9 @@ static char *fonts_overrides[] = {
 	NULL,
 };
 
-extern char *get_app_data_dir(void);
+#include "../shared/app.h"
+
+extern struct atl_app *host_app;
 
 bool apply_path_overrides(char **path)
 {
@@ -114,9 +116,9 @@ bool apply_path_overrides(char **path)
 	}
 
 	/* Some apps literally hardcode the external storage path (even with assumed userid=0). */
-	if (starts_with(*path, "/storage/emulated/0/")) {
+	if (host_app && host_app->data_dir && starts_with(*path, "/storage/emulated/0/")) {
 		char *suffix = *path + sizeof("/storage/emulated/0");
-		char *new_path = g_strdup_printf("%s/%s", get_app_data_dir(), suffix);
+		char *new_path = g_strdup_printf("%s/%s", host_app->data_dir, suffix);
 
 		fprintf(stderr, "%s: !!! app trying to access >%s<, rewriting to >%s<\n", __func__, *path, new_path);
 

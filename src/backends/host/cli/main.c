@@ -9,6 +9,7 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/handle_cache.h"
 #include "src/backends/ui/headless/input.h"
+#include "src/shared/app.h"
 #include "src/shared/host_linux.h"
 #include "src/shared/nav.h"
 #include "src/shared/startup.h"
@@ -32,7 +33,7 @@ static bool parse_insets(const char *line, struct atl_window_insets *insets)
 }
 
 // "touch down|move|up|cancel <id> <x> <y>", px in the window
-static bool parse_touch(const char *line)
+static bool parse_touch(struct ui_window *window, const char *line)
 {
 	static const char *const kinds[] = {[HEADLESS_TOUCH_DOWN] = "down", [HEADLESS_TOUCH_MOVE] = "move", [HEADLESS_TOUCH_UP] = "up", [HEADLESS_TOUCH_CANCEL] = "cancel"};
 	char kind[8];
@@ -42,7 +43,7 @@ static bool parse_touch(const char *line)
 		return false;
 	for (size_t i = 0; i < sizeof(kinds) / sizeof(*kinds); i++) {
 		if (!strcmp(kind, kinds[i])) {
-			headless_touch(i, id, x, y);
+			headless_touch(window, i, id, x, y);
 			return true;
 		}
 	}
@@ -50,7 +51,7 @@ static bool parse_touch(const char *line)
 }
 
 // "key down|up <keycode> [<meta> [<unicode>]]": KeyEvent's code and META_* flags, decimal
-static bool parse_key(const char *line)
+static bool parse_key(struct ui_window *window, const char *line)
 {
 	char action[8];
 	int code, meta = 0, unicode = 0;
@@ -58,7 +59,7 @@ static bool parse_key(const char *line)
 		return false;
 	if (strcmp(action, "down") && strcmp(action, "up"))
 		return false;
-	headless_key(!strcmp(action, "down"), code, meta, unicode);
+	headless_key(window, !strcmp(action, "down"), code, meta, unicode);
 	return true;
 }
 
@@ -78,7 +79,7 @@ static char *unescape(const char *text)
 
 /* "text commit|compose <text>", "text delete <before> <after>", "text select <start> <end>",
  * "text tap <x> <y>", "text action|dismiss|hold|release": the keyboard's field, UTF-16 positions */
-static bool parse_text(const char *line)
+static bool parse_text(struct ui_window *window, const char *line)
 {
 	static const struct {
 		const char *name;
@@ -107,30 +108,32 @@ static bool parse_text(const char *line)
 		char *unescaped = text.what == HEADLESS_TEXT_COMMIT || text.what == HEADLESS_TEXT_COMPOSE ? unescape(rest) : NULL;
 		if (unescaped)
 			text.text = unescaped;
-		headless_text(&text);
+		headless_text(window, &text);
 		free(unescaped);
 		return true;
 	}
 	return false;
 }
 
-// -c: system navigation and input from stdin, one command per line; the loop slot has no fd watch
+// -c: system navigation and input from stdin for the app (data), one command per line; the loop
+// slot has no fd watch
 static void *read_commands(void *data)
 {
+	struct atl_app *app = data;
 	char *line = NULL;
 	size_t size = 0;
 	while (getline(&line, &size, stdin) != -1) {
 		line[strcspn(line, "\n")] = '\0';
 		struct atl_window_insets insets;
 		if (!strcmp(line, "back"))
-			atl_nav_back();
+			atl_nav_back(app);
 		else if (!strcmp(line, "home"))
-			atl_nav_home();
+			atl_nav_home(app);
 		else if (!strcmp(line, "front"))
-			atl_nav_front();
+			atl_nav_front(app);
 		else if (parse_insets(line, &insets))
-			atl_nav_set_insets(&insets);
-		else if (!parse_touch(line) && !parse_key(line) && !parse_text(line))
+			atl_nav_set_insets(app, &insets);
+		else if (!parse_touch(app->window, line) && !parse_key(app->window, line) && !parse_text(app->window, line))
 			fprintf(stderr, "commands: back, home, front, insets <12 dp>, touch down|move|up|cancel <id> <x> <y>, "
 			                "key down|up <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
 			                "text select <start> <end>, text tap <x> <y>, text action|dismiss|hold|release; not \"%s\"\n",
@@ -140,10 +143,10 @@ static void *read_commands(void *data)
 	return NULL;
 }
 
-static void start_instrumentation(JNIEnv *env, const char *class_name)
+static void start_instrumentation(JNIEnv *env, struct atl_app *app, const char *class_name)
 {
-	jmethodID create = _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;");
-	(*env)->CallStaticObjectMethod(env, handle_cache.instrumentation.class, create, _JSTRING(class_name), NULL);
+	jmethodID create = _STATIC_METHOD(handle_cache.instrumentation.class, "create", "(Landroid/atl/ATLLoadedApp;Ljava/lang/String;Landroid/content/Intent;)Landroid/app/Instrumentation;");
+	(*env)->CallStaticObjectMethod(env, handle_cache.instrumentation.class, create, app->record, _JSTRING(class_name), NULL);
 	if ((*env)->ExceptionCheck(env)) {
 		// create handles Exceptions itself; after an Error no runner thread would ever exit
 		(*env)->ExceptionDescribe(env);
@@ -228,21 +231,23 @@ int main(int argc, char **argv)
 	}
 	atl_prepare(&paths, &argv[optind], argc - optind, package, instrumentation != NULL);
 	JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
-	if (atl_app_prepare(env, &paths) < 0)
+	struct atl_app *host_app = atl_app_new();
+	if (atl_app_prepare(env, &paths, host_app) < 0)
 		atl_exit(env, 1);
+	atl_app_take_attaches(env, host_app);
 
-	atl_app_create(env, ui_window_new(NULL));
+	atl_app_create(env, host_app, ui_window_new(host_app, NULL));
 	if (commands) {
 		pthread_t reader;
-		pthread_create(&reader, NULL, read_commands, NULL);
+		pthread_create(&reader, NULL, read_commands, host_app);
 		pthread_detach(reader);
 	}
 	if (instrumentation) {
 		// the runner's thread ends the process with System.exit
-		start_instrumentation(env, instrumentation);
+		start_instrumentation(env, host_app, instrumentation);
 	} else {
-		jobject main_activity = atl_activity_create_main(env, activity, NULL);
-		activity_start(env, main_activity);
+		jobject main_activity = atl_activity_create_main(env, host_app, activity, NULL);
+		activity_start(env, host_app, main_activity);
 		(*env)->DeleteLocalRef(env, main_activity); // this frame lasts the app's lifetime
 	}
 	loop_main_run();

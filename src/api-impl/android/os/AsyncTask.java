@@ -208,9 +208,8 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	private static final int MESSAGE_POST_RESULT = 0x1;
 	private static final int MESSAGE_POST_PROGRESS = 0x2;
 
-	private static final InternalHandler sHandler = new InternalHandler();
-
 	private static volatile Executor sDefaultExecutor = SERIAL_EXECUTOR;
+	private final InternalHandler mHandler; // on the main looper of the app that made the task
 	private final WorkerRunnable<Params, Result> mWorker;
 	private final FutureTask<Result> mFuture;
 
@@ -265,13 +264,6 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	}
 
 	/**
-	 * @hide Used to force static handler to be created.
-	 */
-	public static void init() {
-		sHandler.getLooper();
-	}
-
-	/**
 	 * @hide
 	 */
 	public static void setDefaultExecutor(Executor exec) {
@@ -282,6 +274,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	 * Creates a new asynchronous task. This constructor must be invoked on the UI thread.
 	 */
 	public AsyncTask() {
+		mHandler = new InternalHandler();
 		mWorker = new WorkerRunnable<Params, Result>() {
 			public Result call() throws Exception {
 				mTaskInvoked.set(true);
@@ -318,7 +311,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 
 	private Result postResult(Result result) {
 		@SuppressWarnings("unchecked")
-		Message message = sHandler.obtainMessage(MESSAGE_POST_RESULT,
+		Message message = mHandler.obtainMessage(MESSAGE_POST_RESULT,
 		                                         new AsyncTaskResult<Result>(this, result));
 		message.sendToTarget();
 		return result;
@@ -623,7 +616,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	 */
 	protected final void publishProgress(Progress... values) {
 		if (!isCancelled()) {
-			sHandler.obtainMessage(MESSAGE_POST_PROGRESS,
+			mHandler.obtainMessage(MESSAGE_POST_PROGRESS,
 			                       new AsyncTaskResult<Progress>(this, values))
 			    .sendToTarget();
 		}
@@ -641,7 +634,14 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	private static class InternalHandler extends Handler {
 		/* undocumented change lifted from marshmallow; fixes crashes when the app uses this on a thread that doesn't have a looper */
 		public InternalHandler() {
-			super(Looper.getMainLooper());
+			super(appMainLooper());
+		}
+
+		private static Looper appMainLooper() {
+			Looper looper = Looper.getMainLooper();
+			if (looper == null)
+				throw new IllegalStateException("AsyncTask made on a thread of no app");
+			return looper;
 		}
 
 		@SuppressWarnings({"unchecked", "RawUseOfParameterizedType"})

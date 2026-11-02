@@ -5,23 +5,26 @@ import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
-import android.os.Looper;
 import android.service.notification.StatusBarNotification;
 import java.util.Collections;
 import java.util.List;
 
 public class NotificationManager {
+	private final Context context;
 
-	private static int mpris_notification_id = -1;
+	public NotificationManager(Context context) {
+		this.context = context;
+	}
 
 	public void cancelAll() {}
 
 	public void notify(String tag, int id, Notification notification) {
 		if (notification.style instanceof MediaStyle) { // MPRIS content is handled by MediaSession implementation
-			if (mpris_notification_id == -1) {
-				Application application = ATLLoadedApp.getPrimaryApplication().getApplication();
+			ATLLoadedApp app = context.get_atl_loaded_app();
+			if (app.mpris_notification_id == -1) {
+				Application application = app.getApplication();
 				nativeShowMPRIS(application.getPackageName(), application.get_app_label());
-				mpris_notification_id = id;
+				app.mpris_notification_id = id;
 			}
 			return;
 		}
@@ -54,11 +57,12 @@ public class NotificationManager {
 	public void cancel(String tag, final int id) {
 		// remove_notification doesn't work reliably when sent directly after add_notification in GNOME session.
 		// So we give some extra delay here.
-		new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
-				if (mpris_notification_id == id) {
-					mpris_notification_id = -1;
+				ATLLoadedApp app = context.get_atl_loaded_app();
+				if (app.mpris_notification_id == id) {
+					app.mpris_notification_id = -1;
 					nativeCancelMPRIS();
 				} else {
 					nativeCancel(id);

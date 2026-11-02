@@ -31,11 +31,14 @@ public class Instrumentation {
 	public static final String REPORT_KEY_IDENTIFIER = "id";
 	public static final String REPORT_KEY_STREAMRESULT = "stream";
 
-	private static Instrumentation create(String className, Intent arguments) throws Exception {
+	// the test APK's app, which runs it
+	private ATLLoadedApp app;
+
+	private static Instrumentation create(ATLLoadedApp app, String className, Intent arguments) throws Exception {
 		Thread.setUncaughtExceptionPreHandler(new ExceptionHandler());
 		try {
 			String target_package = null;
-			for (PackageParser.Instrumentation instrumentation : ATLLoadedApp.getPrimaryApplication().pkg.instrumentation) {
+			for (PackageParser.Instrumentation instrumentation : app.pkg.instrumentation) {
 				if (className.equals(instrumentation.className)) {
 					target_package = instrumentation.info.targetPackage;
 					break;
@@ -50,16 +53,15 @@ public class Instrumentation {
 					throw new IllegalStateException("instrumentation target " + target_package + " is not installed");
 				String target_path = target.applicationInfo.sourceDir;
 
-				ATLLoadedApp.getPrimaryApplication().default_resources.getAssets().addAssetPath(target_path);
+				app.default_resources.getAssets().addAssetPath(target_path);
 
-				patchClassLoader(ATLLoadedApp.getPrimaryApplication().class_loader, new File(target_path));
+				patchClassLoader(app.class_loader, new File(target_path));
 			}
 
-			Class<? extends Instrumentation> cls = ATLLoadedApp.getPrimaryApplication()
-			                                           .loadClass(className)
-			                                           .asSubclass(Instrumentation.class);
+			Class<? extends Instrumentation> cls = app.loadClass(className).asSubclass(Instrumentation.class);
 			Constructor<? extends Instrumentation> constructor = cls.getConstructor();
 			Instrumentation i = constructor.newInstance();
+			i.app = app;
 			i.onCreate(arguments != null ? arguments.getExtras() : null);
 
 			return i;
@@ -94,18 +96,18 @@ public class Instrumentation {
 	}
 
 	public Context getContext() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		return app.getApplication();
 	}
 
 	public Context getTargetContext() {
-		return ATLLoadedApp.getPrimaryApplication().getApplication();
+		return app.getApplication();
 	}
 
 	public void setAutomaticPerformanceSnapshots() {
 	}
 
 	public void setInTouchMode(boolean inTouch) {
-		ATLInput.setInTouchMode(inTouch);
+		ATLInput.setInTouchMode(app, inTouch);
 	}
 
 	public void sendKeySync(KeyEvent event) {
@@ -171,10 +173,8 @@ public class Instrumentation {
 		Slog.i(TAG, "startActivitySync(" + intent + ", " + options + ") called");
 		if (intent.getComponent() != null) {
 			try {
-				final Activity activity = Activity.internalCreateActivity(
-				    intent.getComponent().getClassName(),
-				    ATLLoadedApp.getPrimaryApplication().getNativeWindow(),
-				    intent);
+				final Activity activity = Activity.internalCreateActivity(app, app,
+				    intent.getComponent().getClassName(), app.getNativeWindow(), intent);
 				runOnMainSync(new Runnable() {
 					@Override
 					public void run() {

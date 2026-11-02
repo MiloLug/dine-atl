@@ -98,17 +98,17 @@ FORWARD_TOUCHES
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(presses, true);
+	input_presses(self, presses, true);
 }
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(presses, false);
+	input_presses(self, presses, false);
 }
 
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(presses, false);
+	input_presses(self, presses, false);
 }
 @end
 
@@ -511,7 +511,7 @@ FORWARD_TOUCHES
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-	CGFloat s = atl_window_get()->density_dpi / 160.;
+	CGFloat s = atl_screen_get()->density_dpi / 160.;
 	CGPoint offset = self.contentOffset;
 	if (self.isDragging || self.isDecelerating) {
 		CGSize size = self.bounds.size;
@@ -533,8 +533,10 @@ FORWARD_TOUCHES
 }
 @end
 
-static struct ui_window *app_window;
-static void *surface; // a retained UIView; blocks capture it when queued, the window's close clears it
+// the apps' windows (each window's surface: blocks capture it when queued, the close clears it); the
+// Android main thread's
+static struct ui_window **app_windows;
+static size_t n_app_windows;
 
 static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER; // pending and flush_posted
 static NSMutableArray<dispatch_block_t> *pending;
@@ -544,7 +546,7 @@ static atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
 // the surface's points: hosts pass density 160 × screen scale
 static CGFloat scale(void)
 {
-	return atl_window_get()->density_dpi / 160.;
+	return atl_screen_get()->density_dpi / 160.;
 }
 
 // UIKit's thread only
@@ -586,8 +588,10 @@ static void flush_post(void *data)
 		pthread_mutex_lock(&pending_lock);
 		flush_posted = false;
 		pthread_mutex_unlock(&pending_lock);
-		if (app_window && app_window->layout_pending) // the pass flushes, with its frames
-			return;
+		for (size_t i = 0; i < n_app_windows; i++) {
+			if (app_windows[i]->layout_pending) // the pass flushes, with its frames
+				return;
+		}
 		flush();
 	}
 }
@@ -608,11 +612,21 @@ void uikit_enqueue(dispatch_block_t op)
 	}
 }
 
+struct ui_window *uikit_window_of(void *surface)
+{
+	for (size_t i = 0; i < n_app_windows; i++) {
+		if (app_windows[i]->surface == surface)
+			return app_windows[i];
+	}
+	return NULL;
+}
+
 void records_window_created(struct ui_window *window, void *surface_view)
 {
-	app_window = window;
+	app_windows = realloc(app_windows, (n_app_windows + 1) * sizeof(*app_windows));
+	app_windows[n_app_windows++] = window;
 	if (surface_view)
-		surface = (void *)CFRetain(surface_view);
+		window->surface = (void *)CFRetain(surface_view);
 }
 
 void records_view_created(struct ui_view *view)
@@ -713,9 +727,9 @@ void records_view_freed(struct ui_view *view)
 
 void records_root_added(struct ui_window *window, struct ui_view *root)
 {
-	if (window != app_window || !surface)
+	if (!window->surface)
 		return;
-	void *target = surface;
+	void *target = window->surface;
 	@autoreleasepool {
 		uikit_enqueue(^{
 			ATLView *added = (ATLView *)native(root);
@@ -728,9 +742,9 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 
 void records_root_shown(struct ui_window *window, struct ui_view *root)
 {
-	if (window != app_window || !surface)
+	if (!window->surface)
 		return;
-	void *target = surface;
+	void *target = window->surface;
 	@autoreleasepool {
 		bool visible = root->visibility == UI_VIEW_VISIBLE;
 		uikit_enqueue(^{
@@ -746,7 +760,7 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 
 void records_root_removed(struct ui_window *window, struct ui_view *root)
 {
-	if (window != app_window)
+	if (window->dialog)
 		return;
 	@autoreleasepool {
 		uikit_enqueue(^{
@@ -757,10 +771,10 @@ void records_root_removed(struct ui_window *window, struct ui_view *root)
 
 void records_frame_changed(struct ui_window *window)
 {
-	if (window != app_window || !surface)
+	if (!window->surface)
 		return;
 	struct ui_frame frame = window->frame;
-	void *target = surface;
+	void *target = window->surface;
 	@autoreleasepool {
 		uikit_enqueue(^{
 			id surface_view = (__bridge id)target;
@@ -773,10 +787,16 @@ void records_frame_changed(struct ui_window *window)
 // the loop quits after this, so no flush_post would run
 void records_window_closed(struct ui_window *window)
 {
-	if (window != app_window || !surface)
+	for (size_t i = 0; i < n_app_windows; i++) {
+		if (app_windows[i] == window) {
+			app_windows[i] = app_windows[--n_app_windows];
+			break;
+		}
+	}
+	if (!window->surface)
 		return;
-	void *closed = surface;
-	surface = NULL;
+	void *closed = window->surface;
+	window->surface = NULL;
 	@autoreleasepool {
 		uikit_enqueue(^{
 			CFRelease(closed);
@@ -835,7 +855,7 @@ void records_visibility_changed(struct ui_view *view)
 		bool hidden = view->visibility != UI_VIEW_VISIBLE;
 		CGFloat alpha = view->alpha;
 		bool enabled = view->enabled;
-		void *target = surface;
+		void *target = view->window ? view->window->surface : NULL;
 		uikit_enqueue(^{
 			UIView *changed = native(view);
 			UIView *surface_view = (__bridge UIView *)target;
@@ -1002,7 +1022,7 @@ static void collect_frames(struct ui_view *view, CGFloat s, struct frame **next)
 void records_layout_done(struct ui_window *window)
 {
 	@autoreleasepool {
-		if (window == app_window && window->shown) {
+		if (!window->dialog && window->shown) {
 			size_t count = count_views(window->shown);
 			struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
 			collect_frames(window->shown, scale(), &next);
@@ -1029,8 +1049,8 @@ static CADisplayLink *frame_link; // UIKit's thread
 static void frame_post(void *data)
 {
 	@autoreleasepool {
-		if (app_window)
-			records_draw_pass(app_window);
+		for (size_t i = 0; i < n_app_windows; i++)
+			records_draw_pass(app_windows[i]);
 	}
 }
 

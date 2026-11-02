@@ -34,8 +34,6 @@ import org.xmlpull.v1.XmlPullParserFactory;
 public class LayoutInflater {
 	private static final String TAG = "LayoutInflater";
 
-	private static HashMap<String, Constructor<? extends View>> constructorCache = new HashMap<>();
-
 	/* pretty print for debugging */
 	private int indent = 1;
 	private String tabs(int indent) {
@@ -91,16 +89,17 @@ public class LayoutInflater {
 		if (Log.isLoggable(TAG, Log.VERBOSE))
 			Slog.v(TAG, tabs(indent) + "createView(" + name + ", " + prefix + ", " + attrs + ");");
 
-		Constructor<? extends View> constructor = constructorCache.get(name);
+		String view_class_name = prefix != null ? prefix + name : name;
+		HashMap<String, Constructor<? extends View>> constructorCache = context.get_atl_loaded_app().view_constructors;
+		Constructor<? extends View> constructor = constructorCache.get(view_class_name);
 		if (constructor == null) {
-			String view_class_name = prefix != null ? prefix + name : name;
 			ClassLoader classLoader = context.getClassLoader();
 			if (classLoader == null)
 				classLoader = ClassLoader.getSystemClassLoader();
 			Class<? extends View> view_class = Class.forName(view_class_name, false, classLoader).asSubclass(View.class);
 
 			constructor = view_class.getConstructor(Context.class, AttributeSet.class);
-			constructorCache.put(name, constructor);
+			constructorCache.put(view_class_name, constructor);
 		}
 
 		Context context = this.context;

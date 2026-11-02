@@ -7,6 +7,7 @@
 #include "src/slots/host.h"
 #include "src/slots/ui.h"
 
+#include "app.h"
 #include "startup.h"
 
 JNIEXPORT void JNICALL Java_android_view_Window_set_1title(JNIEnv *env, jobject this, jlong window, jstring title_jstr)
@@ -24,16 +25,17 @@ JNIEXPORT void JNICALL Java_android_view_Window_clear_1background(JNIEnv *env, j
 // the shown activity's window decides, as for the frame
 JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on(JNIEnv *env, jobject this, jboolean keep)
 {
-	static bool kept;
-	if (!activity_window_shown(env, this) || kept == keep)
+	struct atl_app *app = atl_app_of_window(env, this);
+	if (!activity_window_shown(env, app, this) || app->keep_screen_on == keep)
 		return;
-	kept = keep;
-	host_keep_screen_on(keep);
+	app->keep_screen_on = keep;
+	host_keep_screen_on(app, keep);
 }
 
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame(JNIEnv *env, jobject this, jboolean has_color, jint color, jboolean light, jboolean fullscreen)
 {
-	if (!activity_window_shown(env, this))
+	struct atl_app *app = atl_app_of_window(env, this);
+	if (!activity_window_shown(env, app, this))
 		return;
-	ui_window_set_frame(atl_window, &(struct ui_frame){.has_color = has_color, .color = color, .light = light, .fullscreen = fullscreen});
+	ui_window_set_frame(app->window, &(struct ui_frame){.has_color = has_color, .color = color, .light = light, .fullscreen = fullscreen});
 }

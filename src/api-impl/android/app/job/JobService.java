@@ -2,7 +2,6 @@ package android.app.job;
 
 import android.app.Service;
 import android.os.Handler;
-import android.os.Looper;
 import android.util.Slog;
 
 public abstract class JobService extends Service {
@@ -16,7 +15,7 @@ public abstract class JobService extends Service {
 		Slog.i(TAG, "jobFinished(" + params + ", " + needsReschedule + ") called");
 		params.jobInfo.running = false;
 		if (needsReschedule || params.jobInfo.periodicMillis != 0) {
-			new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+			new Handler(getMainLooper()).postDelayed(new Runnable() {
 				@Override
 				public void run() {
 					params.jobInfo.running = true;
@@ -25,7 +24,7 @@ public abstract class JobService extends Service {
 				}
 			}, needsReschedule ? params.jobInfo.initialBackoffMillis : params.jobInfo.periodicMillis);
 		} else {
-			JobScheduler.pendingJobs.remove(params.jobInfo.getId());
+			get_atl_loaded_app().pending_jobs.remove(params.jobInfo.getId());
 		}
 	}
 }

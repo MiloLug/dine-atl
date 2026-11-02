@@ -1,6 +1,5 @@
 package android.app;
 
-import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.content.pm.ConfigurationInfo;
 import android.graphics.Bitmap;
@@ -16,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 public class ActivityManager {
+	private final Context context;
+
+	public ActivityManager(Context context) {
+		this.context = context;
+	}
 
 	public static class RunningAppProcessInfo {
 		public int importance;
@@ -40,8 +44,7 @@ public class ActivityManager {
 	}
 
 	public List<RunningAppProcessInfo> getRunningAppProcesses() {
-		return Arrays.asList(new RunningAppProcessInfo(Process.myPid(),
-		                                               ATLLoadedApp.getPrimaryApplication().pkg.packageName));
+		return Arrays.asList(new RunningAppProcessInfo(Process.myPid(), context.getPackageName()));
 	}
 
 	public boolean isLowRamDevice() { return false; }

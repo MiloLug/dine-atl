@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "src/api-impl-jni/app/android_app_Activity.h"
+#include "src/shared/app.h"
 #include "src/shared/startup.h"
 #include "src/slots/host.h"
 #include "src/slots/loop.h"
@@ -11,7 +12,6 @@
 
 static struct atl_paths paths;
 static bool started;
-static const struct atl_embedded_listener *listener;
 
 /* ART on Apple loads a library linked into the app only if this hook exists (System.loadLibrary
  * finds natives with dlsym on the main image). ART rejects JNI_VERSION_1_8. */
@@ -41,52 +41,58 @@ void atl_embedded_vm_options_free(JavaVMOption *options, int count)
 	atl_vm_options_free(options, count);
 }
 
-bool host_task_to_back(void)
+struct atl_app *atl_embedded_app_new(void)
+{
+	return atl_app_new();
+}
+
+bool host_task_to_back(struct atl_app *app)
 {
 	return true;
 }
 
-void host_task_moved(bool front, bool by_host)
+void host_task_moved(struct atl_app *app, bool front, bool by_host)
 {
-	if (listener && listener->task_moved)
-		listener->task_moved(listener->context, front, by_host);
+	if (app->listener && app->listener->task_moved)
+		app->listener->task_moved(app->listener->context, app, front, by_host);
 }
 
-void host_gesture_exclusion_changed(const struct atl_gesture_exclusion *exclusion)
+void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gesture_exclusion *exclusion)
 {
-	if (listener && listener->exclusion_changed)
-		listener->exclusion_changed(listener->context, exclusion);
+	if (app->listener && app->listener->exclusion_changed)
+		app->listener->exclusion_changed(app->listener->context, app, exclusion);
 }
 
-void host_keep_screen_on(bool on)
+void host_keep_screen_on(struct atl_app *app, bool on)
 {
-	if (listener && listener->keep_screen_on)
-		listener->keep_screen_on(listener->context, on);
+	if (app->listener && app->listener->keep_screen_on)
+		app->listener->keep_screen_on(app->listener->context, app, on);
 }
 
-static int exited(int status)
+static int exited(struct atl_app *app, int status)
 {
-	if (listener && listener->exited)
-		listener->exited(listener->context, status);
+	if (app->listener && app->listener->exited)
+		app->listener->exited(app->listener->context, app, status);
 	return status;
 }
 
 int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 {
-	listener = config->listener;
+	struct atl_app *app = config->app;
+	app->listener = config->listener;
 	struct atl_window_config window = {
 		.width = config->window_width ?: ATL_WINDOW_WIDTH_DEFAULT,
 		.height = config->window_height ?: ATL_WINDOW_HEIGHT_DEFAULT,
 		.density_dpi = config->density_dpi ?: ATL_DENSITY_DPI_DEFAULT,
 		.night = config->night ?: UI_DISPLAY_UNKNOWN,
 	};
-	if (atl_vm_init(env, &window) < 0 || atl_app_prepare(env, &paths) < 0)
-		return exited(-1);
+	if (atl_vm_init(env, &window) < 0 || atl_app_prepare(env, &paths, app) < 0)
+		return exited(app, -1);
 
-	atl_app_create(env, ui_window_new(config->surface));
-	jobject activity = atl_activity_create_main(env, config->activity, NULL);
-	activity_start(env, activity);
+	atl_app_create(env, app, ui_window_new(app, config->surface));
+	jobject activity = atl_activity_create_main(env, app, config->activity, NULL);
+	activity_start(env, app, activity);
 	(*env)->DeleteLocalRef(env, activity); // this frame lasts the app's lifetime
 	loop_main_run();
-	return exited(0);
+	return exited(app, 0);
 }

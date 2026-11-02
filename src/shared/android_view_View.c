@@ -6,6 +6,7 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
+#include "app.h"
 #include "startup.h"
 #include "view.h"
 
@@ -143,8 +144,10 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobjec
 
 JNIEXPORT void JNICALL Java_android_view_View_getWindowVisibleDisplayFrame(JNIEnv *env, jobject this, jobject rect)
 {
+	jobject context = (*env)->CallObjectMethod(env, this, _METHOD(_CLASS(this), "getContext", "()Landroid/content/Context;"));
 	int width, height;
-	ui_window_get_size(atl_window, &width, &height);
+	ui_window_get_size(atl_app_of(env, context)->window, &width, &height);
+	(*env)->DeleteLocalRef(env, context);
 	_SET_INT_FIELD(rect, "left", 0);
 	_SET_INT_FIELD(rect, "top", 0);
 	_SET_INT_FIELD(rect, "right", width);

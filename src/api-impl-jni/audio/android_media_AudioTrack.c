@@ -131,6 +131,7 @@ struct jni_callback_data {
 	jclass this_class;
 	jobject listener;
 	jint period_time;
+	jobject group; // the app's thread group, for the ALSA thread's attach
 };
 void periodic_update_callback(snd_async_handler_t *pcm_callback)
 {
@@ -146,7 +147,8 @@ void periodic_update_callback(snd_async_handler_t *pcm_callback)
 	//printf("!!!! GetEnv: %p getenv_ret: %d\n",env, getenv_ret);
 	if (getenv_ret == JNI_EDETACHED) {
 		printf("!!!! JNI_EDETACHED\n");
-		attach_ret = (*d->jvm)->AttachCurrentThread(d->jvm, (void **)&env, NULL);
+		JavaVMAttachArgs args = {JNI_VERSION_1_6, "AudioTrack", d->group};
+		attach_ret = (*d->jvm)->AttachCurrentThread(d->jvm, (void **)&env, &args);
 		// TODO error checking
 	}
 
@@ -179,6 +181,9 @@ JNIEXPORT void JNICALL Java_android_media_AudioTrack_native_1play(JNIEnv *env, j
 	callback_data->this_class = _REF(_CLASS(this));
 	callback_data->listener = _REF(_GET_OBJ_FIELD(this, "periodic_update_listener", "Landroid/media/AudioTrack$OnPlaybackPositionUpdateListener;"));
 	callback_data->period_time = period_time;
+	jclass thread_class = (*env)->FindClass(env, "java/lang/Thread");
+	jobject thread = (*env)->CallStaticObjectMethod(env, thread_class, _STATIC_METHOD(thread_class, "currentThread", "()Ljava/lang/Thread;"));
+	callback_data->group = _REF((*env)->CallObjectMethod(env, thread, _METHOD(thread_class, "getThreadGroup", "()Ljava/lang/ThreadGroup;")));
 
 	// microseconds to milliseconds
 	//g_timeout_add (period_time / 1000, G_SOURCE_FUNC(helper_loop), callback_data);

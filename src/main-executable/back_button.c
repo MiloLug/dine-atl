@@ -2,7 +2,14 @@
 
 #include "src/shared/nav.h"
 
+extern struct atl_app *host_app; // main.c
+
 GtkWidget *back_button;
+
+static void back_clicked(GtkButton *button, gpointer user_data)
+{
+	atl_nav_back(host_app);
+}
 
 GtkWidget *back_button_new()
 {
@@ -10,7 +17,7 @@ GtkWidget *back_button_new()
 	// GTK focus on it would take Enter and Space from the app's key chain
 	gtk_widget_set_focusable(back_button, FALSE);
 
-	g_signal_connect(back_button, "clicked", G_CALLBACK(atl_nav_back), NULL);
+	g_signal_connect(back_button, "clicked", G_CALLBACK(back_clicked), NULL);
 
 	back_button_set_sensitive(false);
 	return back_button;

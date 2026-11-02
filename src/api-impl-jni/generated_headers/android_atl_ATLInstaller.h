@@ -15,14 +15,6 @@ extern "C" {
 JNIEXPORT jboolean JNICALL Java_android_atl_ATLInstaller_native_1same_1file
   (JNIEnv *, jclass, jstring, jstring);
 
-/*
- * Class:     android_atl_ATLInstaller
- * Method:    native_set_app_dirs
- * Signature: (Ljava/lang/String;Ljava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_android_atl_ATLInstaller_native_1set_1app_1dirs
-  (JNIEnv *, jclass, jstring, jstring);
-
 #ifdef __cplusplus
 }
 #endif

@@ -18,15 +18,12 @@ jstring utf8_to_jstring(JNIEnv *env, const char *utf8);
 /* The attribute's text through jstring_to_utf8; free() it. */
 char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema);
 int attribute_set_get_int(JNIEnv *env, jobject attrs, char *attribute, char *schema, int default_value);
-void extract_from_apk(const char *path, const char *target);
+struct atl_app;
+/* Files of the app's APKs into its data dir: AssetManager.extractFromAPK. */
+void extract_from_apk(struct atl_app *app, const char *path, const char *target);
 
-extern char *apk_path;
-extern char *app_data_dir;
-char *get_app_data_dir(void);
 /* $DINE_PREFIX or ~/.dine, opened by atl_set_app */
 char *get_prefix_dir(void);
-/* From ATLInstaller.prepareApp: sets apk_path and app_data_dir, creates the data and lib dirs. */
-void atl_set_app_dirs(const char *apk_classpath, const char *data_dir);
 
 void prepare_main_looper(JNIEnv *env);
 

@@ -23,14 +23,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager.LayoutParams;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterface {
 	// atlDialogResult's cancel, UI_DIALOG_CANCEL in the ui slot
 	static final int RESULT_CANCEL = Integer.MIN_VALUE;
-	// the ui backend holds dialogs weakly, and apps often drop the shown one; in show order
-	private static final Set<Dialog> shown = new LinkedHashSet<>();
 
 	protected long nativePtr;
 
@@ -40,7 +36,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	private native void nativeClose(long ptr);
 	private native void nativeDestroy(long ptr);
 	private native void nativeSetCanceledOnTouchOutside(long ptr, boolean cancel);
-	private static native boolean nativeTaskFront();
+	private native boolean nativeTaskFront();
 
 	private Context context;
 	private Window window;
@@ -167,7 +163,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 
 				showing = true;
 				canceled = false;
-				shown.add(Dialog.this);
+				context.atl_process_app().shown_dialogs.add(Dialog.this);
 				getWindow().getDecorView().dispatchAttachedToWindow();
 				if (nativeTaskFront()) // else atlTaskMoved shows it
 					showNative();
@@ -175,10 +171,10 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 					onShowListener.onShow(Dialog.this);
 			}
 		};
-		if (Looper.myLooper() == Looper.getMainLooper()) {
+		if (Looper.myLooper() == context.getMainLooper()) {
 			action.run();
 		} else {
-			new Handler(Looper.getMainLooper()).post(action);
+			new Handler(context.getMainLooper()).post(action);
 		}
 	}
 
@@ -186,9 +182,9 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		nativeShow(nativePtr);
 	}
 
-	// from activity.c: dialogs leave and come back with the task
-	static void atlTaskMoved(boolean front) {
-		for (Dialog dialog : shown) {
+	// from activity.c: dialogs leave and come back with the app's task
+	static void atlTaskMoved(android.atl.ATLLoadedApp app, boolean front) {
+		for (Dialog dialog : app.shown_dialogs) {
 			if (!dialog.showing || dialog.hidden)
 				continue;
 			if (front)
@@ -204,9 +200,9 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	}
 
 	// ATLInput: keys for the app's window go to the dialog shown last, while it's drawn
-	public static Dialog atlTopDrawn() {
+	public static Dialog atlTopDrawn(android.atl.ATLLoadedApp app) {
 		Dialog top = null;
-		for (Dialog dialog : shown) {
+		for (Dialog dialog : app.shown_dialogs) {
 			if (dialog.drawn())
 				top = dialog;
 		}
@@ -234,12 +230,12 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		// and the system server. We replicate this behavior by adding 10 ms delay.
 		// This Hack is required for NewPipe RouterActivity which has a race condition. It subscribes an rxJava observable
 		// and immediately calls Dialog.dismiss(). The OnDismissListener would unsubscribes the observable again.
-		new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
 				if (!showing) { // not shown again meanwhile
 					nativeClose(nativePtr); // even in the back: atlTaskMoved skips dismissed dialogs
-					shown.remove(Dialog.this);
+					context.atl_process_app().shown_dialogs.remove(Dialog.this);
 					getWindow().getDecorView().dispatchDetachedFromWindow();
 				}
 				if (onDismissListener != null)

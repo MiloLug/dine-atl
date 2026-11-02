@@ -31,7 +31,7 @@ public class AndroidKeyStore extends KeyStoreSpi {
 	public Key engineGetKey(String alias, char[] password) throws NoSuchAlgorithmException, UnrecoverableKeyException {
 		Slog.i(TAG, "engineGetKey alias=" + alias + " password=" + Arrays.toString(password));
 
-		byte[] data = nativeGetKey(ATLLoadedApp.getPrimaryApplication().getApplication().getPackageName(), alias);
+		byte[] data = nativeGetKey(ATLLoadedApp.ofCurrentThreadOrThrow().pkg.packageName, alias);
 		if (data == null)
 			return null;
 		ByteBuffer buffer = ByteBuffer.wrap(data);
@@ -68,7 +68,7 @@ public class AndroidKeyStore extends KeyStoreSpi {
 		buffer.putInt(algorithm.length);
 		buffer.put(algorithm);
 		buffer.put(encoded);
-		nativeSetKey(ATLLoadedApp.getPrimaryApplication().getApplication().getPackageName(), alias, buffer.array());
+		nativeSetKey(ATLLoadedApp.ofCurrentThreadOrThrow().pkg.packageName, alias, buffer.array());
 	}
 
 	@Override
@@ -109,7 +109,7 @@ public class AndroidKeyStore extends KeyStoreSpi {
 
 	@Override
 	public boolean engineIsKeyEntry(String alias) {
-		byte[] data = nativeGetKey(ATLLoadedApp.getPrimaryApplication().getApplication().getPackageName(), alias);
+		byte[] data = nativeGetKey(ATLLoadedApp.ofCurrentThreadOrThrow().pkg.packageName, alias);
 		return data != null;
 	}
 

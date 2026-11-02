@@ -7,7 +7,11 @@
  * thread for the shown activity (records_touch, records_key). */
 
 void input_touches(NSSet<UITouch *> *touches, UIEvent *event, UITouchPhase phase);
-void input_presses(NSSet<UIPress *> *presses, bool down);
+void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down);
+
+struct ui_window;
+// view.m, on the Android main thread: the app window whose surface (the host's view) it is, or NULL
+struct ui_window *uikit_window_of(void *surface);
 
 // keys.m: a hardware keyboard's key as Android's
 int keys_android_code(UIKeyboardHIDUsage usage);

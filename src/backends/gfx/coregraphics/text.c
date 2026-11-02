@@ -14,7 +14,7 @@
 
 static CGFloat scale(void)
 {
-	return atl_window_get()->density_dpi / 160.;
+	return atl_screen_get()->density_dpi / 160.;
 }
 
 // Roboto's digits share one width, so apps' digit grids and counters line up; San Francisco's don't

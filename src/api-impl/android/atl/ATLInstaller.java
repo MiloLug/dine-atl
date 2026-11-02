@@ -249,10 +249,10 @@ public final class ATLInstaller {
 
 	/**
 	 * A host's start of its app, after VM start: a run by package looks the row up; a run by APK path
-	 * installs the APKs (with no prompt) unless a row already holds these exact files. The row's
-	 * package becomes the primary app, and C gets its paths.
+	 * installs the APKs (with no prompt) unless a row already holds these exact files. Returns the
+	 * row's app.
 	 */
-	public static void prepareApp(String[] apks, String packageName) throws IOException {
+	public static ATLLoadedApp prepareApp(String[] apks, String packageName) throws IOException {
 		ATLRegistry registry = ATLRegistry.get();
 		ATLRegistry.Row row;
 		if (packageName != null) {
@@ -271,8 +271,7 @@ public final class ATLInstaller {
 		if (entry == null || entry.row.generated)
 			throw new IllegalArgumentException((packageName != null ? packageName : apks[0]) + " is not installed");
 		PackageParser.Package pkg = entry.pkg;
-		native_set_app_dirs(ATLLoadedApp.classPath(pkg.applicationInfo), pkg.applicationInfo.dataDir);
-		ATLLoadedApp.setPrimaryApplication(ATLLoadedApp.load(pkg));
+		return ATLLoadedAppManager.getAppFromPackageName(pkg.packageName);
 	}
 
 	static boolean sameFile(File a, File b) {
@@ -287,7 +286,6 @@ public final class ATLInstaller {
 	}
 
 	private static native boolean native_same_file(String a, String b);
-	private static native void native_set_app_dirs(String apkClassPath, String dataDir);
 
 	/** The hosts' --install: the APKs are one package, the base first. Exit status for the process. */
 	public static int cliInstall(String[] apks, boolean allowFakeSignature) {
