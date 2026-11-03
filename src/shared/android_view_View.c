@@ -142,9 +142,9 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setFocused(JNIEnv *env, jo
 	ui_view_set_focused(_PTR(widget_ptr), focused);
 }
 
-JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobject this, jlong widget_ptr, jint l, jint t, jint r, jint b)
+JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobject this, jlong widget_ptr, jint l, jint t, jint r, jint b, jboolean relayout)
 {
-	ui_view_layout(_PTR(widget_ptr), l, t, r, b, _GET_FLOAT_FIELD(this, "translationX"), _GET_FLOAT_FIELD(this, "translationY"));
+	ui_view_layout(_PTR(widget_ptr), l, t, r, b, _GET_FLOAT_FIELD(this, "translationX"), _GET_FLOAT_FIELD(this, "translationY"), relayout);
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_getWindowVisibleDisplayFrame(JNIEnv *env, jobject this, jobject rect)

@@ -2,7 +2,7 @@
 # Drives the widgets APK's ControlsActivity (widgets/, built by the superproject's
 # tests/harness/apk.py) through the cli host's -c touch and key lines in the headless build; controls
 # are found by their text in the view-tree dump, the ImageButton by its class. All caps upper-case
-# the shown text ("push" as "PUSH"), leaving markup's tags and entities as they are. A tap clicks a
+# the shown text ("push" as "PUSH"), and Html's bold stays a text run over "BOLD". A tap clicks a
 # Button, the disabled "locked" takes no click, a CheckBox and a Switch toggle, a RadioButton checks
 # and unchecks the group's other one but never itself, a ToggleButton shows its on text, the
 # ImageButton clicks, Tab then Enter clicks the focused first button, ESC is Back on the task root.
@@ -34,6 +34,7 @@ while :; do
   IFS= read -r -t 30 line <&"${ATL[0]}" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$work/log"
   [[ $line == "viewtree: end" ]] && break
+  [[ $line == "textruns: 0-4 bold;" ]] && bold_run=1
   [[ $line =~ $dump_re ]] || continue
   depth=$((${#BASH_REMATCH[1]} / 2))
   left=${BASH_REMATCH[3]} top=${BASH_REMATCH[4]}
@@ -47,9 +48,10 @@ while :; do
     x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]}
   fi
 done
-for control in PUSH locked check red green switch "lamp off" image "<b>BOLD</b> &amp; CAPS"; do
+for control in PUSH locked check red green switch "lamp off" image "BOLD & CAPS"; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
+[[ -n ${bold_run:-} ]] || fail "no bold text run over \"BOLD\""
 
 # the next checked line into REPLY, without the log prefix
 next() {

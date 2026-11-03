@@ -1224,8 +1224,10 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		}
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public void offsetChildrenTopAndBottom(int offset) {
-		// FIXME
+		for (int i = 0; i < getChildCount(); i++)
+			getChildAt(i).offsetTopAndBottom(offset);
 	}
 
 	public final void offsetDescendantRectToMyCoords(View descendant, Rect rect) {

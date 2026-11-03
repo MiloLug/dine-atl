@@ -142,7 +142,9 @@ void ui_view_request_layout(struct ui_view *view);
 void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int *width, int *height);
 /* The frame from View.layout, relative to the parent. A ui_view_new view then lays out its
  * children through atl_upcall_view_layout. */
-void ui_view_layout(struct ui_view *view, int left, int top, int right, int bottom, float translation_x, float translation_y);
+/* relayout: the view lays out its children again (onLayout); false: it only moves (AOSP's
+ * layout-required flag and size change). */
+void ui_view_layout(struct ui_view *view, int left, int top, int right, int bottom, float translation_x, float translation_y, bool relayout);
 /* View.scrollTo, px. A scroll node's toolkit moves its content, animated if asked, and reports every
  * offset it reaches through atl_upcall_scrolled; elsewhere the backend shifts the children or not. */
 void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated);
@@ -152,7 +154,33 @@ void ui_view_set_focused(struct ui_view *view, bool focused);
 
 /* A TextView: the toolkit measures and draws the text. */
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text);
-void ui_text_set_text(struct ui_view *view, const char *text);
+/* A span's styles over [start, end) of the text in UTF-16 units, the ones set says; the rest are
+ * the view's. TextView computes them from its CharacterStyles (TextPaint's changes). */
+#define UI_RUN_COLOR      (1 << 0)
+#define UI_RUN_BACKGROUND (1 << 1)
+#define UI_RUN_SIZE       (1 << 2)
+#define UI_RUN_STYLE      (1 << 3)
+#define UI_RUN_FAMILY     (1 << 4)
+#define UI_RUN_UNDERLINE  (1 << 5)
+#define UI_RUN_STRIKE     (1 << 6)
+#define UI_RUN_BASELINE   (1 << 7)
+#define UI_RUN_SCALE_X    (1 << 8)
+struct ui_text_run {
+	int start, end;
+	int set;
+	uint32_t color, background; // ARGB
+	int style;                  // UI_TEXT_BOLD, UI_TEXT_ITALIC
+	int family;                 // enum gfx_font_family
+	float size;                 // px
+	float baseline_shift;       // px, negative: up (TextPaint.baselineShift)
+	float scale_x;
+};
+/* The text and its runs at once, so no measure sees one without the other. */
+void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_text_run *runs, size_t n_runs);
+static inline void ui_text_set_text(struct ui_view *view, const char *text)
+{
+	ui_text_set_styled(view, text, NULL, 0);
+}
 void ui_text_set_color(struct ui_view *view, uint32_t argb);
 void ui_text_set_size(struct ui_view *view, float size); // px
 /* The size ui_text_set_size set, else the toolkit's default, in the same unit. */
@@ -164,8 +192,6 @@ void ui_text_set_lines(struct ui_view *view, int min, int max);
 void ui_text_set_style(struct ui_view *view, int style);
 #define UI_TEXT_BOLD   1
 #define UI_TEXT_ITALIC 2
-/* The text holds Pango markup (ATL's Html.fromHtml keeps the tags). */
-void ui_text_set_markup(struct ui_view *view, bool markup);
 /* View.setTextAlignment, resolved in Java; any view node, only text nodes align. */
 #define UI_TEXT_ALIGN_START  0
 #define UI_TEXT_ALIGN_CENTER 1
@@ -178,8 +204,8 @@ void ui_text_set_drawables(struct ui_view *view, struct gfx_drawable *left, stru
 void ui_text_set_selectable(struct ui_view *view, bool selectable);
 
 /* An EditText: a text node whose field the user edits. Java's Editable is the truth: the field
- * applies the user's edits at once and reports each (atl_upcall_edit_report); ui_text_set_text and
- * ui_text_set_markup don't apply, the text comes through ui_edit_set_state. */
+ * applies the user's edits at once and reports each (atl_upcall_edit_report); ui_text_set_styled
+ * doesn't apply, the text comes through ui_edit_set_state. */
 struct ui_view *ui_edit_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);
 enum ui_keyboard {
 	UI_KEYBOARD_TEXT,

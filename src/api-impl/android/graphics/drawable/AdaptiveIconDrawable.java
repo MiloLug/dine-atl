@@ -376,7 +376,7 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
 
 	@Override
 	public void draw(Canvas canvas) {
-		/*	if (mLayersBitmap == null) {
+		if (mLayersBitmap == null) {
 			return;
 		}
 		if (mLayersShader == null) {
@@ -397,16 +397,6 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
 			canvas.drawPath(mMaskScaleOnly, mPaint);
 			canvas.translate(-bounds.left, -bounds.top);
 		}
-	*/
-		Rect bounds = getBounds();
-		canvas.translate(bounds.left, bounds.top);
-		if (mLayerState.mChildren[BACKGROUND_ID].mDrawable != null) {
-			mLayerState.mChildren[BACKGROUND_ID].mDrawable.draw(canvas);
-		}
-		if (mLayerState.mChildren[FOREGROUND_ID].mDrawable != null) {
-			mLayerState.mChildren[FOREGROUND_ID].mDrawable.draw(canvas);
-		}
-		canvas.translate(-bounds.left, -bounds.top);
 	}
 
 	@Override

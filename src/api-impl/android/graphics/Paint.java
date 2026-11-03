@@ -39,7 +39,19 @@ public class Paint {
 		copyJavaState(paint);
 	}
 
+	// text styles nothing native draws: TextView sends them as text runs (TextPaint's spans)
+	private boolean underline_text;
+	private boolean strike_thru_text;
+	private boolean fake_bold_text;
+	private float text_scale_x = 1;
+	private float text_skew_x;
+
 	private void copyJavaState(Paint src) {
+		underline_text = src.underline_text;
+		strike_thru_text = src.strike_thru_text;
+		fake_bold_text = src.fake_bold_text;
+		text_scale_x = src.text_scale_x;
+		text_skew_x = src.text_skew_x;
 		xfermode = src.xfermode;
 		shader = src.shader;
 		native_shader = src.native_shader;
@@ -140,6 +152,9 @@ public class Paint {
 	public void setFlags(int flags) {
 		if ((flags & ANTI_ALIAS_FLAG) != 0)
 			setAntiAlias(true);
+		underline_text = (flags & UNDERLINE_TEXT_FLAG) != 0;
+		strike_thru_text = (flags & STRIKE_THRU_TEXT_FLAG) != 0;
+		fake_bold_text = (flags & FAKE_BOLD_TEXT_FLAG) != 0;
 	}
 
 	public void setStyle(Style style) {
@@ -165,12 +180,10 @@ public class Paint {
 	}
 
 	public ColorFilter setColorFilter(ColorFilter colorFilter) {
-		if (colorFilter instanceof PorterDuffColorFilter) {
-			PorterDuffColorFilter porterDuff = (PorterDuffColorFilter)colorFilter;
-			native_set_color_filter(paint, porterDuff.getMode().ordinal(), porterDuff.getColor());
-		} else {
-			native_set_color_filter(paint, -1, 0);
-		}
+		if (colorFilter != null)
+			native_set_color_filter(paint, colorFilter.atlMode(), colorFilter.atlColor(), colorFilter.atlMatrix());
+		else
+			native_set_color_filter(paint, -1, 0, null);
 		color_filter = colorFilter;
 		return colorFilter;
 	}
@@ -256,7 +269,9 @@ public class Paint {
 		}
 	}
 
-	public /*native*/ int getFlags() { return 0; }
+	public int getFlags() {
+		return (underline_text ? UNDERLINE_TEXT_FLAG : 0) | (strike_thru_text ? STRIKE_THRU_TEXT_FLAG : 0) | (fake_bold_text ? FAKE_BOLD_TEXT_FLAG : 0);
+	}
 
 	public /*native*/ int getHinting() { return 0; }
 	public /*native*/ void setHinting(int mode) {}
@@ -268,9 +283,21 @@ public class Paint {
 
 	public /*native*/ void setLinearText(boolean linearText) {}
 	public /*native*/ void setSubpixelText(boolean subpixelText) {}
-	public /*native*/ void setUnderlineText(boolean underlineText) {}
-	public /*native*/ void setStrikeThruText(boolean strikeThruText) {}
-	public /*native*/ void setFakeBoldText(boolean fakeBoldText) {}
+	public void setUnderlineText(boolean underlineText) {
+		underline_text = underlineText;
+	}
+	public boolean isUnderlineText() {
+		return underline_text;
+	}
+	public void setStrikeThruText(boolean strikeThruText) {
+		strike_thru_text = strikeThruText;
+	}
+	public boolean isStrikeThruText() {
+		return strike_thru_text;
+	}
+	public void setFakeBoldText(boolean fakeBoldText) {
+		fake_bold_text = fakeBoldText;
+	}
 
 	public float getStrokeWidth() {
 		return native_get_stroke_width(paint);
@@ -282,10 +309,18 @@ public class Paint {
 		return native_get_text_size(paint);
 	}
 
-	public /*native*/ float getTextScaleX() { return 0; }
-	public /*native*/ void setTextScaleX(float scaleX) {}
-	public /*native*/ float getTextSkewX() { return 0; }
-	public /*native*/ void setTextSkewX(float skewX) {}
+	public float getTextScaleX() {
+		return text_scale_x;
+	}
+	public void setTextScaleX(float scaleX) {
+		text_scale_x = scaleX;
+	}
+	public float getTextSkewX() {
+		return text_skew_x;
+	}
+	public void setTextSkewX(float skewX) {
+		text_skew_x = skewX;
+	}
 
 	public float descent() {
 		return getFontMetrics().descent;
@@ -476,7 +511,7 @@ public class Paint {
 	public MaskFilter setMaskFilter(MaskFilter filter) { return filter; }
 
 	public boolean isFakeBoldText() {
-		return false;
+		return fake_bold_text;
 	}
 
 	public void setFontFeatureSettings(String settings) {}
@@ -494,6 +529,9 @@ public class Paint {
 		align = Align.LEFT;
 		color_filter = null;
 		typeface = null;
+		underline_text = strike_thru_text = fake_bold_text = false;
+		text_scale_x = 1;
+		text_skew_x = 0;
 	}
 
 	private static native long native_create();
@@ -513,7 +551,7 @@ public class Paint {
 	private static native int native_get_stroke_join(long paint);
 	private static native void native_set_text_size(long paint, float size);
 	private static native float native_get_text_size(long paint);
-	private static native void native_set_color_filter(long paint, int mode, int color);
+	private static native void native_set_color_filter(long paint, int mode, int color, float[] matrix);
 	private static native void native_set_shader(long paint, long shader);
 	private static native void native_set_typeface(long paint, int family, int style);
 	private static native float native_measure_text(long paint, String text, int start, int end);

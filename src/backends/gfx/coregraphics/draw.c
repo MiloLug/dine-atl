@@ -4,8 +4,10 @@
 #include <graphene.h>
 
 #include "src/shared/path.h"
+#include "src/shared/pixels.h"
 #include "src/shared/shader.h"
 
+#include "../record/blend.h"
 #include "../record/record.h"
 #include "coregraphics.h"
 
@@ -14,54 +16,10 @@ struct gfx_canvas *cg_list_ref(struct gfx_canvas *list)
 	return record_canvas_ref(list);
 }
 
-struct color {
-	float a, r, g, b; // premultiplied
-};
-
-static struct color unpack(uint32_t argb)
-{
-	float a = (argb >> 24) / 255.f;
-	return (struct color){a, ((argb >> 16) & 0xff) / 255.f * a, ((argb >> 8) & 0xff) / 255.f * a, (argb & 0xff) / 255.f * a};
-}
-
-// one premultiplied channel of PorterDuff mode `mode`, the filter's color over the paint's
-static float porter_duff(int mode, float sa, float sc, float da, float dc)
-{
-	switch (mode) {
-	case 0: return 0;                                     // CLEAR
-	case 1: return sc;                                    // SRC
-	case 2: return dc;                                    // DST
-	case 3: return sc + dc * (1 - sa);                    // SRC_OVER
-	case 4: return dc + sc * (1 - da);                    // DST_OVER
-	case 5: return sc * da;                               // SRC_IN
-	case 6: return dc * sa;                               // DST_IN
-	case 7: return sc * (1 - da);                         // SRC_OUT
-	case 8: return dc * (1 - sa);                         // DST_OUT
-	case 9: return sc * da + dc * (1 - sa);               // SRC_ATOP
-	case 10: return dc * sa + sc * (1 - da);              // DST_ATOP
-	case 11: return sc * (1 - da) + dc * (1 - sa);        // XOR
-	case 12: return sc + dc - fmaxf(sc * da, dc * sa);  // DARKEN
-	case 13: return sc + dc - fminf(sc * da, dc * sa);  // LIGHTEN
-	case 14: return sc * dc;                              // MULTIPLY
-	case 15: return sc + dc - sc * dc;                    // SCREEN
-	case 16: return fminf(1, sc + dc);                    // ADD
-	case 17:                                              // OVERLAY
-		return sc * (1 - da) + dc * (1 - sa) + (2 * dc <= da ? 2 * sc * dc : sa * da - 2 * (da - dc) * (sa - sc));
-	default: return dc;
-	}
-}
-
 // a solid paint's color through its color filter
 static void set_color(CGContextRef context, const struct gfx_paint *paint)
 {
-	struct color d = unpack(paint->color);
-	if (paint->filter_mode != -1) {
-		struct color s = unpack(paint->filter_color);
-		int mode = paint->filter_mode;
-		// the alpha of the separable modes but MULTIPLY's (Skia's modulate) is SRC_OVER's
-		float a = mode <= 11 ? porter_duff(mode, s.a, s.a, d.a, d.a) : mode == 14 ? s.a * d.a : mode == 16 ? fminf(1, s.a + d.a) : s.a + d.a - s.a * d.a;
-		d = (struct color){a, porter_duff(mode, s.a, s.r, d.a, d.r), porter_duff(mode, s.a, s.g, d.a, d.g), porter_duff(mode, s.a, s.b, d.a, d.b)};
-	}
+	struct blend_color d = blend_paint_color(paint);
 	float r = d.a ? d.r / d.a : 0, g = d.a ? d.g / d.a : 0, b = d.a ? d.b / d.a : 0;
 	CGContextSetRGBFillColor(context, r, g, b, d.a);
 	CGContextSetRGBStrokeColor(context, r, g, b, d.a);
@@ -78,10 +36,10 @@ static void filter_bitmap(CGContextRef context, CGRect dst, CGImageRef image, CG
 	    kCGBlendModeSourceAtop, kCGBlendModeDestinationAtop, kCGBlendModeXOR, kCGBlendModeDarken, kCGBlendModeLighten,
 	    kCGBlendModeMultiply, kCGBlendModeScreen, kCGBlendModePlusLighter, kCGBlendModeOverlay,
 	};
-	int mode = paint->filter_mode;
+	int mode = paint->filter.mode;
 	if (mode < 0 || mode >= (int)(sizeof(blend) / sizeof(*blend)) || mode == 2) // DST keeps the bitmap
 		return;
-	struct color c = unpack(paint->filter_color);
+	struct blend_color c = blend_unpack(paint->filter.color);
 	float r = c.a ? c.r / c.a : 0, g = c.a ? c.g / c.a : 0, b = c.a ? c.b / c.a : 0;
 	CGContextSetBlendMode(context, blend[mode]);
 	if (mode != 14) {
@@ -101,6 +59,27 @@ static void filter_bitmap(CGContextRef context, CGRect dst, CGImageRef image, CG
 	CGContextFillRect(context, dst);
 }
 
+// the image through a ColorMatrix, made where the op draws (the Android thread for a bitmap's
+// pixels, UIKit's for a layer)
+static CGImageRef matrix_image(CGImageRef image, const float m[20])
+{
+	size_t width = CGImageGetWidth(image), height = CGImageGetHeight(image);
+	CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+	CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, width * 4, space, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+	CGColorSpaceRelease(space);
+	if (!context)
+		return CGImageRetain(image);
+	CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+	uint32_t *pixels = CGBitmapContextGetData(context);
+	size_t row_words = CGBitmapContextGetBytesPerRow(context) / 4;
+	for (size_t y = 0; y < height; y++)
+		for (size_t x = 0; x < width; x++)
+			pixels[y * row_words + x] = argb_premultiply(blend_color_matrix(m, argb_unpremultiply(pixels[y * row_words + x])));
+	CGImageRef filtered = CGBitmapContextCreateImage(context);
+	CGContextRelease(context);
+	return filtered;
+}
+
 static void set_stroke(CGContextRef context, const struct gfx_paint *paint)
 {
 	// Paint.Cap and Join share CGLineCap's and CGLineJoin's order; width 0 is a hairline
@@ -117,10 +96,65 @@ static CGAffineTransform affine(const graphene_matrix_t *m)
 	                             graphene_matrix_get_value(m, 3, 0), graphene_matrix_get_value(m, 3, 1));
 }
 
-// fills the clip: the shader's local matrix applies in it, and the paint's alpha over it
-static void draw_shader(CGContextRef context, const struct gfx_shader *shader, const struct gfx_paint *paint)
+// PorterDuff.Mode's nativeInt; DST keeps the destination: the layer draws at alpha 0
+static const CGBlendMode blend_modes[] = {
+	kCGBlendModeClear, kCGBlendModeCopy, kCGBlendModeNormal, kCGBlendModeNormal, kCGBlendModeDestinationOver,
+	kCGBlendModeSourceIn, kCGBlendModeDestinationIn, kCGBlendModeSourceOut, kCGBlendModeDestinationOut,
+	kCGBlendModeSourceAtop, kCGBlendModeDestinationAtop, kCGBlendModeXOR, kCGBlendModeDarken, kCGBlendModeLighten,
+	kCGBlendModeMultiply, kCGBlendModeScreen, kCGBlendModePlusLighter, kCGBlendModeOverlay,
+};
+
+static void draw_shader(CGContextRef context, const struct gfx_shader *shader);
+
+// the bitmap at 0, 0 in its pixels; CLAMP doesn't extend its edges, MIRROR repeats (ATL-48)
+static void draw_bitmap_shader(CGContextRef context, const struct gfx_shader *shader)
+{
+	CGImageRef image = cg_bitmap_copy_image(shader->bitmap);
+	if (!image)
+		return;
+	CGRect tile = CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image));
+	// CGContextDrawImage draws y up; the context is y down
+	CGContextTranslateCTM(context, 0, tile.size.height);
+	CGContextScaleCTM(context, 1, -1);
+	if (shader->tile == SHADER_CLAMP && shader->tile_y == SHADER_CLAMP)
+		CGContextDrawImage(context, tile, image);
+	else
+		CGContextDrawTiledImage(context, tile, image);
+	CGImageRelease(image);
+}
+
+// dst, then src over it with the mode's blend, in a transparency layer
+static void draw_compose(CGContextRef context, const struct gfx_shader *shader)
+{
+	CGContextBeginTransparencyLayer(context, NULL);
+	if (shader->dst) {
+		CGContextSaveGState(context);
+		draw_shader(context, shader->dst);
+		CGContextRestoreGState(context);
+	}
+	int mode = shader->mode;
+	if (shader->src && mode != 2) { // DST keeps the destination
+		CGContextSaveGState(context);
+		if (mode >= 0 && mode < (int)(sizeof(blend_modes) / sizeof(*blend_modes)))
+			CGContextSetBlendMode(context, blend_modes[mode]);
+		draw_shader(context, shader->src);
+		CGContextRestoreGState(context);
+	}
+	CGContextEndTransparencyLayer(context);
+}
+
+// fills the clip, the shader's local matrix applied in it
+static void draw_shader(CGContextRef context, const struct gfx_shader *shader)
 {
 	CGContextConcatCTM(context, affine(&shader->matrix));
+	if (shader->kind == SHADER_BITMAP) {
+		draw_bitmap_shader(context, shader);
+		return;
+	}
+	if (shader->kind == SHADER_COMPOSE) {
+		draw_compose(context, shader);
+		return;
+	}
 	CGRect box = CGContextGetClipBoundingBox(context);
 	float t_min, t_max;
 	shader_t_range(shader, &(struct gfx_rect){CGRectGetMinX(box), CGRectGetMinY(box), CGRectGetMaxX(box), CGRectGetMaxY(box)}, &t_min, &t_max);
@@ -138,7 +172,6 @@ static void draw_shader(CGContextRef context, const struct gfx_shader *shader, c
 	}
 	CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 	CGGradientRef gradient = CGGradientCreateWithColorComponents(space, components, locations, n);
-	CGContextSetAlpha(context, (paint->color >> 24) / 255.);
 	const CGGradientDrawingOptions extend = kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation;
 	CGPoint center = CGPointMake(shader->x0, shader->y0);
 	if (shader->kind == SHADER_LINEAR) {
@@ -169,7 +202,8 @@ static void shade(CGContextRef context, CGPathRef path, bool even_odd, bool stro
 		CGContextEOClip(context);
 	else
 		CGContextClip(context);
-	draw_shader(context, paint->shader, paint);
+	CGContextSetAlpha(context, (paint->color >> 24) / 255.);
+	draw_shader(context, paint->shader);
 	CGContextRestoreGState(context);
 }
 
@@ -289,16 +323,24 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale)
 	case OP_UNLAYER:
 		break; // cg_list_draw's, as they outlive the op
 	case OP_BITMAP: {
-		CGImageRef image = cg_bitmap_image(op->bitmap);
-		if (!image || a[2] == a[0] || a[3] == a[1])
+		CGImageRef image = cg_bitmap_copy_image(op->bitmap);
+		if (!image || a[2] == a[0] || a[3] == a[1]) {
+			if (image)
+				CGImageRelease(image);
 			break;
+		}
 		CGRect dst = CGRectStandardize(CGRectMake(a[4], a[5], a[6] - a[4], a[7] - a[5]));
 		CGFloat xscale = dst.size.width / (a[2] - a[0]), yscale = dst.size.height / (a[3] - a[1]);
 		CGRect whole = CGRectMake(dst.origin.x - a[0] * xscale, dst.origin.y - a[1] * yscale,
 		                          CGImageGetWidth(image) * xscale, CGImageGetHeight(image) * yscale);
+		if (op->paint.filter.has_matrix) {
+			CGImageRef filtered = matrix_image(image, op->paint.filter.m);
+			CGImageRelease(image);
+			image = filtered;
+		}
 		CGContextClipToRect(context, dst);
 		CGContextSetAlpha(context, (op->paint.color >> 24) / 255.);
-		bool filtered = op->paint.filter_mode != -1;
+		bool filtered = op->paint.filter.mode != -1 && !op->paint.filter.has_matrix;
 		if (filtered) // the paint's alpha applies to the filtered bitmap
 			CGContextBeginTransparencyLayerWithRect(context, dst, NULL);
 		CGContextSaveGState(context);
@@ -311,6 +353,7 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale)
 			filter_bitmap(context, dst, image, whole, &op->paint);
 			CGContextEndTransparencyLayer(context);
 		}
+		CGImageRelease(image);
 		break;
 	}
 	case OP_TEXT:
@@ -348,13 +391,6 @@ static void clip(CGContextRef context, const struct op *op)
 	CGPathRelease(path);
 }
 
-// PorterDuff.Mode's nativeInt; DST keeps the destination: the layer draws at alpha 0
-static const CGBlendMode blend_modes[] = {
-	kCGBlendModeClear, kCGBlendModeCopy, kCGBlendModeNormal, kCGBlendModeNormal, kCGBlendModeDestinationOver,
-	kCGBlendModeSourceIn, kCGBlendModeDestinationIn, kCGBlendModeSourceOut, kCGBlendModeDestinationOut,
-	kCGBlendModeSourceAtop, kCGBlendModeDestinationAtop, kCGBlendModeXOR, kCGBlendModeDarken, kCGBlendModeLighten,
-	kCGBlendModeMultiply, kCGBlendModeScreen, kCGBlendModePlusLighter, kCGBlendModeOverlay,
-};
 
 // a gstate, and a transparency layer in it, that the level's restore ends
 static void begin_layer(CGContextRef context, const struct op *op)

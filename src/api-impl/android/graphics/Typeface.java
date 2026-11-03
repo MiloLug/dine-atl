@@ -28,6 +28,11 @@ public class Typeface {
 	public long native_instance = 0; // directly accessed by androidx
 
 	final int family;
+
+	/** @hide the gfx slot's enum gfx_font_family */
+	public int atlFamily() {
+		return family;
+	}
 	private final int style;
 
 	private Typeface(int family, int style) {

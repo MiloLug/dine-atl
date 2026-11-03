@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/app/Application.java at android-security-10.0.0_r75, Apache License 2.0; see
+ * doc/AOSP.md.
+ */
 package android.app;
 
 import android.R;
@@ -50,14 +55,39 @@ public class Application extends ContextWrapper {
 		return (mimeTypes.length() == 0) ? null : mimeTypes.toString();
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: ActivityLifecycleCallbacks, its API 29
+	 * pre and post methods, and the dispatch below */
 	public interface ActivityLifecycleCallbacks {
+		default void onActivityPreCreated(Activity activity, Bundle savedInstanceState) {}
 		void onActivityCreated(Activity activity, Bundle savedInstanceState);
+		default void onActivityPostCreated(Activity activity, Bundle savedInstanceState) {}
+		default void onActivityPreStarted(Activity activity) {}
 		void onActivityStarted(Activity activity);
+		default void onActivityPostStarted(Activity activity) {}
+		default void onActivityPreResumed(Activity activity) {}
 		void onActivityResumed(Activity activity);
+		default void onActivityPostResumed(Activity activity) {}
+		default void onActivityPrePaused(Activity activity) {}
 		void onActivityPaused(Activity activity);
+		default void onActivityPostPaused(Activity activity) {}
+		default void onActivityPreStopped(Activity activity) {}
 		void onActivityStopped(Activity activity);
+		default void onActivityPostStopped(Activity activity) {}
+		default void onActivityPreSaveInstanceState(Activity activity, Bundle outState) {}
 		void onActivitySaveInstanceState(Activity activity, Bundle outState);
+		default void onActivityPostSaveInstanceState(Activity activity, Bundle outState) {}
+		default void onActivityPreDestroyed(Activity activity) {}
 		void onActivityDestroyed(Activity activity);
+		default void onActivityPostDestroyed(Activity activity) {}
+	}
+
+	private final java.util.ArrayList<ActivityLifecycleCallbacks> activity_lifecycle_callbacks = new java.util.ArrayList<>();
+
+	// a copy: a callback may register or unregister one
+	ActivityLifecycleCallbacks[] collectActivityLifecycleCallbacks() {
+		synchronized (activity_lifecycle_callbacks) {
+			return activity_lifecycle_callbacks.toArray(new ActivityLifecycleCallbacks[0]);
+		}
 	}
 	/**
 	 * Callback interface for use with {@link Application#registerOnProvideAssistDataListener}
@@ -107,8 +137,14 @@ public class Application extends ContextWrapper {
 	public void unregisterComponentCallbacks(ComponentCallbacks callback) {
 	}*/
 	public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
+		synchronized (activity_lifecycle_callbacks) {
+			activity_lifecycle_callbacks.add(callback);
+		}
 	}
 	public void unregisterActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
+		synchronized (activity_lifecycle_callbacks) {
+			activity_lifecycle_callbacks.remove(callback);
+		}
 	}
 	public void registerOnProvideAssistDataListener(OnProvideAssistDataListener callback) {
 	}

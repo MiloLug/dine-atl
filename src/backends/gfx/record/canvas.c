@@ -180,7 +180,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		struct ninepatch_slice *slices;
 		size_t n = ninepatch_slices(drawable->ninepatch, gfx_bitmap_get_width(drawable->bitmap), gfx_bitmap_get_height(drawable->bitmap), width, height, &slices);
 		for (size_t i = 0; i < n; i++) {
-			struct gfx_paint paint = {.color = slices[i].color, .filter_mode = drawable->filter_mode, .filter_color = drawable->filter_color};
+			struct gfx_paint paint = {.color = slices[i].color, .filter = drawable->filter};
 			if (slices[i].color == NINEPATCH_NO_COLOR) {
 				paint.color = 0xff000000;
 				gfx_canvas_draw_bitmap(canvas, drawable->bitmap, &slices[i].src, &slices[i].dst, &paint);
@@ -190,7 +190,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		}
 		free(slices);
 	} else if (drawable->bitmap) {
-		struct gfx_paint opaque = {.color = 0xff000000, .filter_mode = drawable->filter_mode, .filter_color = drawable->filter_color};
+		struct gfx_paint opaque = {.color = 0xff000000, .filter = drawable->filter};
 		gfx_canvas_draw_bitmap(canvas, drawable->bitmap, NULL, &(struct gfx_rect){0, 0, width, height}, &opaque);
 	} else if (!drawable->drawable_ref && drawable->selected) {
 		gfx_canvas_draw_drawable(canvas, drawable->selected, width, height);
@@ -229,9 +229,26 @@ static void print_numbers(FILE *out, const float *values, size_t n, const char *
 
 static void print_matrix(FILE *out, const graphene_matrix_t *m);
 
-// shader linear x0,y0 x1,y1 | radial x,y radius | sweep x,y, then #color@position ..., tile, matrix
+/* shader linear x0,y0 x1,y1 | radial x,y radius | sweep x,y, then #color@position ..., tile,
+ * matrix; shader bitmap WxH tile x,y, matrix; shader compose mode n (dst) (src), matrix */
 static void print_shader(FILE *out, const struct gfx_shader *shader)
 {
+	if (shader->kind == SHADER_BITMAP) {
+		fprintf(out, " shader bitmap %dx%d tile %d,%d", gfx_bitmap_get_width(shader->bitmap), gfx_bitmap_get_height(shader->bitmap), shader->tile, shader->tile_y);
+		print_matrix(out, &shader->matrix);
+		return;
+	}
+	if (shader->kind == SHADER_COMPOSE) {
+		fprintf(out, " shader compose mode %d (", shader->mode);
+		if (shader->dst)
+			print_shader(out, shader->dst);
+		fputs(" ) (", out);
+		if (shader->src)
+			print_shader(out, shader->src);
+		fputs(" )", out);
+		print_matrix(out, &shader->matrix);
+		return;
+	}
 	static const char *const kinds[] = {"linear", "radial", "sweep"};
 	fprintf(out, " shader %s ", kinds[shader->kind]);
 	print_numbers(out, &shader->x0, 2, ",");
@@ -250,6 +267,18 @@ static void print_shader(FILE *out, const struct gfx_shader *shader)
 	print_matrix(out, &shader->matrix);
 }
 
+// filter <PorterDuff mode> #color | filter matrix [20 numbers]
+static void print_filter(FILE *out, const struct gfx_color_filter *filter)
+{
+	if (filter->has_matrix) {
+		fputs(" filter matrix [", out);
+		print_numbers(out, filter->m, 20, ",");
+		fputc(']', out);
+	} else if (filter->mode != -1) {
+		fprintf(out, " filter %d #%08x", filter->mode, filter->color);
+	}
+}
+
 static void print_paint(FILE *out, const struct gfx_paint *paint)
 {
 	fprintf(out, " #%08x %s", paint->color, style_names[paint->style]);
@@ -258,8 +287,7 @@ static void print_paint(FILE *out, const struct gfx_paint *paint)
 		print_number(out, paint->stroke_width);
 		fprintf(out, " cap %d join %d", paint->stroke_cap, paint->stroke_join);
 	}
-	if (paint->filter_mode != -1)
-		fprintf(out, " filter %d #%08x", paint->filter_mode, paint->filter_color);
+	print_filter(out, &paint->filter);
 	if (paint->shader)
 		print_shader(out, paint->shader);
 }
@@ -384,8 +412,7 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			fputc(' ', out);
 			print_numbers(out, op->args + 6, 2, ",");
 			fprintf(out, " #%08x", op->paint.color);
-			if (op->paint.filter_mode != -1)
-				fprintf(out, " filter %d #%08x", op->paint.filter_mode, op->paint.filter_color);
+			print_filter(out, &op->paint.filter);
 			break;
 		case OP_PATH:
 		case OP_CLIP_PATH:

@@ -4,6 +4,7 @@
 
 // FIXME: put the header in a common place
 #include "../api-impl-jni/defines.h"
+#include "../backends/gfx/gsk/bitmap.h"
 #include "../backends/gfx/gsk/memory_format.h"
 #include "bitmap.h"
 
@@ -30,7 +31,7 @@ int AndroidBitmap_getInfo(JNIEnv *env, jobject bitmap, struct AndroidBitmapInfo 
 int AndroidBitmap_lockPixels(JNIEnv *env, jobject bitmap, void **pixels)
 {
 	printf("AndroidBitmap_lockPixels\n");
-	GdkTexture *texture = _PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J")));
+	GdkTexture *texture = gsk_bitmap_ref_texture(_PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J"))));
 	int stride = _GET_INT_FIELD(bitmap, "stride");
 	int format = gsk_memory_format(config_int(env, bitmap, "nativeInt"));
 	if (format == -1) {
@@ -54,6 +55,7 @@ int AndroidBitmap_lockPixels(JNIEnv *env, jobject bitmap, void **pixels)
 		bytes = g_bytes_new_take(data, stride * gdk_texture_get_height(texture));
 	}
 	gdk_texture_downloader_free(downloader);
+	g_object_unref(texture);
 	_SET_LONG_FIELD(bitmap, "bytes", _INTPTR(bytes));
 	*pixels = (void *)g_bytes_get_data(bytes, NULL);
 	return ANDROID_BITMAP_RESULT_SUCCESS;
@@ -77,8 +79,7 @@ int AndroidBitmap_unlockPixels(JNIEnv *env, jobject bitmap)
 	}
 	GdkTexture *texture = gdk_memory_texture_new(width, height, format, bytes, stride);
 	g_bytes_unref(bytes);
-	(*env)->CallVoidMethod(env, bitmap, _METHOD_OF(bitmap, "recycle", "()V"));
-	_SET_LONG_FIELD(bitmap, "texture", _INTPTR(texture));
+	gsk_bitmap_set_texture(_PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J"))), texture);
 	_SET_LONG_FIELD(bitmap, "bytes", 0);
 	return ANDROID_BITMAP_RESULT_SUCCESS;
 }

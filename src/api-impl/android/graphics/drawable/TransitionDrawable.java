@@ -8,6 +8,11 @@ public class TransitionDrawable extends LayerDrawable {
 		super(layers);
 	}
 
+	// <transition> XML, which LayerDrawable's inflate() fills
+	TransitionDrawable() {
+		super();
+	}
+
 	public void setCrossFadeEnabled(boolean enabled) {}
 
 	public void startTransition(int duration) {}

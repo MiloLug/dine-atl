@@ -124,9 +124,9 @@ FORWARD_TOUCHES
 }
 @end
 
-// a text record's view, ATLLabel or ATLButton
+// a text record's view, ATLLabel or ATLButton; runs: the record's struct ui_text_run array, nil for none
 @protocol ATLText
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment;
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment;
 - (void)atlSetColor:(UIColor *)color;
 - (void)atlSetPadding:(UIEdgeInsets)padding;
 @optional
@@ -140,6 +140,7 @@ FORWARD_TOUCHES
 @end
 
 static CGFloat scale(void);
+static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment);
 
 // a node's display list (background, onDraw) under its subviews, drawn asynchronously by CA
 @interface ATLDrawLayer : CALayer
@@ -180,7 +181,13 @@ static CGFloat scale(void);
 @property(nonatomic) struct gfx_canvas *list; // a ref of its own
 @end
 
-@implementation ATLLabel
+// the font, color and alignment Java set, kept: attributedText rewrites UILabel's from its first character
+@implementation ATLLabel {
+	NSData *_runs;
+	UIFont *_atlFont;
+	UIColor *_atlColor;
+	NSTextAlignment _atlAlignment;
+}
 FORWARD_TOUCHES
 
 - (void)setList:(struct gfx_canvas *)list
@@ -206,16 +213,29 @@ FORWARD_TOUCHES
 	[super drawRect:rect];
 }
 
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+// a styled text is set whole again on a color change: textColor would recolor every run
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
+	_runs = runs;
+	_atlFont = font;
+	_atlAlignment = alignment;
+	if (runs) {
+		self.attributedText = styled(text, runs, font, _atlColor ?: UIColor.labelColor, alignment);
+		return;
+	}
 	self.text = text;
 	self.font = font;
 	self.textAlignment = alignment;
+	self.textColor = _atlColor ?: UIColor.labelColor;
 }
 
 - (void)atlSetColor:(UIColor *)color
 {
-	self.textColor = color;
+	_atlColor = color;
+	if (_runs)
+		self.attributedText = styled(self.text, _runs, _atlFont, color, _atlAlignment);
+	else
+		self.textColor = color;
 }
 
 - (void)atlSetPadding:(UIEdgeInsets)padding
@@ -311,6 +331,7 @@ static UIImage *box_image(enum ui_button kind, bool checked)
 	UILabel *_label;   // a switch's text
 	UISwitch *_toggle;
 	NSString *_text;
+	NSData *_runs;
 	UIFont *_font;
 	UIColor *_color;
 	UIEdgeInsets _padding;
@@ -347,9 +368,12 @@ FORWARD_TOUCHES
 {
 	UIColor *color = _enabled ? _color : nil; // nil: the control's own, dimmed when disabled
 	if (_toggle) {
-		_label.text = _text;
 		_label.font = _font;
 		_label.textColor = color ?: UIColor.labelColor;
+		if (_runs)
+			_label.attributedText = styled(_text, _runs, _font, color ?: UIColor.labelColor, NSTextAlignmentNatural);
+		else
+			_label.text = _text;
 		[_toggle setOn:_checked animated:YES];
 		_toggle.enabled = _enabled;
 	} else {
@@ -361,12 +385,7 @@ FORWARD_TOUCHES
 			config = [UIButtonConfiguration filledButtonConfiguration];
 		else
 			config = [UIButtonConfiguration grayButtonConfiguration];
-		NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
-		if (_font)
-			attributes[NSFontAttributeName] = _font;
-		if (color)
-			attributes[NSForegroundColorAttributeName] = color;
-		config.attributedTitle = [[NSAttributedString alloc] initWithString:_text attributes:attributes];
+		config.attributedTitle = styled(_text, _runs, _font, color, NSTextAlignmentNatural);
 		if (box) {
 			config.image = box_image(_kind, _checked);
 			config.imagePadding = 8;
@@ -417,9 +436,10 @@ FORWARD_TOUCHES
 	return [_button sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 }
 
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
 	_text = text;
+	_runs = runs;
 	_font = font;
 	[self update];
 	[self setNeedsLayout];
@@ -585,6 +605,53 @@ static UIColor *color(uint32_t argb)
 static UIFont *font(float size, int style)
 {
 	return (__bridge_transfer UIFont *)cg_font(size / scale(), GFX_FONT_SANS, style);
+}
+
+// the record's runs for UIKit's thread, nil for none
+static NSData *runs_data(const struct ui_view *view)
+{
+	return view->n_runs ? [NSData dataWithBytes:view->runs length:view->n_runs * sizeof(*view->runs)] : nil;
+}
+
+// text in font, color and alignment, each run's styles over its range; the runs' indices are UTF-16, as NSString's
+static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment)
+{
+	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+	paragraph.alignment = alignment;
+	NSMutableDictionary *base = [NSMutableDictionary dictionaryWithObject:paragraph forKey:NSParagraphStyleAttributeName];
+	if (base_font)
+		base[NSFontAttributeName] = base_font;
+	if (base_color)
+		base[NSForegroundColorAttributeName] = base_color;
+	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] initWithString:text ?: @"" attributes:base];
+	UIFont *run_base = base_font ?: [UIFont systemFontOfSize:UIFont.labelFontSize];
+	UIFontDescriptorSymbolicTraits traits = run_base.fontDescriptor.symbolicTraits;
+	int base_style = (traits & UIFontDescriptorTraitBold ? UI_TEXT_BOLD : 0) | (traits & UIFontDescriptorTraitItalic ? UI_TEXT_ITALIC : 0);
+	const struct ui_text_run *run = runs.bytes;
+	for (size_t i = 0; i < runs.length / sizeof(*run); i++, run++) {
+		NSRange range = NSIntersectionRange(NSMakeRange(run->start, MAX(run->end - run->start, 0)), NSMakeRange(0, out.length));
+		if (!range.length)
+			continue;
+		if (run->set & (UI_RUN_SIZE | UI_RUN_STYLE | UI_RUN_FAMILY)) {
+			CGFloat size = run->set & UI_RUN_SIZE ? run->size / scale() : run_base.pointSize;
+			int style = run->set & UI_RUN_STYLE ? run->style : base_style;
+			enum gfx_font_family family = run->set & UI_RUN_FAMILY ? (enum gfx_font_family)run->family : GFX_FONT_SANS;
+			[out addAttribute:NSFontAttributeName value:(__bridge_transfer UIFont *)cg_font(size, family, style) range:range];
+		}
+		if (run->set & UI_RUN_COLOR)
+			[out addAttribute:NSForegroundColorAttributeName value:color(run->color) range:range];
+		if (run->set & UI_RUN_BACKGROUND)
+			[out addAttribute:NSBackgroundColorAttributeName value:color(run->background) range:range];
+		if (run->set & UI_RUN_UNDERLINE)
+			[out addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+		if (run->set & UI_RUN_STRIKE)
+			[out addAttribute:NSStrikethroughStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+		if (run->set & UI_RUN_BASELINE) // TextPaint's shift is down, UIKit's offset up
+			[out addAttribute:NSBaselineOffsetAttributeName value:@(-run->baseline_shift / scale()) range:range];
+		if (run->set & UI_RUN_SCALE_X && run->scale_x > 0)
+			[out addAttribute:NSExpansionAttributeName value:@(logf(run->scale_x)) range:range];
+	}
+	return out;
 }
 
 static void flush(struct uikit_app *ui)
@@ -941,13 +1008,14 @@ void records_text_changed(struct ui_view *view)
 {
 	@autoreleasepool {
 		NSString *text = [NSString stringWithUTF8String:view->text] ?: @"";
+		NSData *runs = runs_data(view);
 		float size = view->text_size;
 		int style = view->text_style;
 		NSTextAlignment alignment = text_alignment(view->alignment);
 		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
 		uikit_enqueue(view_app(view), ^{
 			UIView<ATLText> *text_view = (UIView<ATLText> *)native(view);
-			[text_view atlSetText:text font:font(size, style) alignment:alignment];
+			[text_view atlSetText:text runs:runs font:font(size, style) alignment:alignment];
 			if ([text_view respondsToSelector:@selector(atlSetMaxLines:)])
 				[text_view atlSetMaxLines:max_lines];
 		});
@@ -977,6 +1045,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 {
 	@autoreleasepool {
 		NSString *text = [NSString stringWithUTF8String:view->text] ?: @"";
+		NSData *runs = runs_data(view);
 		float size = view->text_size;
 		int style = view->text_style;
 		CGFloat s = scale();
@@ -995,7 +1064,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 					scratches[button] = [[ATLButton alloc] initWithRecord:NULL kind:button];
 				ATLButton *scratch = scratches[button];
 				scratch.hasBackground = has_background;
-				[scratch atlSetText:text font:font(size, style) alignment:NSTextAlignmentNatural];
+				[scratch atlSetText:text runs:runs font:font(size, style) alignment:NSTextAlignmentNatural];
 				fit = [scratch contentSizeThatFits:width];
 				return;
 			}
@@ -1019,6 +1088,8 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 					if (scratch == field) {
 						field.font = scratch_font;
 						field.text = measured;
+					} else if (runs && shown == text) {
+						area.attributedText = styled(measured, runs, scratch_font, nil, NSTextAlignmentNatural);
 					} else {
 						area.font = scratch_font;
 						area.text = measured;
@@ -1036,8 +1107,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 			if (!scratch)
 				scratch = [ATLLabel new];
 			[scratch atlSetMaxLines:max_lines];
-			scratch.font = font(size, style);
-			scratch.text = text;
+			[scratch atlSetText:text runs:runs font:font(size, style) alignment:NSTextAlignmentNatural];
 			fit = [scratch sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 			if (!text.length) // a TextView keeps one line's height
 				fit.height = scratch.font.lineHeight;
@@ -1079,23 +1149,30 @@ static void collect_frames(struct ui_view *view, CGFloat s, struct frame **next)
 		collect_frames(view->children[i], s, next);
 }
 
+// the frames of the shown root's views, to UIKit with the next flush
+static void push_frames(struct ui_window *window)
+{
+	window->frames_moved = false;
+	if (window->dialog || !window->shown)
+		return;
+	size_t count = count_views(window->shown);
+	struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
+	collect_frames(window->shown, scale(), &next);
+	uikit_enqueue(window->app, ^{
+		for (size_t i = 0; i < count; i++) {
+			UIView *framed = native(frames[i].view);
+			framed.frame = frames[i].rect;
+			if (frames[i].view->kind == NODE_SCROLL)
+				((UIScrollView *)framed).contentSize = frames[i].content;
+		}
+		free(frames);
+	});
+}
+
 void records_layout_done(struct ui_window *window)
 {
 	@autoreleasepool {
-		if (!window->dialog && window->shown) {
-			size_t count = count_views(window->shown);
-			struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
-			collect_frames(window->shown, scale(), &next);
-			uikit_enqueue(window->app, ^{
-				for (size_t i = 0; i < count; i++) {
-					UIView *framed = native(frames[i].view);
-					framed.frame = frames[i].rect;
-					if (frames[i].view->kind == NODE_SCROLL)
-						((UIScrollView *)framed).contentSize = frames[i].content;
-				}
-				free(frames);
-			});
-		}
+		push_frames(window);
 		flush(atl_app_ui(window->app));
 	}
 }
@@ -1219,8 +1296,11 @@ void records_view_drawn(struct ui_view *view)
 void records_draw_done(struct ui_window *window)
 {
 	@autoreleasepool {
-		if (!window->layout_pending) // else the layout pass flushes, with its frames
-			flush(atl_app_ui(window->app));
+		if (window->layout_pending) // the layout pass flushes, with its frames
+			return;
+		if (window->frames_moved)
+			push_frames(window);
+		flush(atl_app_ui(window->app));
 	}
 }
 
@@ -1467,7 +1547,7 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 }
 
 // Java's text arrives through snapshots only
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
 	self.font = font;
 	self.textAlignment = alignment;
@@ -1550,7 +1630,7 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 	editor_ended(self, _atlState);
 }
 
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
 	self.font = font;
 	self.textAlignment = alignment;
@@ -1573,7 +1653,13 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 @interface ATLSelectableText : UITextView <ATLText>
 @end
 
-@implementation ATLSelectableText
+@implementation ATLSelectableText {
+	NSData *_runs;
+	UIFont *_atlFont;
+	UIColor *_atlColor;
+	NSTextAlignment _atlAlignment;
+}
+
 - (instancetype)init
 {
 	if ((self = [super initWithFrame:CGRectZero textContainer:nil])) {
@@ -1587,18 +1673,31 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 	return self;
 }
 
-// the label a UILabel derives from its text, for VoiceOver and the debug agent
-- (void)atlSetText:(NSString *)text font:(UIFont *)font alignment:(NSTextAlignment)alignment
+// the label a UILabel derives from its text, for VoiceOver and the debug agent; Java's font, color
+// and alignment kept as ATLLabel's
+- (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {
-	self.text = text;
-	self.font = font;
-	self.textAlignment = alignment;
+	_runs = runs;
+	_atlFont = font;
+	_atlAlignment = alignment;
+	if (runs) {
+		self.attributedText = styled(text, runs, font, _atlColor ?: UIColor.labelColor, alignment);
+	} else {
+		self.text = text;
+		self.font = font;
+		self.textAlignment = alignment;
+		self.textColor = _atlColor ?: UIColor.labelColor;
+	}
 	self.accessibilityLabel = text;
 }
 
 - (void)atlSetColor:(UIColor *)color
 {
-	self.textColor = color;
+	_atlColor = color;
+	if (_runs)
+		self.attributedText = styled(self.text, _runs, _atlFont, color, _atlAlignment);
+	else
+		self.textColor = color;
 }
 
 - (void)atlSetPadding:(UIEdgeInsets)padding
@@ -1702,7 +1801,7 @@ void records_edit_config_changed(struct ui_view *view)
 				replacement.atlState = state;
 				state.multiline = config.multiline;
 				state.applying = true;
-				[replacement atlSetText:text font:font alignment:alignment];
+				[replacement atlSetText:text runs:nil font:font alignment:alignment];
 				[replacement atlSetColor:text_color];
 				[replacement atlSetPadding:state.padding];
 				editor_set(replacement, text, selection.location, NSMaxRange(selection));
@@ -1787,6 +1886,7 @@ void records_selectable_changed(struct ui_view *view)
 {
 	@autoreleasepool {
 		NSString *text = [NSString stringWithUTF8String:view->text] ?: @"";
+		NSData *runs = runs_data(view);
 		float size = view->text_size;
 		int style = view->text_style;
 		NSTextAlignment alignment = text_alignment(view->alignment);
@@ -1805,7 +1905,7 @@ void records_selectable_changed(struct ui_view *view)
 				label.numberOfLines = 0;
 				replacement = label;
 			}
-			[replacement atlSetText:text font:font(size, style) alignment:alignment];
+			[replacement atlSetText:text runs:runs font:font(size, style) alignment:alignment];
 			[replacement atlSetMaxLines:max_lines];
 			if (text_color)
 				[replacement atlSetColor:text_color];

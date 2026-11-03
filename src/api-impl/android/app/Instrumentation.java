@@ -158,7 +158,7 @@ public class Instrumentation {
 		//prePerformCreate(activity);
 		runOnMainSync(new Runnable() {
 			public void run() {
-				activity.onCreate(savedState);
+				activity.atlPerformCreate(savedState);
 			}
 		});
 		//postPerformCreate(activity);

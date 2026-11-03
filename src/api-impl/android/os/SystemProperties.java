@@ -6,9 +6,9 @@ public class SystemProperties {
 	private static final Properties properties = new Properties();
 
 	static {
-		// the API level ATL implements, raised by hand together with bionic_translation's native
-		// __system_property_get (libc.c)
-		properties.put("ro.build.version.sdk", "21");
+		// the API level ATL implements; bionic_translation's native __system_property_get (libc.c)
+		// still says 21 (ATL-44)
+		properties.put("ro.build.version.sdk", "29");
 		properties.put("ro.build.version.codename", "REL");
 		properties.put("ro.product.brand", "google");
 		properties.put("ro.build.tags", "release-keys");

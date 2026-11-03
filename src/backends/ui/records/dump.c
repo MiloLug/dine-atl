@@ -6,6 +6,36 @@
 
 #include "records.h"
 
+// textruns: <start>-<end> and what each run sets
+static void dump_runs(FILE *out, const struct ui_view *view)
+{
+	fputs("textruns:", out);
+	for (size_t i = 0; i < view->n_runs; i++) {
+		const struct ui_text_run *run = &view->runs[i];
+		fprintf(out, " %d-%d", run->start, run->end);
+		if (run->set & UI_RUN_STYLE)
+			fprintf(out, "%s%s", run->style & UI_TEXT_BOLD ? " bold" : "", run->style & UI_TEXT_ITALIC ? " italic" : "");
+		if (run->set & UI_RUN_COLOR)
+			fprintf(out, " #%08x", run->color);
+		if (run->set & UI_RUN_BACKGROUND)
+			fprintf(out, " on #%08x", run->background);
+		if (run->set & UI_RUN_SIZE)
+			fprintf(out, " %gpx", run->size);
+		if (run->set & UI_RUN_FAMILY)
+			fprintf(out, " family %d", run->family);
+		if (run->set & UI_RUN_UNDERLINE)
+			fputs(" underline", out);
+		if (run->set & UI_RUN_STRIKE)
+			fputs(" strike", out);
+		if (run->set & UI_RUN_BASELINE)
+			fprintf(out, " shift %g", run->baseline_shift);
+		if (run->set & UI_RUN_SCALE_X)
+			fprintf(out, " scale %g", run->scale_x);
+		fputc(';', out);
+	}
+	fputc('\n', out);
+}
+
 static void dump_view(FILE *out, struct ui_view *view, int depth)
 {
 	fprintf(out, "viewtree: %*s%s %d,%d %dx%d", depth * 2, "", view->class_name,
@@ -13,6 +43,8 @@ static void dump_view(FILE *out, struct ui_view *view, int depth)
 	if (view->kind == NODE_TEXT)
 		fprintf(out, " \"%s\"", view->text);
 	fputc('\n', out);
+	if (view->n_runs) // a line of its own: the viewtree goldens keep only viewtree lines
+		dump_runs(out, view);
 	for (size_t i = 0; i < view->n_children; i++)
 		dump_view(out, view->children[i], depth + 1);
 }
@@ -68,7 +100,9 @@ void records_test_frame_drawn(const struct timespec *start, const struct timespe
 	max = e - s > max ? e - s : max;
 	last = e;
 	if (e - first >= 5000) {
-		printf("atl frames %d in %.0f ms, draw avg %.2f max %.2f ms\n", frames, e - first, total / frames, max);
+		unsigned long hits, misses;
+		records_measure_stats(&hits, &misses);
+		printf("atl frames %d in %.0f ms, draw avg %.2f max %.2f ms, text measures %lu cached %lu\n", frames, e - first, total / frames, max, hits + misses, hits);
 		fflush(stdout);
 		frames = 0;
 	}

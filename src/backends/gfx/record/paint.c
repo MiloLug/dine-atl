@@ -15,7 +15,7 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->color = 0xFF000000;
 	paint->stroke_width = 1;
 	paint->text_size = 12;
-	paint->filter_mode = -1;
+	paint->filter = GFX_NO_COLOR_FILTER;
 	return paint;
 }
 
@@ -126,17 +126,16 @@ void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family
 	paint->font_style = style;
 }
 
-void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb)
+void gfx_paint_set_color_filter(struct gfx_paint *paint, const struct gfx_color_filter *filter)
 {
-	paint->filter_mode = mode;
-	paint->filter_color = argb;
+	paint->filter = filter ? *filter : GFX_NO_COLOR_FILTER;
 }
 
 struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)
 {
 	struct gfx_drawable *drawable = calloc(1, sizeof(*drawable));
 	drawable->drawable_ref = drawable_ref;
-	drawable->filter_mode = -1;
+	drawable->filter = GFX_NO_COLOR_FILTER;
 	drawable->refs = 1;
 	return drawable;
 }
@@ -183,10 +182,9 @@ struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struc
 	return drawable;
 }
 
-void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb)
+void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *filter)
 {
-	drawable->filter_mode = mode;
-	drawable->filter_color = argb;
+	drawable->filter = filter ? *filter : GFX_NO_COLOR_FILTER;
 }
 
 // a container's draw() records its child; gfx_canvas_draw_drawable reaches it otherwise

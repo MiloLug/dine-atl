@@ -55,8 +55,20 @@ enum gfx_font_family {
 void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family, int style);
 /* src/shared/shader.h's, NULL for none; the paint and what copies it hold a ref */
 void gfx_paint_set_shader(struct gfx_paint *paint, struct gfx_shader *shader);
-/* PorterDuff mode, or -1 for none */
-void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb);
+/* A ColorFilter: a PorterDuff mode (nativeInt) with its color, or a ColorMatrix's 4x5 array over
+ * unpremultiplied 0-255 channels (R' = m[0] R + m[1] G + m[2] B + m[3] A + m[4], then G', B', A'). */
+struct gfx_color_filter {
+	int mode; // -1: none, or the matrix
+	uint32_t color;
+	bool has_matrix;
+	float m[20];
+};
+#define GFX_NO_COLOR_FILTER ((struct gfx_color_filter){.mode = -1})
+static inline bool gfx_color_filter_is_set(const struct gfx_color_filter *filter)
+{
+	return filter->has_matrix || filter->mode != -1;
+}
+void gfx_paint_set_color_filter(struct gfx_paint *paint, const struct gfx_color_filter *filter);
 /* For a Drawable whose class overrides draw(); the backend draws it by calling draw(). */
 struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref);
 /* Drawables share one through these; the last unref frees it. Any thread. */
@@ -80,20 +92,28 @@ enum gfx_bitmap_config {
 };
 
 /* A Bitmap's pixels. Java's Bitmap holds a ref and display lists their own; refs drop on any
- * thread. gsk: a GdkTexture. */
+ * thread. gsk: a holder of a GdkTexture (gsk/bitmap.h). */
 struct gfx_bitmap *gfx_bitmap_new(int width, int height, enum gfx_bitmap_config config); // transparent
 struct gfx_bitmap *gfx_bitmap_decode(const void *data, size_t size); // NULL: an image it can't read
 int gfx_bitmap_get_width(const struct gfx_bitmap *bitmap);
 int gfx_bitmap_get_height(const struct gfx_bitmap *bitmap);
 void gfx_bitmap_ref(struct gfx_bitmap *bitmap);
 void gfx_bitmap_unref(struct gfx_bitmap *bitmap);
+/* A bitmap's pixels change in place, on the thread that draws: lists and drawables that hold it
+ * draw the new ones from their next replay. Pixels in and out are Color's ARGB ints, not
+ * premultiplied, rows stride ints apart (negative: bottom up). */
+void gfx_bitmap_render(struct gfx_bitmap *bitmap, struct gfx_canvas *canvas); // draws the recording over the pixels; frees it
+void gfx_bitmap_erase(struct gfx_bitmap *bitmap, uint32_t argb);
+void gfx_bitmap_read(const struct gfx_bitmap *bitmap, int x, int y, int width, int height, uint32_t *argb, int stride);
+void gfx_bitmap_write(struct gfx_bitmap *bitmap, int x, int y, int width, int height, const uint32_t *argb, int stride);
+void *gfx_bitmap_encode_png(const struct gfx_bitmap *bitmap, size_t *size); // malloc'd, NULL: failed
 /* BitmapDrawable's: the bitmap scaled to the size it's drawn at */
 struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap);
 struct gfx_ninepatch; // src/shared/ninepatch.h
 /* NinePatchDrawable's: the bitmap stretched by the nine-patch's divs; takes ninepatch. */
 struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *ninepatch);
-/* A bitmap or nine-patch drawable's PorterDuff color filter (mode -1: none): its color filter or tint. */
-void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb);
+/* A bitmap or nine-patch drawable's color filter: its color filter or tint. */
+void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *filter);
 
 /* What android.atl.ATLCanvas draws into, on the thread that draws (a view's draw: the Android main
  * thread). gsk: a GtkSnapshot; record and coregraphics: a display list whose ops keep their paint

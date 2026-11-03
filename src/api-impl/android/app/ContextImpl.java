@@ -149,10 +149,9 @@ public final class ContextImpl extends Context {
 	@Override
 	public Resources.Theme getTheme() {
 		if (mTheme == null) {
+			mThemeResource = Resources.selectDefaultTheme(mThemeResource, getApplicationInfo().targetSdkVersion);
 			mTheme = resources.newTheme();
-			if (mThemeResource != 0) {
-				mTheme.applyStyle(mThemeResource, true);
-			}
+			mTheme.applyStyle(mThemeResource, true);
 		}
 		return mTheme;
 	}

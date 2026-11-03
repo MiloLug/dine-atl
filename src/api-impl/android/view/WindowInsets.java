@@ -153,6 +153,29 @@ public class WindowInsets {
 		return this;
 	}
 
+	public WindowInsets inset(Insets insets) {
+		return inset(insets.left, insets.top, insets.right, insets.bottom);
+	}
+
+	// every type's insets shrink by the amounts, floored at 0, as on AOSP 10
+	public WindowInsets inset(int left, int top, int right, int bottom) {
+		if (left < 0 || top < 0 || right < 0 || bottom < 0)
+			throw new IllegalArgumentException("insets must be non-negative");
+		return new WindowInsets(inset_map(typeInsets, left, top, right, bottom), inset_map(maxInsets, left, top, right, bottom));
+	}
+
+	private static Insets[] inset_map(Insets[] map, int left, int top, int right, int bottom) {
+		if (map == null)
+			return null;
+		Insets[] result = map.clone();
+		for (int i = 0; i < result.length; i++) {
+			Insets insets = result[i];
+			if (insets != null)
+				result[i] = Insets.of(Math.max(0, insets.left - left), Math.max(0, insets.top - top), Math.max(0, insets.right - right), Math.max(0, insets.bottom - bottom));
+		}
+		return result;
+	}
+
 	// a Builder's maps stay consumed (null) until something is set, as on AOSP 10
 	public static final class Builder {
 		private Insets[] typeInsets;

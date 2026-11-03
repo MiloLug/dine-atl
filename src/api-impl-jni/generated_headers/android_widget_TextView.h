@@ -225,6 +225,24 @@ extern "C" {
 #define android_widget_TextView_LINES 1L
 #undef android_widget_TextView_PIXELS
 #define android_widget_TextView_PIXELS 2L
+#undef android_widget_TextView_RUN_COLOR
+#define android_widget_TextView_RUN_COLOR 1L
+#undef android_widget_TextView_RUN_BACKGROUND
+#define android_widget_TextView_RUN_BACKGROUND 2L
+#undef android_widget_TextView_RUN_SIZE
+#define android_widget_TextView_RUN_SIZE 4L
+#undef android_widget_TextView_RUN_STYLE
+#define android_widget_TextView_RUN_STYLE 8L
+#undef android_widget_TextView_RUN_FAMILY
+#define android_widget_TextView_RUN_FAMILY 16L
+#undef android_widget_TextView_RUN_UNDERLINE
+#define android_widget_TextView_RUN_UNDERLINE 32L
+#undef android_widget_TextView_RUN_STRIKE
+#define android_widget_TextView_RUN_STRIKE 64L
+#undef android_widget_TextView_RUN_BASELINE
+#define android_widget_TextView_RUN_BASELINE 128L
+#undef android_widget_TextView_RUN_SCALE_X
+#define android_widget_TextView_RUN_SCALE_X 256L
 /*
  * Class:     android_widget_TextView
  * Method:    native_constructor
@@ -235,19 +253,11 @@ JNIEXPORT jlong JNICALL Java_android_widget_TextView_native_1constructor
 
 /*
  * Class:     android_widget_TextView
- * Method:    native_set_markup
- * Signature: (I)V
- */
-JNIEXPORT void JNICALL Java_android_widget_TextView_native_1set_1markup
-  (JNIEnv *, jobject, jint);
-
-/*
- * Class:     android_widget_TextView
  * Method:    native_setText
- * Signature: (Ljava/lang/String;)V
+ * Signature: (Ljava/lang/String;[I[F)V
  */
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setText
-  (JNIEnv *, jobject, jstring);
+  (JNIEnv *, jobject, jstring, jintArray, jfloatArray);
 
 /*
  * Class:     android_widget_TextView

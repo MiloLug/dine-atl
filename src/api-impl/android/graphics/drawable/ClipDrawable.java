@@ -83,7 +83,7 @@ public class ClipDrawable extends DrawableWrapper {
 		setDrawable(drawable);
 	}
 
-	/*@Override
+	@Override
 	public void inflate(@NonNull Resources r, @NonNull XmlPullParser parser,
 			    @NonNull AttributeSet attrs, @Nullable Theme theme)
 	    throws XmlPullParserException, IOException {
@@ -95,7 +95,7 @@ public class ClipDrawable extends DrawableWrapper {
 		updateStateFromTypedArray(a);
 		verifyRequiredAttributes(a);
 		a.recycle();
-	}*/
+	}
 
 	/*@Override
 	public void applyTheme(@NonNull Theme t) {
@@ -145,12 +145,12 @@ public class ClipDrawable extends DrawableWrapper {
 		    R.styleable.ClipDrawable_gravity, state.mGravity);
 	}
 
-	/*@Override
+	@Override
 	protected boolean onLevelChange(int level) {
 		super.onLevelChange(level);
 		invalidateSelf();
 		return true;
-	}*/
+	}
 
 	/*@Override
 	public int getOpacity() {
@@ -192,8 +192,8 @@ public class ClipDrawable extends DrawableWrapper {
 			h -= (h - ih) * (MAX_LEVEL - level) / MAX_LEVEL;
 		}
 
-		//final int layoutDirection = getLayoutDirection();
-		//Gravity.apply(mState.mGravity, w, h, bounds, r, layoutDirection);
+		final int layoutDirection = getLayoutDirection();
+		Gravity.apply(mState.mGravity, w, h, bounds, r, layoutDirection);
 
 		if (w > 0 && h > 0) {
 			canvas.save();

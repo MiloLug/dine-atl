@@ -102,9 +102,19 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1text_1align(JNIE
 	gfx_paint_set_text_align(_PTR(paint_ptr), align);
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color_1filter(JNIEnv *env, jclass clazz, jlong paint_ptr, jint mode, jint color)
+// matrix: a ColorMatrix's 20 floats, or NULL
+struct gfx_color_filter atl_color_filter(JNIEnv *env, jint mode, jint color, jfloatArray matrix)
 {
-	gfx_paint_set_color_filter(_PTR(paint_ptr), mode, color);
+	struct gfx_color_filter filter = {.mode = matrix ? -1 : mode, .color = color, .has_matrix = matrix != NULL};
+	if (matrix)
+		(*env)->GetFloatArrayRegion(env, matrix, 0, 20, filter.m);
+	return filter;
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color_1filter(JNIEnv *env, jclass clazz, jlong paint_ptr, jint mode, jint color, jfloatArray matrix)
+{
+	struct gfx_color_filter filter = atl_color_filter(env, mode, color, matrix);
+	gfx_paint_set_color_filter(_PTR(paint_ptr), &filter);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1typeface(JNIEnv *env, jclass clazz, jlong paint_ptr, jint family, jint style)

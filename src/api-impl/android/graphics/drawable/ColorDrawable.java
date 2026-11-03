@@ -6,8 +6,13 @@
 package android.graphics.drawable;
 
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.util.AttributeSet;
+import java.io.IOException;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
 
 public class ColorDrawable extends Drawable {
 
@@ -30,6 +35,14 @@ public class ColorDrawable extends Drawable {
 
 	public int getColor() {
 		return state.color;
+	}
+
+	/* Copyright (C) 2008 The Android Open Source Project */
+	public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Resources.Theme theme)
+	    throws XmlPullParserException, IOException {
+		final TypedArray a = obtainAttributes(r, theme, attrs, com.android.internal.R.styleable.ColorDrawable);
+		state.color = a.getColor(com.android.internal.R.styleable.ColorDrawable_color, state.color);
+		a.recycle();
 	}
 
 	/* Copyright (C) 2008 The Android Open Source Project */

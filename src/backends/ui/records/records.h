@@ -41,7 +41,8 @@ struct ui_view {
 	float text_size; // px
 	int min_lines, max_lines; // ui_text_set_lines'
 	int text_style;  // UI_TEXT_BOLD, UI_TEXT_ITALIC
-	bool markup;
+	struct ui_text_run *runs; // ui_text_set_styled's, owned
+	size_t n_runs;
 	int alignment;   // UI_TEXT_ALIGN_*
 	bool is_button;  // ui_button_new: button, pressed and checked mean something
 	enum ui_button button;
@@ -83,6 +84,7 @@ struct ui_window {
 	struct ui_observation *observations;
 	bool layout_pending;
 	bool draw_pending;
+	bool frames_moved; // a view laid out or moved since the frames last went out (a list's scroll or fill)
 	int passes_in_a_row;
 	bool ready;
 	struct ui_frame frame;
@@ -126,6 +128,8 @@ void records_edit_report(struct ui_view *view, const struct atl_edit_report *rep
 void records_observations_orphan(struct ui_window *window);
 /* The text's size in px within max_width (-1: unbounded), without padding. */
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
+/* How often ui_view_measure found a text's size cached, and computed it. */
+void records_measure_stats(unsigned long *hits, unsigned long *misses);
 /* A layout pass ended; the shown root's frames are current. */
 void records_layout_done(struct ui_window *window);
 /* A view was invalidated: the backend runs records_draw_pass once, at once (headless) or at the

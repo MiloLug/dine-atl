@@ -15,6 +15,8 @@ GtkLabel *text_get_label(GtkWidget *handle)
 	return g_object_get_data(G_OBJECT(handle), "atl-label");
 }
 
+static void apply_attributes(GtkLabel *label);
+
 GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *text)
 {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -27,10 +29,7 @@ GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *t
 	g_object_set_data(G_OBJECT(handle ?: box), "atl-label", label);
 	g_object_set_data_full(G_OBJECT(handle ?: box), "atl-class-name", g_strdup(class_name), g_free);
 
-	PangoAttrList *pango_attrs = pango_attr_list_new();
-	pango_attr_list_insert(pango_attrs, pango_attr_font_features_new("tnum"));
-	gtk_label_set_attributes(GTK_LABEL(label), pango_attrs);
-	pango_attr_list_unref(pango_attrs);
+	apply_attributes(GTK_LABEL(label));
 	return box;
 }
 
@@ -43,11 +42,78 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 	return (struct ui_view *)box;
 }
 
-void ui_text_set_text(struct ui_view *view, const char *text)
+static void apply_min_lines(GtkLabel *label);
+
+// a UTF-16 index of the label's text as a byte index
+static int byte_index(const char *text, int utf16)
+{
+	const char *at = text;
+	for (int units = 0; *at && units < utf16; at = g_utf8_next_char(at))
+		units += g_utf8_get_char(at) > 0xFFFF ? 2 : 1;
+	return at - text;
+}
+
+static void add(PangoAttrList *attrs, PangoAttribute *attr, int start, int end)
+{
+	attr->start_index = start;
+	attr->end_index = end;
+	pango_attr_list_insert(attrs, attr);
+}
+
+// tabular digits and the size ui_text_set_size set over the whole text, then the runs (scale x isn't drawn)
+static void apply_attributes(GtkLabel *label)
+{
+	PangoAttrList *attrs = pango_attr_list_new();
+	pango_attr_list_insert(attrs, pango_attr_font_features_new("tnum"));
+	float *size = g_object_get_data(G_OBJECT(label), "atl-text-size");
+	if (size)
+		pango_attr_list_insert(attrs, pango_attr_size_new(*size * PANGO_SCALE));
+	GArray *runs = g_object_get_data(G_OBJECT(label), "atl-text-runs");
+	const char *text = gtk_label_get_text(label);
+	for (guint i = 0; runs && i < runs->len; i++) {
+		const struct ui_text_run *run = &g_array_index(runs, struct ui_text_run, i);
+		int start = byte_index(text, run->start), end = byte_index(text, run->end);
+		if (run->set & UI_RUN_COLOR) {
+			add(attrs, pango_attr_foreground_new(((run->color >> 16) & 0xff) * 257, ((run->color >> 8) & 0xff) * 257, (run->color & 0xff) * 257), start, end);
+			add(attrs, pango_attr_foreground_alpha_new((run->color >> 24) * 257), start, end);
+		}
+		if (run->set & UI_RUN_BACKGROUND) {
+			add(attrs, pango_attr_background_new(((run->background >> 16) & 0xff) * 257, ((run->background >> 8) & 0xff) * 257, (run->background & 0xff) * 257), start, end);
+			add(attrs, pango_attr_background_alpha_new((run->background >> 24) * 257), start, end);
+		}
+		if (run->set & UI_RUN_SIZE)
+			add(attrs, pango_attr_size_new(run->size * PANGO_SCALE), start, end);
+		if (run->set & UI_RUN_STYLE) {
+			add(attrs, pango_attr_weight_new(run->style & UI_TEXT_BOLD ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL), start, end);
+			add(attrs, pango_attr_style_new(run->style & UI_TEXT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL), start, end);
+		}
+		if (run->set & UI_RUN_FAMILY)
+			add(attrs, pango_attr_family_new(run->family == 1 ? "serif" : run->family == 2 ? "monospace" : "sans"), start, end);
+		if (run->set & UI_RUN_UNDERLINE)
+			add(attrs, pango_attr_underline_new(PANGO_UNDERLINE_SINGLE), start, end);
+		if (run->set & UI_RUN_STRIKE)
+			add(attrs, pango_attr_strikethrough_new(TRUE), start, end);
+		if (run->set & UI_RUN_BASELINE)
+			add(attrs, pango_attr_rise_new(-run->baseline_shift * PANGO_SCALE), start, end);
+	}
+	gtk_label_set_attributes(label, attrs);
+	pango_attr_list_unref(attrs);
+	apply_min_lines(label);
+}
+
+void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_text_run *runs, size_t n_runs)
 {
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
-	if (label)
-		atl_safe_gtk_label_set_text(label, text);
+	if (!label)
+		return;
+	atl_safe_gtk_label_set_text(label, text);
+	GArray *copy = NULL;
+	if (n_runs) {
+		copy = g_array_sized_new(FALSE, FALSE, sizeof(*runs), n_runs);
+		g_array_append_vals(copy, runs, n_runs);
+	}
+	g_object_set_data_full(G_OBJECT(label), "atl-text-runs", copy, copy ? (GDestroyNotify)g_array_unref : NULL);
+	apply_attributes(label);
 }
 
 /* we kinda need per-widget css */
@@ -74,9 +140,14 @@ void ui_text_set_color(struct ui_view *view, uint32_t color)
 }
 #pragma GCC diagnostic pop
 
-static int line_height(GtkLabel *label)
+// one layout of n lines: rounded once, as GtkLabel rounds its text's
+static int lines_height(GtkLabel *label, int n)
 {
-	PangoLayout *layout = gtk_widget_create_pango_layout(GTK_WIDGET(label), "X");
+	GString *text = g_string_new("X");
+	for (int i = 1; i < n; i++)
+		g_string_append(text, "\nX");
+	PangoLayout *layout = gtk_widget_create_pango_layout(GTK_WIDGET(label), text->str);
+	g_string_free(text, TRUE);
 	pango_layout_set_attributes(layout, gtk_label_get_attributes(label));
 	int height;
 	pango_layout_get_pixel_size(layout, NULL, &height);
@@ -88,7 +159,7 @@ static int line_height(GtkLabel *label)
 static void apply_min_lines(GtkLabel *label)
 {
 	int min = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-min-lines"));
-	gtk_widget_set_size_request(GTK_WIDGET(label), -1, min > 0 ? min * line_height(label) : -1);
+	gtk_widget_set_size_request(GTK_WIDGET(label), -1, min > 0 ? lines_height(label, min) : -1);
 }
 
 /* GtkLabel's own line limit counts per paragraph: the measured height drops the lines past max,
@@ -147,20 +218,7 @@ void ui_text_set_size(struct ui_view *view, float size)
 	if (!label)
 		return;
 	g_object_set_data_full(G_OBJECT(label), "atl-text-size", g_memdup2(&size, sizeof(size)), g_free);
-	PangoAttrList *attrs;
-
-	PangoAttrList *old_attrs = gtk_label_get_attributes(label);
-	if (old_attrs)
-		attrs = pango_attr_list_copy(old_attrs);
-	else
-		attrs = pango_attr_list_new();
-
-	PangoAttribute *size_attr = pango_attr_size_new(size * PANGO_SCALE);
-	pango_attr_list_change(attrs, size_attr);
-	gtk_label_set_attributes(label, attrs);
-
-	pango_attr_list_unref(attrs);
-	apply_min_lines(label);
+	apply_attributes(label);
 }
 
 void ui_text_set_style(struct ui_view *view, int style)
@@ -175,13 +233,6 @@ void ui_text_set_style(struct ui_view *view, int style)
 	GtkLabel *label = text_get_label(widget);
 	if (label)
 		apply_min_lines(label);
-}
-
-void ui_text_set_markup(struct ui_view *view, bool markup)
-{
-	GtkLabel *label = text_get_label(GTK_WIDGET(view));
-	if (label)
-		gtk_label_set_use_markup(label, markup);
 }
 
 void ui_text_set_alignment(struct ui_view *view, int alignment)

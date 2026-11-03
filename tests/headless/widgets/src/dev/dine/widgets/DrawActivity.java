@@ -6,6 +6,8 @@ import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -45,6 +47,7 @@ public class DrawActivity extends Activity {
 		private final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
 		private final Drawable frame = getResources().getDrawable(R.drawable.frame);
 		private final BitmapDrawable filtered = new BitmapDrawable(getResources(), photo);
+		private final Drawable icon = getResources().getDrawable(R.drawable.adaptive); // masked through a BitmapShader
 		private int draws;
 
 		DrawView(Context context) {
@@ -155,6 +158,13 @@ public class DrawActivity extends Activity {
 			filtered.setColorFilter(0xff0000ff, PorterDuff.Mode.SRC_ATOP);
 			filtered.setBounds(480, 330, 496, 346);
 			filtered.draw(canvas);
+			icon.setBounds(500, 330, 532, 362);
+			icon.draw(canvas);
+			ColorMatrix grey = new ColorMatrix();
+			grey.setSaturation(0);
+			Paint greyscale = new Paint();
+			greyscale.setColorFilter(new ColorMatrixColorFilter(grey));
+			canvas.drawBitmap(photo, null, new Rect(600, 330, 632, 362), greyscale);
 
 			draws++;
 			Log.i(TAG, "widgets draw layout lines " + layout.getLineCount());
@@ -213,9 +223,19 @@ public class DrawActivity extends Activity {
 		finish();
 	}
 
+	// a Canvas(Bitmap)'s pixels, read back
+	private void logBitmapPixel() {
+		Bitmap bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888);
+		Paint red = new Paint();
+		red.setColor(0xffff0000);
+		new Canvas(bitmap).drawRect(1, 1, 3, 3, red);
+		Log.i(TAG, "widgets bitmap pixel " + Integer.toHexString(bitmap.getPixel(1, 1)) + " " + Integer.toHexString(bitmap.getPixel(0, 0)));
+	}
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		logBitmapPixel();
 		root = new FrameLayout(this);
 		root.addView(new DrawView(this));
 		View scrolled = new View(this);

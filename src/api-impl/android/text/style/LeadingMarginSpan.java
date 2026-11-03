@@ -2,7 +2,7 @@ package android.text.style;
 
 import android.text.ParcelableSpan;
 
-public interface LeadingMarginSpan {
+public interface LeadingMarginSpan extends ParagraphStyle {
 
 	public static class Standard implements LeadingMarginSpan, ParcelableSpan {
 

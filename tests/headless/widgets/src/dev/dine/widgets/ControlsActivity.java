@@ -3,7 +3,7 @@ package dev.dine.widgets;
 import android.app.Activity;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
-import android.text.SpannableString;
+import android.text.Html;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
@@ -86,9 +86,9 @@ public class ControlsActivity extends Activity {
 		centered.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
 		column.addView(centered, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-		// ATL's Html.fromHtml keeps the tags: markup text, upper-cased around them
+		// Html's spans as the toolkit's text runs, upper-cased with them
 		TextView marked = new TextView(this);
-		marked.setText(new SpannableString("<b>bold</b> &amp; caps"));
+		marked.setText(Html.fromHtml("<b>bold</b> &amp; caps"));
 		marked.setAllCaps(true);
 		column.addView(marked);
 

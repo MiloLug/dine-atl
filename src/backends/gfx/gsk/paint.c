@@ -148,13 +148,26 @@ void gfx_paint_set_typeface(struct gfx_paint *gfx_paint, enum gfx_font_family fa
 	pango_font_description_set_style(font, style & GFX_FONT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
-/* A PorterDuff color filter as a color matrix over unpremultiplied colors (out = in M + offset),
- * for the modes one can express. The others draw as SRC_IN. */
-void gfx_paint_set_color_filter(struct gfx_paint *gfx_paint, int mode, uint32_t color)
+/* A color filter as a color matrix over unpremultiplied colors (out = in M + offset): a ColorMatrix
+ * as it is, a PorterDuff filter for the modes one can express; the others draw as SRC_IN. */
+void gfx_paint_set_color_filter(struct gfx_paint *gfx_paint, const struct gfx_color_filter *filter)
 {
 	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
-	float a = ((color >> 24) & 0xFF) / 255.f, r = ((color >> 16) & 0xFF) / 255.f, g = ((color >> 8) & 0xFF) / 255.f, b = (color & 0xFF) / 255.f;
 	float m[4][4] = {0}, offset[4] = {0};
+	if (filter && filter->has_matrix) {
+		paint->use_color_filter = true;
+		for (int out = 0; out < 4; out++) {
+			for (int in = 0; in < 4; in++)
+				m[in][out] = filter->m[out * 5 + in];
+			offset[out] = filter->m[out * 5 + 4] / 255.f;
+		}
+		graphene_matrix_init_from_float(&paint->color_matrix, *m);
+		graphene_vec4_init(&paint->color_offset, offset[0], offset[1], offset[2], offset[3]);
+		return;
+	}
+	int mode = filter ? filter->mode : -1;
+	uint32_t color = filter ? filter->color : 0;
+	float a = ((color >> 24) & 0xFF) / 255.f, r = ((color >> 16) & 0xFF) / 255.f, g = ((color >> 8) & 0xFF) / 255.f, b = (color & 0xFF) / 255.f;
 	paint->use_color_filter = mode != -1 && mode != 2; // 2: DST keeps the colors
 	switch (mode) {
 		case 0: // CLEAR

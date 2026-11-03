@@ -56,6 +56,18 @@ public final class BlendModeColorFilter extends ColorFilter {
 		return mMode;
 	}
 
+	/** @hide */
+	@Override
+	public int atlMode() {
+		return mMode.getXfermode().porterDuffMode;
+	}
+
+	/** @hide */
+	@Override
+	public int atlColor() {
+		return mColor;
+	}
+
 	//@Override
 	long createNativeInstance() {
 		return native_CreateBlendModeFilter(mColor, mMode.getXfermode().porterDuffMode);

@@ -50,10 +50,10 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref
 /*
  * Class:     android_graphics_drawable_Drawable
  * Method:    native_setColorFilter
- * Signature: (JII)V
+ * Signature: (JII[F)V
  */
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter
-  (JNIEnv *, jclass, jlong, jint, jint);
+  (JNIEnv *, jclass, jlong, jint, jint, jfloatArray);
 
 #ifdef __cplusplus
 }

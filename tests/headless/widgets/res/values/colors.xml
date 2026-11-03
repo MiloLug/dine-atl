@@ -2,4 +2,6 @@
 <resources>
 	<color name="pressed">#ff00c000</color>
 	<color name="idle">#ff808080</color>
+	<color name="icon_back">#ff3060c0</color>
+	<color name="icon_fore">#ffffc000</color>
 </resources>

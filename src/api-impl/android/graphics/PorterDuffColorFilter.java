@@ -124,4 +124,16 @@ public class PorterDuffColorFilter extends ColorFilter {
 	}
 
 	private static native long native_CreatePorterDuffFilter(int srcColor, int porterDuffMode);
+
+	/** @hide */
+	@Override
+	public int atlMode() {
+		return mMode.nativeInt;
+	}
+
+	/** @hide */
+	@Override
+	public int atlColor() {
+		return mColor;
+	}
 }

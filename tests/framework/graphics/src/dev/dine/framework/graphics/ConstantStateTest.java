@@ -37,6 +37,7 @@ public class ConstantStateTest extends TestCase {
 		copy(new AnimatedVectorDrawable());
 		copy(new ColorStateListDrawable());
 		copy(new PictureDrawable(new Picture()));
-		copy(new ScaleDrawable());
+		ScaleDrawable scale = (ScaleDrawable)copy(new ScaleDrawable(new ColorDrawable(Color.RED), Gravity.LEFT, 0.5f, -1));
+		assertEquals(Color.RED, ((ColorDrawable)scale.getDrawable()).getColor());
 	}
 }

@@ -4,6 +4,7 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Region;
+import android.graphics.RegionIterator;
 import junit.framework.TestCase;
 
 public class RegionTest extends TestCase {
@@ -270,5 +271,18 @@ public class RegionTest extends TestCase {
 		assertEquals("Region([1,1,3,2] [4,1,5,2] [1,2,3,3])", region.toString());
 		region.scale(0);
 		assertTrue(region.isEmpty());
+	}
+
+	public void testIteratorWalksTheRects() {
+		Region region = new Region(0, 0, 10, 10);
+		region.op(20, 0, 30, 10, Region.Op.UNION);
+		RegionIterator iterator = new RegionIterator(region);
+		region.setEmpty(); // the iterator keeps what it saw
+		Rect r = new Rect();
+		assertTrue(iterator.next(r));
+		assertEquals(new Rect(0, 0, 10, 10), r);
+		assertTrue(iterator.next(r));
+		assertEquals(new Rect(20, 0, 30, 10), r);
+		assertFalse(iterator.next(r));
 	}
 }

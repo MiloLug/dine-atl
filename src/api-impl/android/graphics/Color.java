@@ -87,6 +87,20 @@ public class Color {
 		return color & 0xFF;
 	}
 
+	/** @hide an HTML color (named or numeric) as RGB, -1 when it isn't one */
+	public static int getHtmlColor(String color) {
+		Integer i = sColorNameMap.get(color.toLowerCase(Locale.ROOT));
+		if (i != null) {
+			return i;
+		} else {
+			try {
+				return com.android.internal.util.XmlUtils.convertValueToInt(color, -1);
+			} catch (NumberFormatException nfe) {
+				return -1;
+			}
+		}
+	}
+
 	/**
 	 * Parse the color string, and return the corresponding color-int.
 	 * If the string cannot be parsed, throws an IllegalArgumentException

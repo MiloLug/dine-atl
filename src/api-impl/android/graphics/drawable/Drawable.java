@@ -1,6 +1,5 @@
 package android.graphics.drawable;
 
-import android.atl.ATLCanvas;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.Resources.Theme;
@@ -105,14 +104,15 @@ public class Drawable {
 		return mBounds;
 	}
 
+	// a view's canvas or a Canvas(Bitmap)
 	public void draw(Canvas canvas) {
-		if (canvas instanceof ATLCanvas) {
-			if (mBounds.left != 0 || mBounds.top != 0)
-				canvas.translate(mBounds.left, mBounds.top);
-			native_draw(paintable, ((ATLCanvas)canvas).handle, mBounds.width(), mBounds.height());
-			if (mBounds.left != 0 || mBounds.top != 0)
-				canvas.translate(-mBounds.left, -mBounds.top);
-		}
+		if (canvas.atlHandle() == 0)
+			return;
+		if (mBounds.left != 0 || mBounds.top != 0)
+			canvas.translate(mBounds.left, mBounds.top);
+		native_draw(paintable, canvas.atlHandle(), mBounds.width(), mBounds.height());
+		if (mBounds.left != 0 || mBounds.top != 0)
+			canvas.translate(-mBounds.left, -mBounds.top);
 	}
 
 	public boolean setState(int[] stateSet) {
@@ -173,8 +173,24 @@ public class Drawable {
 
 	public void clearColorFilter() {}
 
-	public final int getLevel() { return 0; }
-	public final boolean setLevel(int level) { return false; }
+	private int mLevel = 0;
+
+	public final int getLevel() {
+		return mLevel;
+	}
+
+	// true: the drawable looks different, as AOSP's
+	public final boolean setLevel(int level) {
+		if (mLevel != level) {
+			mLevel = level;
+			return onLevelChange(level);
+		}
+		return false;
+	}
+
+	protected boolean onLevelChange(int level) {
+		return false;
+	}
 
 	public void setColorFilter(int color, PorterDuff.Mode mode) {
 		setColorFilter(new PorterDuffColorFilter(color, mode));
@@ -271,7 +287,39 @@ public class Drawable {
 				return drawable;
 			}
 			case "transition": {
-				return new Drawable();
+				TransitionDrawable drawable = new TransitionDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "scale": {
+				ScaleDrawable drawable = new ScaleDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "clip": {
+				ClipDrawable drawable = new ClipDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "rotate": {
+				RotateDrawable drawable = new RotateDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "animated-rotate": {
+				AnimatedRotateDrawable drawable = new AnimatedRotateDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "color": {
+				ColorDrawable drawable = new ColorDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
+			}
+			case "animated-selector": {
+				AnimatedStateListDrawable drawable = new AnimatedStateListDrawable();
+				drawable.inflate(resources, parser, attrs, theme);
+				return drawable;
 			}
 			case "ripple": {
 				RippleDrawable drawable = new RippleDrawable();
@@ -351,6 +399,10 @@ public class Drawable {
 
 	public void setAlpha(int alpha) {}
 
+	public int getAlpha() {
+		return 0xFF;
+	}
+
 	public boolean getPadding(Rect padding) {
 		return false;
 	}
@@ -418,5 +470,5 @@ public class Drawable {
 	protected native void native_ref(long paintable);
 	protected native void native_unref(long paintable);
 	// mode -1: none
-	static native void native_setColorFilter(long paintable, int mode, int color);
+	static native void native_setColorFilter(long paintable, int mode, int color, float[] matrix);
 }

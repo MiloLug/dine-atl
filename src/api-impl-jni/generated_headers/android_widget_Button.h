@@ -225,6 +225,24 @@ extern "C" {
 #define android_widget_Button_LINES 1L
 #undef android_widget_Button_PIXELS
 #define android_widget_Button_PIXELS 2L
+#undef android_widget_Button_RUN_COLOR
+#define android_widget_Button_RUN_COLOR 1L
+#undef android_widget_Button_RUN_BACKGROUND
+#define android_widget_Button_RUN_BACKGROUND 2L
+#undef android_widget_Button_RUN_SIZE
+#define android_widget_Button_RUN_SIZE 4L
+#undef android_widget_Button_RUN_STYLE
+#define android_widget_Button_RUN_STYLE 8L
+#undef android_widget_Button_RUN_FAMILY
+#define android_widget_Button_RUN_FAMILY 16L
+#undef android_widget_Button_RUN_UNDERLINE
+#define android_widget_Button_RUN_UNDERLINE 32L
+#undef android_widget_Button_RUN_STRIKE
+#define android_widget_Button_RUN_STRIKE 64L
+#undef android_widget_Button_RUN_BASELINE
+#define android_widget_Button_RUN_BASELINE 128L
+#undef android_widget_Button_RUN_SCALE_X
+#define android_widget_Button_RUN_SCALE_X 256L
 #undef android_widget_Button_KIND_PUSH
 #define android_widget_Button_KIND_PUSH 0L
 #undef android_widget_Button_KIND_TOGGLE

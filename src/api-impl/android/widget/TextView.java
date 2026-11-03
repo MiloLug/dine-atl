@@ -5,6 +5,14 @@
  */
 package android.widget;
 
+import java.util.ArrayList;
+
+import android.text.style.MetricAffectingSpan;
+
+import android.text.style.CharacterStyle;
+
+import android.text.Spanned;
+
 import android.annotation.UnsupportedAppUsage;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -157,12 +165,98 @@ public class TextView extends View {
 
 	public void setText(CharSequence text, BufferType type) {
 		this.text = text == null ? "" : text;
-		native_setText(shown());
-
-		if (text instanceof android.text.Spanned)
-			native_set_markup(1);
+		sendText();
 		if (!isLayoutRequested())
 			requestLayout();
+	}
+
+	// slots/ui.h's UI_RUN_* bits
+	private static final int RUN_COLOR = 1 << 0;
+	private static final int RUN_BACKGROUND = 1 << 1;
+	private static final int RUN_SIZE = 1 << 2;
+	private static final int RUN_STYLE = 1 << 3;
+	private static final int RUN_FAMILY = 1 << 4;
+	private static final int RUN_UNDERLINE = 1 << 5;
+	private static final int RUN_STRIKE = 1 << 6;
+	private static final int RUN_BASELINE = 1 << 7;
+	private static final int RUN_SCALE_X = 1 << 8;
+
+	private int current_text_color = 0xff000000;
+	private int link_text_color;
+
+	// runs are absolute and set where they differ from the view's size, color and typeface
+	private void resendStyled() {
+		if (text instanceof Spanned)
+			sendText();
+	}
+
+	// the shown text and, for a Spanned, its CharacterStyles as runs (native_setText's layout)
+	private void sendText() {
+		String shown = shown();
+		if (!(text instanceof Spanned) || shown.length() != text.length()) {
+			native_setText(shown, null, null);
+			return;
+		}
+		Spanned spanned = (Spanned)text;
+		TextPaint base = new TextPaint();
+		base.set(paint);
+		base.setColor(current_text_color);
+		base.linkColor = link_text_color != 0 ? link_text_color : 0xff2196f3;
+		base.density = getResources().getDisplayMetrics().density;
+		ArrayList<int[]> ints = new ArrayList<>();
+		ArrayList<float[]> floats = new ArrayList<>();
+		int length = spanned.length();
+		for (int i = 0, next; i < length; i = next) {
+			next = spanned.nextSpanTransition(i, length, CharacterStyle.class);
+			CharacterStyle[] styles = spanned.getSpans(i, next, CharacterStyle.class);
+			if (styles.length == 0)
+				continue;
+			TextPaint tp = new TextPaint();
+			tp.set(base);
+			for (CharacterStyle style : styles) {
+				if (style instanceof MetricAffectingSpan)
+					((MetricAffectingSpan)style).updateMeasureState(tp);
+				style.updateDrawState(tp);
+			}
+			int set = 0;
+			if (tp.getColor() != base.getColor())
+				set |= RUN_COLOR;
+			if (tp.bgColor != 0)
+				set |= RUN_BACKGROUND;
+			if (tp.getTextSize() != base.getTextSize())
+				set |= RUN_SIZE;
+			Typeface face = tp.getTypeface(), base_face = base.getTypeface();
+			int style = (face != null ? face.getStyle() : 0) | (tp.isFakeBoldText() ? Typeface.BOLD : 0) | (tp.getTextSkewX() != 0 ? Typeface.ITALIC : 0);
+			int base_style = (base_face != null ? base_face.getStyle() : 0) | (base.isFakeBoldText() ? Typeface.BOLD : 0) | (base.getTextSkewX() != 0 ? Typeface.ITALIC : 0);
+			if (style != base_style)
+				set |= RUN_STYLE;
+			int family = face != null ? face.atlFamily() : 0;
+			if (family != (base_face != null ? base_face.atlFamily() : 0))
+				set |= RUN_FAMILY;
+			if (tp.isUnderlineText() != base.isUnderlineText())
+				set |= RUN_UNDERLINE;
+			if (tp.isStrikeThruText() != base.isStrikeThruText())
+				set |= RUN_STRIKE;
+			if (tp.baselineShift != 0)
+				set |= RUN_BASELINE;
+			if (tp.getTextScaleX() != base.getTextScaleX())
+				set |= RUN_SCALE_X;
+			if (set == 0)
+				continue;
+			ints.add(new int[] {i, next, set, tp.getColor(), tp.bgColor, style, family});
+			floats.add(new float[] {tp.getTextSize(), tp.baselineShift, tp.getTextScaleX()});
+		}
+		if (ints.isEmpty()) {
+			native_setText(shown, null, null);
+			return;
+		}
+		int[] run_ints = new int[ints.size() * 7];
+		float[] run_floats = new float[floats.size() * 3];
+		for (int i = 0; i < ints.size(); i++) {
+			System.arraycopy(ints.get(i), 0, run_ints, i * 7, 7);
+			System.arraycopy(floats.get(i), 0, run_floats, i * 3, 3);
+		}
+		native_setText(shown, run_ints, run_floats);
 	}
 
 	public void setText(char[] text, int start, int len) {
@@ -177,9 +271,8 @@ public class TextView extends View {
 		setText(SpannableStringBuilder.valueOf(this.text).append(text, start, end));
 	}
 
-	private native final void native_set_markup(int bool);
 
-	public native final void native_setText(String text);
+	private native final void native_setText(String text, int[] run_ints, float[] run_floats);
 
 	public void setTextSize(int unit, float size) {
 		applyTextSize(TypedValue.applyDimension(unit, size, getResources().getDisplayMetrics()));
@@ -191,6 +284,7 @@ public class TextView extends View {
 	private void applyTextSize(float size) {
 		paint.setTextSize(size);
 		setRawTextSize(size);
+		resendStyled();
 	}
 	// px; package-private so that subclasses whose widget isn't a text node override it
 	void setRawTextSize(float size) {
@@ -201,12 +295,16 @@ public class TextView extends View {
 
 	public native final void native_setTextColor(int color);
 	public void setTextColor(int color) {
+		current_text_color = color;
 		native_setTextColor(color);
+		resendStyled();
 	}
 	public void setTextColor(ColorStateList colors) {
 		if (colors != null) {
 			this.colors = colors;
+			current_text_color = colors.getDefaultColor();
 			native_setTextColor(colors.getDefaultColor()); // TODO: do this properly
+			resendStyled();
 		}
 	}
 	/* Copyright (C) 2006 The Android Open Source Project */
@@ -218,6 +316,7 @@ public class TextView extends View {
 	public void setTypeface(Typeface tf) {
 		paint.setTypeface(tf);
 		native_setTextStyle(tf != null ? tf.getStyle() : Typeface.NORMAL);
+		resendStyled();
 	}
 	public void setLineSpacing(float add, float mult) {}
 	public final void setLinksClickable(boolean whether) {}
@@ -453,33 +552,13 @@ public class TextView extends View {
 
 	public void setAllCaps(boolean allCaps) {
 		this.allCaps = allCaps;
-		native_setText(shown());
+		sendText();
 	}
 
-	/* What the toolkit shows: AllCapsTransformationMethod's upper case, which getText doesn't see; the
-	 * tags and entities of markup text (ATL's Html.fromHtml) stay as they are */
+	// AllCapsTransformationMethod's upper case, which getText doesn't see; runs stay when it keeps the length
 	private String shown() {
 		String string = text.toString();
-		if (!allCaps)
-			return string;
-		Locale locale = Locale.getDefault();
-		if (!(text instanceof android.text.Spanned))
-			return string.toUpperCase(locale);
-		StringBuilder shown = new StringBuilder(string.length());
-		int start = 0;
-		while (start < string.length()) {
-			int markup = start;
-			while (markup < string.length() && string.charAt(markup) != '<' && string.charAt(markup) != '&')
-				markup++;
-			shown.append(string.substring(start, markup).toUpperCase(locale));
-			if (markup == string.length())
-				break;
-			int end = string.indexOf(string.charAt(markup) == '<' ? '>' : ';', markup);
-			end = end < 0 ? string.length() : end + 1;
-			shown.append(string, markup, end);
-			start = end;
-		}
-		return shown.toString();
+		return allCaps ? string.toUpperCase(Locale.getDefault()) : string;
 	}
 
 	public void setSaveEnabled(boolean enabled) {}
@@ -548,7 +627,7 @@ public class TextView extends View {
 	}
 
 	public int getCurrentTextColor() {
-		return Color.CYAN;
+		return current_text_color;
 	}
 
 	public void setSingleLine(boolean singleLine) {
@@ -607,7 +686,10 @@ public class TextView extends View {
 
 	public void nullLayouts() {}
 
-	public void setLinkTextColor(int color) {}
+	public void setLinkTextColor(int color) {
+		link_text_color = color;
+		sendText();
+	}
 
 	public void setCustomSelectionActionModeCallback(ActionMode.Callback actionModeCallback) {}
 

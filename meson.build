@@ -232,7 +232,6 @@ if desktop
     'src/api-impl-jni/egl/com_google_android_gles_jni_EGLImpl.c',
     'src/api-impl-jni/gtk_util.c',
     'src/api-impl-jni/graphics/android_atl_ATLCanvas.c',
-    'src/api-impl-jni/graphics/android_graphics_Bitmap.c',
     'src/api-impl-jni/graphics/android_view_RenderNode.c',
     'src/api-impl-jni/graphics/android_graphics_drawable_Drawable.c',
     'src/api-impl-jni/location/android_location_LocationManager.c',
@@ -315,8 +314,8 @@ endif
 
 record_srcs = ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c']
 if gfx_backend == 'record'
-  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c', 'src/backends/gfx/record/text.c'],
-                                 dependencies: [graphene_dep, dependency('libpng')])
+  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c', 'src/backends/gfx/record/raster.c', 'src/backends/gfx/record/text.c'],
+                                 dependencies: [graphene_dep, dependency('libpng'), dependency('cairo')])
 elif gfx_backend == 'coregraphics'
   # record's lists, replayed by uikit's layers
   backend_libs += static_library('atl_gfx_coregraphics', record_srcs + ['src/backends/gfx/coregraphics/bitmap.c',

@@ -1591,7 +1591,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	 * MEASURE_SPEC_EXACTLY, and complex widgets which handles MEASURE_SPEC_AT_MOST by measuring the content
 	 */
 	protected native void native_measure(long widget, int widthMeasureSpec, int heightMeasureSpec);
-	protected native void native_layout(long widget, int l, int t, int r, int b);
+	protected native void native_layout(long widget, int l, int t, int r, int b, boolean relayout);
 	protected native void native_requestLayout(long widget);
 	protected native void native_setBackgroundDrawable(long widget, long paintable);
 	protected native void native_childrenMoved(long widget);
@@ -2299,6 +2299,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			oldWidthMeasureSpec = widthMeasureSpec;
 			oldHeightMeasureSpec = heightMeasureSpec;
 			onMeasure(widthMeasureSpec, heightMeasureSpec);
+			layoutRequired = true;
 		}
 	}
 
@@ -2367,14 +2368,18 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {}
 
 	boolean layouted = false;
+	private boolean layoutRequired; // AOSP's PFLAG_LAYOUT_REQUIRED: measured since its last layout
 
+	// onLayout runs (through the toolkit's upcall) for a new size or a measure, as AOSP's
 	public void layout(int l, int t, int r, int b) {
+		boolean relayout = !layouted || layoutRequired || r - l != right - left || b - t != bottom - top;
 		this.layouted = true;
 		this.left = l;
 		this.top = t;
 		this.right = r;
 		this.bottom = b;
-		native_layout(widget, l, t, r, b);
+		layoutRequired = false;
+		native_layout(widget, l, t, r, b, relayout);
 	}
 
 	// the records ui backends' draw pass (atl_upcall_view_draw); a canvas kept past it draws nothing
@@ -2441,12 +2446,19 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		return bottom;
 	}
 
+	// a move: no layout of the children, and a draw to show it, as AOSP's
 	public void offsetTopAndBottom(int offset) {
+		if (offset == 0)
+			return;
 		layout(left, top + offset, right, bottom + offset);
+		invalidate();
 	}
 
 	public void offsetLeftAndRight(int offset) {
+		if (offset == 0)
+			return;
 		layout(left + offset, top, right + offset, bottom);
+		invalidate();
 	}
 
 	public void setBackgroundDrawable(Drawable backgroundDrawable) {

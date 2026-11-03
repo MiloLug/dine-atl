@@ -5,13 +5,14 @@
 #include "src/shared/test_hooks.h"
 #include "src/slots/gfx.h"
 
+#include "bitmap.h"
 #include "canvas.h"
 
-/* A NinePatchDrawable's paintable: the texture's slices at the size it's drawn at. */
+/* A NinePatchDrawable's paintable: the bitmap's slices at the size it's drawn at. */
 
 struct _NinePatchPaintable {
 	GObject parent_instance;
-	GdkTexture *texture;
+	struct gfx_bitmap *bitmap; // held
 	struct gfx_ninepatch *ninepatch;
 	struct gfx_paint *filter; // the tint's color filter
 };
@@ -21,7 +22,8 @@ static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *s
 {
 	NinePatchPaintable *ninepatch = NINEPATCH_PAINTABLE(paintable);
 	const struct AndroidPaint *filter = (const struct AndroidPaint *)ninepatch->filter;
-	int texture_width = gdk_texture_get_width(ninepatch->texture), texture_height = gdk_texture_get_height(ninepatch->texture);
+	GdkTexture *texture = gsk_bitmap_ref_texture(ninepatch->bitmap);
+	int texture_width = gdk_texture_get_width(texture), texture_height = gdk_texture_get_height(texture);
 	struct ninepatch_slice *slices;
 	size_t n = ninepatch_slices(ninepatch->ninepatch, texture_width, texture_height, width, height, &slices);
 	if (filter->use_color_filter)
@@ -36,13 +38,14 @@ static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *s
 		}
 		float xscale = bounds.size.width / (src->right - src->left), yscale = bounds.size.height / (src->bottom - src->top);
 		gtk_snapshot_push_clip(snapshot, &bounds);
-		gtk_snapshot_append_texture(snapshot, ninepatch->texture,
+		gtk_snapshot_append_texture(snapshot, texture,
 		                            &GRAPHENE_RECT_INIT(dst->left - src->left * xscale, dst->top - src->top * yscale, texture_width * xscale, texture_height * yscale));
 		gtk_snapshot_pop(snapshot);
 	}
 	if (filter->use_color_filter)
 		gtk_snapshot_pop(snapshot);
 	free(slices);
+	g_object_unref(texture);
 }
 
 static void ninepatch_paintable_init(NinePatchPaintable *ninepatch)
@@ -61,7 +64,8 @@ G_DEFINE_TYPE_WITH_CODE(NinePatchPaintable, ninepatch_paintable, G_TYPE_OBJECT,
 static void ninepatch_paintable_finalize(GObject *object)
 {
 	NinePatchPaintable *ninepatch = NINEPATCH_PAINTABLE(object);
-	g_clear_object(&ninepatch->texture);
+	if (ninepatch->bitmap)
+		gfx_bitmap_unref(ninepatch->bitmap);
 	ninepatch_free(ninepatch->ninepatch);
 	gfx_paint_free(ninepatch->filter);
 	atl_test_drawable_freed(G_OBJECT_TYPE_NAME(object));
@@ -76,14 +80,15 @@ static void ninepatch_paintable_class_init(NinePatchPaintableClass *class)
 struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *chunk)
 {
 	NinePatchPaintable *ninepatch = g_object_new(ninepatch_paintable_get_type(), NULL);
-	ninepatch->texture = g_object_ref(GDK_TEXTURE(bitmap));
+	gfx_bitmap_ref(bitmap);
+	ninepatch->bitmap = bitmap;
 	ninepatch->ninepatch = chunk;
 	return (struct gfx_drawable *)ninepatch;
 }
 
-void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, int mode, uint32_t argb)
+void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *color_filter)
 {
 	struct gfx_paint *filter = NINEPATCH_IS_PAINTABLE(drawable) ? NINEPATCH_PAINTABLE(drawable)->filter : gsk_bitmap_drawable_filter(GDK_PAINTABLE(drawable));
 	if (filter)
-		gfx_paint_set_color_filter(filter, mode, argb);
+		gfx_paint_set_color_filter(filter, color_filter);
 }

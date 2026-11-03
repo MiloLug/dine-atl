@@ -234,6 +234,11 @@ public class Region implements Parcelable {
 		}
 	}
 
+	// left, top, right, bottom of each rect, top to bottom and left to right
+	int[] atlRects() {
+		return nativeGetBoundaryPathRects(region);
+	}
+
 	private static native long nativeConstructor();
 	private static native void nativeDestructor(long region);
 	private static native void nativeSetRegion(long dst, long src);

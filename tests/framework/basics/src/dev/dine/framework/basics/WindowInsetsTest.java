@@ -23,6 +23,13 @@ public class WindowInsetsTest extends android.test.InstrumentationTestCase {
 		assertFalse(insets.isConsumed());
 	}
 
+	public void testInsetShrinksEveryType() {
+		WindowInsets inset = sample().inset(10, 0, 30, 20);
+		assertEquals(Insets.of(10, 0, 0, 14), inset.getSystemGestureInsets());
+		assertEquals(14, inset.getSystemWindowInsetBottom());
+		assertEquals(Insets.NONE, WindowInsets.CONSUMED.inset(Insets.of(1, 1, 1, 1)).getInsets(~0));
+	}
+
 	// as AOSP 10: consuming the system window drops every type's insets, not the stable ones
 	public void testConsumeAndReplace() {
 		WindowInsets consumed = sample().consumeSystemWindowInsets();

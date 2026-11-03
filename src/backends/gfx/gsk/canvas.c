@@ -8,6 +8,7 @@
 #include "src/shared/shader.h"
 #include "src/slots/gfx.h"
 
+#include "bitmap.h"
 #include "canvas.h"
 #include "text.h"
 
@@ -44,6 +45,77 @@ static void pop_color_filter(GtkSnapshot *snapshot, const struct AndroidPaint *p
 		gtk_snapshot_pop(snapshot);
 }
 
+/* A 2D matrix as 2D transforms: GSK's cairo renderer, which draws off the main thread, draws a
+ * transform made from a whole matrix (gtk_snapshot_transform_matrix) as hot pink. */
+static void transform_affine(GtkSnapshot *snapshot, const graphene_matrix_t *m)
+{
+	if (!graphene_matrix_is_2d(m)) {
+		gtk_snapshot_transform_matrix(snapshot, m);
+		return;
+	}
+	float a = graphene_matrix_get_value(m, 0, 0), b = graphene_matrix_get_value(m, 0, 1);
+	float c = graphene_matrix_get_value(m, 1, 0), d = graphene_matrix_get_value(m, 1, 1);
+	float tx = graphene_matrix_get_value(m, 3, 0), ty = graphene_matrix_get_value(m, 3, 1);
+	// translate, rotate, skew x, scale
+	float sx = hypotf(a, b), angle = atan2f(b, a);
+	float sy = -c * sinf(angle) + d * cosf(angle);
+	if (sx == 0 || sy == 0) {
+		gtk_snapshot_scale(snapshot, 0, 0);
+		return;
+	}
+	float skew = (c * cosf(angle) + d * sinf(angle)) / sy;
+	gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(tx, ty));
+	gtk_snapshot_rotate(snapshot, angle * 180 / G_PI);
+	if (skew)
+		gtk_snapshot_transform(snapshot, gsk_transform_skew(NULL, atanf(skew) * 180 / G_PI, 0));
+	gtk_snapshot_scale(snapshot, sx, sy);
+}
+
+static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha);
+
+// CLAMP draws the bitmap once, its edges not extended; MIRROR repeats (ATL-48)
+static void append_bitmap_shader(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader)
+{
+	GdkTexture *texture = gsk_bitmap_ref_texture(shader->bitmap);
+	graphene_rect_t tile = GRAPHENE_RECT_INIT(0, 0, gdk_texture_get_width(texture), gdk_texture_get_height(texture));
+	if (shader->tile == SHADER_CLAMP && shader->tile_y == SHADER_CLAMP) {
+		gtk_snapshot_append_texture(snapshot, texture, &tile);
+	} else {
+		gtk_snapshot_push_repeat(snapshot, bounds, &tile);
+		gtk_snapshot_append_texture(snapshot, texture, &tile);
+		gtk_snapshot_pop(snapshot);
+	}
+	g_object_unref(texture);
+}
+
+/* dst, then src in the mode: SRC_IN and DST_IN as masks, the separable blend modes as GSK's,
+ * every other mode as SRC_OVER (ATL-48) */
+static void append_compose(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader)
+{
+	static const GskBlendMode blends[] = {[12] = GSK_BLEND_MODE_DARKEN, [13] = GSK_BLEND_MODE_LIGHTEN, [14] = GSK_BLEND_MODE_MULTIPLY,
+	                                      [15] = GSK_BLEND_MODE_SCREEN, [17] = GSK_BLEND_MODE_OVERLAY};
+	const struct gfx_shader *dst = shader->dst, *src = shader->src;
+	int mode = shader->mode;
+	if ((mode == 5 || mode == 6) && dst && src) {
+		gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
+		append_shader(snapshot, bounds, mode == 5 ? dst : src, 1); // the mask
+		gtk_snapshot_pop(snapshot);
+		append_shader(snapshot, bounds, mode == 5 ? src : dst, 1);
+		gtk_snapshot_pop(snapshot);
+	} else if (mode >= 12 && mode <= 17 && mode != 16 && dst && src) {
+		gtk_snapshot_push_blend(snapshot, blends[mode]);
+		append_shader(snapshot, bounds, dst, 1);
+		gtk_snapshot_pop(snapshot);
+		append_shader(snapshot, bounds, src, 1);
+		gtk_snapshot_pop(snapshot);
+	} else {
+		if (dst)
+			append_shader(snapshot, bounds, dst, 1);
+		if (src)
+			append_shader(snapshot, bounds, src, 1);
+	}
+}
+
 // fills the snapshot's fill or stroke push: the local matrix applies in it, the paint's alpha over it
 static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha)
 {
@@ -52,6 +124,18 @@ static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, c
 	if (!graphene_matrix_inverse(&shader->matrix, &inverse))
 		return;
 	graphene_matrix_transform_bounds(&inverse, shape, &bounds);
+	if (shader->kind == SHADER_BITMAP || shader->kind == SHADER_COMPOSE) {
+		gtk_snapshot_save(snapshot);
+		transform_affine(snapshot, &shader->matrix);
+		gtk_snapshot_push_opacity(snapshot, alpha);
+		if (shader->kind == SHADER_BITMAP)
+			append_bitmap_shader(snapshot, &bounds, shader);
+		else
+			append_compose(snapshot, &bounds, shader);
+		gtk_snapshot_pop(snapshot);
+		gtk_snapshot_restore(snapshot);
+		return;
+	}
 	float t_min, t_max;
 	shader_t_range(shader, &(struct gfx_rect){bounds.origin.x, bounds.origin.y, bounds.origin.x + bounds.size.width, bounds.origin.y + bounds.size.height}, &t_min, &t_max);
 	int k0, k1;
@@ -62,7 +146,7 @@ static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, c
 	for (size_t i = 0; i < n; i++)
 		stops[i] = (GskColorStop){positions[i], {((colors[i] >> 16) & 0xff) / 255.f, ((colors[i] >> 8) & 0xff) / 255.f, (colors[i] & 0xff) / 255.f, (colors[i] >> 24) / 255.f * alpha}};
 	gtk_snapshot_save(snapshot);
-	gtk_snapshot_transform_matrix(snapshot, &shader->matrix);
+	transform_affine(snapshot, &shader->matrix);
 	graphene_point_t center = GRAPHENE_POINT_INIT(shader->x0, shader->y0);
 	float dx = shader->x1 - shader->x0, dy = shader->y1 - shader->y0;
 	if (shader->kind == SHADER_LINEAR && (dx || dy))
@@ -179,7 +263,7 @@ void gfx_canvas_scale(struct gfx_canvas *canvas, float sx, float sy)
 
 void gfx_canvas_concat(struct gfx_canvas *canvas, const graphene_matrix_t *matrix)
 {
-	gtk_snapshot_transform_matrix(GTK_SNAPSHOT(canvas), matrix);
+	transform_affine(GTK_SNAPSHOT(canvas), matrix);
 }
 
 void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, const struct gfx_paint *gfx_paint)
@@ -303,7 +387,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, const struct gfx_paint *gfx_paint)
 {
 	GtkSnapshot *snapshot = GTK_SNAPSHOT(canvas);
-	GdkTexture *texture = GDK_TEXTURE(bitmap);
+	GdkTexture *texture = gsk_bitmap_ref_texture(bitmap);
 	const struct AndroidPaint *paint = (const struct AndroidPaint *)gfx_paint;
 	graphene_rect_t bounds = GRAPHENE_RECT_INIT(dst->left, dst->top, dst->right - dst->left, dst->bottom - dst->top);
 	push_color_filter(snapshot, paint);
@@ -317,6 +401,7 @@ void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap
 		gtk_snapshot_pop(snapshot);
 	}
 	pop_color_filter(snapshot, paint);
+	g_object_unref(texture);
 }
 
 // filled whatever the paint's style: GSK has no stroked text

@@ -27,4 +27,16 @@ public class Fragment {
 	public Activity getActivity() {
 		return activity;
 	}
+
+	public final void requestPermissions(String[] permissions, int requestCode) {
+		if (activity == null)
+			throw new IllegalStateException("Fragment " + this + " not attached to Activity");
+		activity.request_permissions(permissions, requestCode, this);
+	}
+
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {}
+
+	public boolean shouldShowRequestPermissionRationale(String permission) {
+		return false;
+	}
 }

@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/Canvas.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.graphics;
 
 import android.atl.ATLCanvas;
@@ -34,6 +39,14 @@ public class Canvas {
 	private void refresh() {
 		if (bitmap != null)
 			atl_canvas.handle = bitmap.getSnapshot();
+	}
+
+	/** @hide the gfx canvas the next draw goes into, 0: none */
+	public long atlHandle() {
+		synchronized (lock()) {
+			refresh();
+			return atl_canvas.handle;
+		}
 	}
 
 	public int save() {
@@ -467,10 +480,7 @@ public class Canvas {
 
 	public void drawRoundRect(float left, float top, float right, float bottom, float rx, float ry, Paint paint) {
 		synchronized (lock()) {
-			if (paint.getShader() instanceof BitmapShader) {
-				BitmapShader shader = (BitmapShader)paint.getShader();
-				drawBitmap(shader.bitmap, 0, 0, paint);
-			} else if (paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
+			if (paint.getXfermode() instanceof PorterDuffXfermode && ((PorterDuffXfermode)paint.getXfermode()).porterDuffMode == PorterDuff.Mode.CLEAR.nativeInt) {
 				int oldSaveCount = atl_canvas.getSaveCount();
 				atl_canvas.restoreToCount(1);
 				if (bitmap != null)
@@ -681,8 +691,32 @@ public class Canvas {
 		drawRect(-100000, -100000, 100000, 100000, paint);
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public void drawPicture(Picture picture) {
-		Log.w("Canvas", "STUB: drawPicture");
+		picture.endRecording();
+		int restoreCount = save();
+		picture.draw(this);
+		restoreToCount(restoreCount);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void drawPicture(Picture picture, RectF dst) {
+		save();
+		translate(dst.left, dst.top);
+		if (picture.getWidth() > 0 && picture.getHeight() > 0)
+			scale(dst.width() / picture.getWidth(), dst.height() / picture.getHeight());
+		drawPicture(picture);
+		restore();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void drawPicture(Picture picture, Rect dst) {
+		save();
+		translate(dst.left, dst.top);
+		if (picture.getWidth() > 0 && picture.getHeight() > 0)
+			scale((float)dst.width() / picture.getWidth(), (float)dst.height() / picture.getHeight());
+		drawPicture(picture);
+		restore();
 	}
 
 	public void drawPoint(float x, float y, Paint paint) {

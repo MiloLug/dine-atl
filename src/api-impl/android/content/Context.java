@@ -180,7 +180,7 @@ public abstract class Context {
 	}
 
 	public int getColor(int resId) {
-		return this.getResources().getColor(resId);
+		return getResources().getColor(resId, getTheme());
 	}
 
 	public final String getString(int resId) {
@@ -439,7 +439,7 @@ public abstract class Context {
 	}
 
 	public final ColorStateList getColorStateList(int id) {
-		return getResources().getColorStateList(id);
+		return getResources().getColorStateList(id, getTheme());
 	}
 
 	public final Drawable getDrawable(int resId) {

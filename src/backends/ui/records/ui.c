@@ -1,3 +1,5 @@
+#include <pthread.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -373,6 +375,7 @@ void ui_view_free(struct ui_view *view)
 	free(view->children); // the children may be freed already
 	free(view->class_name);
 	free(view->text);
+	free(view->runs);
 	free((char *)view->edit_config.hint);
 	set_background(view, NULL);
 	hold(&view->image, NULL);
@@ -461,6 +464,103 @@ static int resolve(int natural, int spec)
 	}
 }
 
+/* Text sizes by every input records_text_extent reads, shared by the apps' main threads (sizes
+ * don't belong to an app): a hit takes no hop to UIKit's thread. A slot is overwritten on a miss. */
+struct measure_key {
+	const char *text, *hint; // the table's own copies
+	const struct ui_text_run *runs; // the table's own copy
+	size_t n_runs;
+	float size;
+	int style, min_lines, max_lines, max_width;
+	enum ui_button button;
+	bool is_button, has_background, edit, multiline, selectable;
+};
+
+struct measured {
+	bool used;
+	struct measure_key key;
+	int width, height;
+};
+
+#define MEASURE_SLOTS 512
+static struct measured measure_cache[MEASURE_SLOTS];
+static pthread_mutex_t measure_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long measure_hits, measure_misses;
+
+static struct measure_key measure_key(const struct ui_view *view, int max_width)
+{
+	return (struct measure_key){
+	    .text = view->text, .hint = view->edit ? view->edit_config.hint : NULL, .runs = view->runs, .n_runs = view->n_runs, .size = view->text_size,
+	    .style = view->text_style, .min_lines = view->min_lines, .max_lines = view->max_lines, .max_width = max_width,
+	    .button = view->button, .is_button = view->is_button, .has_background = view->has_background,
+	    .edit = view->edit, .multiline = view->edit_config.multiline, .selectable = view->selectable};
+}
+
+static bool same_text(const char *a, const char *b)
+{
+	return a == b || (a && b && !strcmp(a, b));
+}
+
+static bool measure_key_equal(const struct measure_key *a, const struct measure_key *b)
+{
+	return same_text(a->text, b->text) && same_text(a->hint, b->hint) && a->n_runs == b->n_runs
+	       && (!a->n_runs || !memcmp(a->runs, b->runs, a->n_runs * sizeof(*a->runs))) && a->size == b->size && a->style == b->style
+	       && a->min_lines == b->min_lines && a->max_lines == b->max_lines && a->max_width == b->max_width
+	       && a->button == b->button && a->is_button == b->is_button && a->has_background == b->has_background
+	       && a->edit == b->edit && a->multiline == b->multiline && a->selectable == b->selectable;
+}
+
+static size_t measure_slot(const struct measure_key *key)
+{
+	uint64_t hash = 1469598103934665603u; // FNV-1a
+	for (const char *c = key->text ? key->text : ""; *c; c++)
+		hash = (hash ^ (uint8_t)*c) * 1099511628211u;
+	for (const char *c = key->hint ? key->hint : ""; *c; c++)
+		hash = (hash ^ (uint8_t)*c) * 1099511628211u;
+	int numbers[] = {(int)(key->size * 64), (int)key->n_runs, key->style, key->min_lines, key->max_lines, key->max_width, key->button,
+	                 key->is_button << 4 | key->has_background << 3 | key->edit << 2 | key->multiline << 1 | key->selectable};
+	for (size_t i = 0; i < sizeof(numbers) / sizeof(*numbers); i++)
+		hash = (hash ^ (uint32_t)numbers[i]) * 1099511628211u;
+	return hash % MEASURE_SLOTS;
+}
+
+static void text_extent_cached(struct ui_view *view, int max_width, int *width, int *height)
+{
+	struct measure_key key = measure_key(view, max_width);
+	size_t slot = measure_slot(&key);
+	pthread_mutex_lock(&measure_lock);
+	struct measured *entry = &measure_cache[slot];
+	if (entry->used && measure_key_equal(&entry->key, &key)) {
+		*width = entry->width;
+		*height = entry->height;
+		measure_hits++;
+		pthread_mutex_unlock(&measure_lock);
+		return;
+	}
+	measure_misses++;
+	pthread_mutex_unlock(&measure_lock);
+	records_text_extent(view, max_width, width, height);
+	pthread_mutex_lock(&measure_lock);
+	if (entry->used) {
+		free((char *)entry->key.text);
+		free((char *)entry->key.hint);
+		free((void *)entry->key.runs);
+	}
+	key.text = key.text ? strdup(key.text) : NULL;
+	key.hint = key.hint ? strdup(key.hint) : NULL;
+	key.runs = key.n_runs ? memcpy(malloc(key.n_runs * sizeof(*key.runs)), key.runs, key.n_runs * sizeof(*key.runs)) : NULL;
+	*entry = (struct measured){true, key, *width, *height};
+	pthread_mutex_unlock(&measure_lock);
+}
+
+void records_measure_stats(unsigned long *hits, unsigned long *misses)
+{
+	pthread_mutex_lock(&measure_lock);
+	*hits = measure_hits;
+	*misses = measure_misses;
+	pthread_mutex_unlock(&measure_lock);
+}
+
 void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int *width, int *height)
 {
 	int padding_h = view->padding_left + view->padding_right;
@@ -473,7 +573,7 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 			if (max_width < 0)
 				max_width = 0;
 		}
-		records_text_extent(view, max_width, &content_width, &content_height);
+		text_extent_cached(view, max_width, &content_width, &content_height);
 	} else if (view->kind == NODE_IMAGE) {
 		content_width = view->image_width > 0 ? view->image_width : 0;
 		content_height = view->image_height > 0 ? view->image_height : 0;
@@ -487,14 +587,16 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 	*height = resolve(content_height + padding_v, height_spec);
 }
 
-void ui_view_layout(struct ui_view *view, int left, int top, int right, int bottom, float translation_x, float translation_y)
+void ui_view_layout(struct ui_view *view, int left, int top, int right, int bottom, float translation_x, float translation_y, bool relayout)
 {
 	view->left = left + (int)translation_x;
 	view->top = top + (int)translation_y;
 	view->right = right + (int)translation_x;
 	view->bottom = bottom + (int)translation_y;
-	if (view->kind == NODE_VIEW || view->kind == NODE_SCROLL)
+	if (relayout && (view->kind == NODE_VIEW || view->kind == NODE_SCROLL))
 		atl_upcall_view_layout(view->ref, right - left, bottom - top);
+	if (view->window)
+		view->window->frames_moved = true;
 }
 
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)
@@ -505,12 +607,15 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 	return view;
 }
 
-void ui_text_set_text(struct ui_view *view, const char *text)
+void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_text_run *runs, size_t n_runs)
 {
 	if (view->edit)
 		return;
 	free(view->text);
 	view->text = strdup(text);
+	free(view->runs);
+	view->runs = n_runs ? memcpy(malloc(n_runs * sizeof(*runs)), runs, n_runs * sizeof(*runs)) : NULL;
+	view->n_runs = n_runs;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
 }
@@ -546,12 +651,6 @@ void ui_text_set_style(struct ui_view *view, int style)
 	view->text_style = style;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
-}
-
-void ui_text_set_markup(struct ui_view *view, bool markup)
-{
-	if (!view->edit)
-		view->markup = markup;
 }
 
 void ui_text_set_alignment(struct ui_view *view, int alignment)

@@ -260,7 +260,8 @@ void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int 
 	*out_height = height;
 }
 
-void ui_view_layout(struct ui_view *view, int l, int t, int r, int b, float translation_x, float translation_y)
+// GTK lays a widget out again on each size_allocate: relayout makes no difference
+void ui_view_layout(struct ui_view *view, int l, int t, int r, int b, float translation_x, float translation_y, bool relayout)
 {
 	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(view));
 

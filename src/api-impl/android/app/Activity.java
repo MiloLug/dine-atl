@@ -58,6 +58,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	private boolean paused = false;
 	private boolean stopped = false; // set by native code: onStop ran, onRestart is due
 	private CharSequence title = null;
+	private ActionBar action_bar;
+	private boolean has_permissions_request;
 	List<Fragment> fragments = new ArrayList<>();
 	boolean destroyed = false;
 	private boolean finishing = false;
@@ -151,8 +153,89 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	public final void setVolumeControlStream(int streamType) {}
 
+	/* Copyright (C) 2006 The Android Open Source Project: the lifecycle callbacks, the
+	 * application's and this activity's (API 29), around and in the lifecycle calls */
+	private final ArrayList<Application.ActivityLifecycleCallbacks> lifecycle_callbacks = new ArrayList<>();
+
+	public void registerActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks callback) {
+		synchronized (lifecycle_callbacks) {
+			lifecycle_callbacks.add(callback);
+		}
+	}
+
+	public void unregisterActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks callback) {
+		synchronized (lifecycle_callbacks) {
+			lifecycle_callbacks.remove(callback);
+		}
+	}
+
+	private interface LifecycleCall {
+		void call(Application.ActivityLifecycleCallbacks callbacks);
+	}
+
+	/* AOSP's order: the application's callbacks always first to last; this activity's first to last
+	 * for create, start and resume, last to first for pause, stop and destroy; the application's
+	 * before them for the pre calls and create, start and resume, after them for the rest */
+	private void dispatch(LifecycleCall call, boolean application_first, boolean reversed) {
+		Application application = getApplication();
+		Application.ActivityLifecycleCallbacks[] own;
+		synchronized (lifecycle_callbacks) {
+			own = lifecycle_callbacks.toArray(new Application.ActivityLifecycleCallbacks[0]);
+		}
+		if (application_first && application != null)
+			for (Application.ActivityLifecycleCallbacks callbacks : application.collectActivityLifecycleCallbacks())
+				call.call(callbacks);
+		for (int i = 0; i < own.length; i++)
+			call.call(own[reversed ? own.length - 1 - i : i]);
+		if (!application_first && application != null)
+			for (Application.ActivityLifecycleCallbacks callbacks : application.collectActivityLifecycleCallbacks())
+				call.call(callbacks);
+	}
+
+	// what the native lifecycle calls (shared/activity.c through handle_cache) run
+	final void atlPerformCreate(final Bundle savedInstanceState) {
+		dispatch(c -> c.onActivityPreCreated(this, savedInstanceState), true, false);
+		onCreate(savedInstanceState);
+		dispatch(c -> c.onActivityPostCreated(this, savedInstanceState), false, false);
+	}
+
+	final void atlPerformStart() {
+		dispatch(c -> c.onActivityPreStarted(this), true, false);
+		onStart();
+		dispatch(c -> c.onActivityPostStarted(this), false, false);
+	}
+
+	final void atlPerformResume() {
+		dispatch(c -> c.onActivityPreResumed(this), true, false);
+		onResume();
+	}
+
+	final void atlPerformPostResume() {
+		onPostResume();
+		dispatch(c -> c.onActivityPostResumed(this), false, false);
+	}
+
+	final void atlPerformPause() {
+		dispatch(c -> c.onActivityPrePaused(this), true, true);
+		onPause();
+		dispatch(c -> c.onActivityPostPaused(this), false, true);
+	}
+
+	final void atlPerformStop() {
+		dispatch(c -> c.onActivityPreStopped(this), true, true);
+		onStop();
+		dispatch(c -> c.onActivityPostStopped(this), false, true);
+	}
+
+	final void atlPerformDestroy() {
+		dispatch(c -> c.onActivityPreDestroyed(this), true, true);
+		onDestroy();
+		dispatch(c -> c.onActivityPostDestroyed(this), false, true);
+	}
+
 	protected void onCreate(Bundle savedInstanceState) {
 		Slog.i(TAG, "- onCreate - yay!");
+		dispatch(c -> c.onActivityCreated(this, savedInstanceState), true, false);
 
 		for (Fragment fragment : fragments) {
 			fragment.onCreate(savedInstanceState);
@@ -168,6 +251,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	protected void onStart() {
 		Slog.i(TAG, "- onStart - yay!");
+		dispatch(c -> c.onActivityStarted(this), true, false);
 		window.setTitle(title);
 
 		for (Fragment fragment : fragments) {
@@ -185,6 +269,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	protected void onResume() {
 		Slog.i(TAG, "- onResume - yay!");
+		dispatch(c -> c.onActivityResumed(this), true, false);
 
 		for (Fragment fragment : fragments) {
 			fragment.onResume();
@@ -201,6 +286,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	protected void onPause() {
 		Slog.i(TAG, "- onPause - yay!");
+		dispatch(c -> c.onActivityPaused(this), false, true);
 
 		for (Fragment fragment : fragments) {
 			fragment.onPause();
@@ -212,6 +298,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	protected void onStop() {
 		Slog.i(TAG, "- onStop - yay!");
+		dispatch(c -> c.onActivityStopped(this), false, true);
 
 		for (Fragment fragment : fragments) {
 			fragment.onStop();
@@ -222,6 +309,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	protected void onDestroy() {
 		Slog.i(TAG, "- onDestroy - yay!");
+		dispatch(c -> c.onActivityDestroyed(this), false, true);
 
 		for (Fragment fragment : fragments) {
 			fragment.onDestroy();
@@ -480,10 +568,12 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	public void setTitle(CharSequence title) {
 		this.title = title;
+		if (action_bar != null)
+			action_bar.setWindowTitle(title);
 	}
 
 	public void setTitle(int titleId) {
-		this.title = getText(titleId);
+		setTitle(getText(titleId));
 	}
 
 	public CharSequence getTitle() {
@@ -591,7 +681,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	// we never put an activity into picture-in-picture, so this is always false
 	public boolean isInPictureInPictureMode() { return false; }
 
-	public void registerActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks callback) {}
 
 	public void setDisablePreviewScreenshots(boolean disable) {}
 	public final View requireViewById(int id) {
@@ -696,16 +785,52 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	public void onUserInteraction() {}
 
-	public void requestPermissions(String[] permissions, int requestCode) {
-		Slog.w(TAG, "requestPermissions(" + Arrays.toString(permissions) + "): not handled");
+	/* Copyright (C) 2006 The Android Open Source Project: requestPermissions to
+	 * shouldShowRequestPermissionRationale. No dialog asks the user: each permission is answered
+	 * from checkSelfPermission, after the call returns, as the permission activity's result would. */
+	public final void requestPermissions(String[] permissions, int requestCode) {
+		request_permissions(permissions, requestCode, null);
 	}
 
+	final void request_permissions(final String[] permissions, final int requestCode, final Fragment fragment) {
+		if (requestCode < 0)
+			throw new IllegalArgumentException("requestCode should be >= 0");
+		if (has_permissions_request) {
+			Slog.w(TAG, "Can request only one set of permissions at a time");
+			// empty arrays are a cancellation
+			dispatch_permissions_result(fragment, requestCode, new String[0], new int[0]);
+			return;
+		}
+		has_permissions_request = true;
+		final int[] results = new int[permissions.length];
+		for (int i = 0; i < permissions.length; i++)
+			results[i] = checkSelfPermission(permissions[i]);
+		new Handler(getMainLooper()).post(new Runnable() {
+			@Override
+			public void run() {
+				has_permissions_request = false;
+				dispatch_permissions_result(fragment, requestCode, permissions, results);
+			}
+		});
+	}
+
+	private void dispatch_permissions_result(Fragment fragment, int requestCode, String[] permissions, int[] results) {
+		if (fragment != null)
+			fragment.onRequestPermissionsResult(requestCode, permissions, results);
+		else
+			onRequestPermissionsResult(requestCode, permissions, results);
+	}
+
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {}
+
 	public boolean shouldShowRequestPermissionRationale(String permission) {
-		return true;
+		return false;
 	}
 
 	public ActionBar getActionBar() {
-		return null;
+		if (action_bar == null)
+			action_bar = new ATLActionBar(this);
+		return action_bar;
 	}
 
 	@Override

@@ -22,6 +22,7 @@ public class BitmapDrawable extends Drawable {
 
 	private Bitmap bitmap;
 	private final PaintableFilter filter = new PaintableFilter();
+	private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG); // its alpha and color filter draw
 
 	public BitmapDrawable() {
 	}
@@ -40,6 +41,37 @@ public class BitmapDrawable extends Drawable {
 
 	public Bitmap getBitmap() {
 		return bitmap;
+	}
+
+	// what a Canvas(Bitmap) recorded reaches the pixels first
+	@Override
+	public void draw(Canvas canvas) {
+		if (bitmap != null)
+			bitmap.prepareToDraw();
+		if (paint.getColorFilter() != filter.colorFilter) // set through getPaint()
+			setColorFilter(paint.getColorFilter());
+		int alpha = paint.getAlpha();
+		if (alpha == 255) {
+			super.draw(canvas);
+			return;
+		}
+		Rect bounds = getBounds();
+		int count = canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha);
+		super.draw(canvas);
+		canvas.restoreToCount(count);
+	}
+
+	@Override
+	public void setAlpha(int alpha) {
+		if (alpha != paint.getAlpha()) {
+			paint.setAlpha(alpha);
+			invalidateSelf();
+		}
+	}
+
+	@Override
+	public int getAlpha() {
+		return paint.getAlpha();
 	}
 
 	public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
@@ -67,6 +99,7 @@ public class BitmapDrawable extends Drawable {
 	@Override
 	public void setColorFilter(ColorFilter colorFilter) {
 		filter.colorFilter = colorFilter;
+		paint.setColorFilter(colorFilter);
 		filter.apply(this);
 		invalidateSelf();
 	}
@@ -120,7 +153,7 @@ public class BitmapDrawable extends Drawable {
 	public void setTileModeX(Shader.TileMode mode) {}
 
 	public Paint getPaint() {
-		return new Paint();
+		return paint;
 	}
 
 	public void setGravity(int g) {}

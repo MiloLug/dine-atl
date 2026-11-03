@@ -26,6 +26,11 @@ public class ATLCanvas extends DisplayListCanvas {
 		atlReset(width, height);
 	}
 
+	@Override
+	public long atlHandle() {
+		return handle;
+	}
+
 	// a new target of this size: the save stack goes, the clip is the whole target
 	public void atlReset(int width, int height) {
 		state_stack.clear();

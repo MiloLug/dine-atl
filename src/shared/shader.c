@@ -43,6 +43,37 @@ struct gfx_shader *shader_new(enum shader_kind kind, enum shader_tile tile, cons
 	return shader;
 }
 
+static struct gfx_shader *shader_alloc(enum shader_kind kind, const graphene_matrix_t *matrix)
+{
+	struct gfx_shader *shader = calloc(1, sizeof(*shader));
+	shader->refs = 1;
+	shader->kind = kind;
+	if (matrix)
+		shader->matrix = *matrix;
+	else
+		graphene_matrix_init_identity(&shader->matrix);
+	return shader;
+}
+
+struct gfx_shader *shader_new_bitmap(struct gfx_bitmap *bitmap, enum shader_tile tile_x, enum shader_tile tile_y, const graphene_matrix_t *matrix)
+{
+	struct gfx_shader *shader = shader_alloc(SHADER_BITMAP, matrix);
+	gfx_bitmap_ref(bitmap);
+	shader->bitmap = bitmap;
+	shader->tile = tile_x;
+	shader->tile_y = tile_y;
+	return shader;
+}
+
+struct gfx_shader *shader_new_compose(struct gfx_shader *dst, struct gfx_shader *src, int mode, const graphene_matrix_t *matrix)
+{
+	struct gfx_shader *shader = shader_alloc(SHADER_COMPOSE, matrix);
+	shader->dst = shader_ref(dst);
+	shader->src = shader_ref(src);
+	shader->mode = mode;
+	return shader;
+}
+
 struct gfx_shader *shader_ref(struct gfx_shader *shader)
 {
 	if (shader)
@@ -56,6 +87,10 @@ void shader_unref(struct gfx_shader *shader)
 		return;
 	free(shader->colors);
 	free(shader->positions);
+	if (shader->bitmap)
+		gfx_bitmap_unref(shader->bitmap);
+	shader_unref(shader->dst);
+	shader_unref(shader->src);
 	free(shader);
 }
 

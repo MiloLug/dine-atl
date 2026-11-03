@@ -34,6 +34,7 @@ rc=0
 fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 grep -q "widgets draw done" "$log" || fail "no \"widgets draw done\" (exit status $rc)"
 grep -q "UnsatisfiedLinkError" "$log" && fail "a native is missing"
+grep -q "widgets bitmap pixel ffff0000 0$" "$log" || fail "no red pixel read back from a Canvas(Bitmap)"
 grep -qE "Gtk-CRITICAL|Gsk-CRITICAL|gtk_snapshot_(push|pop)" "$log" && fail "unbalanced snapshot pushes or a GTK critical"
 if ((headless)); then
   grep -oE '^displaylist:.*|widgets draw .*' "$log" >"$work/displaylist" || true

@@ -21,8 +21,7 @@ struct gfx_paint {
 	int text_align;
 	enum gfx_font_family font_family;
 	int font_style; // GFX_FONT_BOLD, GFX_FONT_ITALIC
-	int filter_mode;
-	uint32_t filter_color;
+	struct gfx_color_filter filter;
 	struct gfx_shader *shader; // held: a copy of the struct takes a ref (record_paint_copy)
 };
 
@@ -30,8 +29,7 @@ struct gfx_drawable {
 	struct atl_ref *drawable_ref;  // one whose class draws: Java's draw() records it
 	struct gfx_bitmap *bitmap;     // a BitmapDrawable's or NinePatchDrawable's, held
 	struct gfx_ninepatch *ninepatch; // a NinePatchDrawable's, owned
-	int filter_mode;               // over the bitmap, -1: none
-	uint32_t filter_color;
+	struct gfx_color_filter filter; // over the bitmap
 	atomic_int refs;
 	struct gfx_drawable *selected; // a container's child (neither of the above), held
 };

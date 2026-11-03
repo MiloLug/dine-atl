@@ -1,6 +1,7 @@
 #include <gdk/gdk.h>
 #include <libportal/portal.h>
 
+#include "../../backends/gfx/gsk/bitmap.h"
 #include "../defines.h"
 #include "../generated_headers/android_app_WallpaperManager.h"
 
@@ -14,12 +15,13 @@ static void wallpaper_ready_cb(GObject *source, GAsyncResult *res, gpointer user
 
 JNIEXPORT void JNICALL Java_android_app_WallpaperManager_set_1bitmap(JNIEnv *env, jclass clazz, jlong texture_ptr)
 {
-	GdkTexture *texture = _PTR(texture_ptr);
+	GdkTexture *texture = gsk_bitmap_ref_texture(_PTR(texture_ptr));
 	GFileIOStream *stream;
 	GFile *file = g_file_new_tmp("XXXXXX.png", &stream, NULL);
 	g_io_stream_close(G_IO_STREAM(stream), NULL, NULL);
 	g_object_unref(stream);
 	gdk_texture_save_to_png(texture, g_file_get_path(file));
+	g_object_unref(texture);
 	XdpPortal *portal = xdp_portal_new();
 	xdp_portal_set_wallpaper(portal, NULL, g_file_get_uri(file), XDP_WALLPAPER_FLAG_NONE, NULL, wallpaper_ready_cb, file);
 	g_object_unref(portal);

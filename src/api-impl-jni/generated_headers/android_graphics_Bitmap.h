@@ -9,14 +9,6 @@ extern "C" {
 #endif
 /*
  * Class:     android_graphics_Bitmap
- * Method:    native_create_snapshot
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1snapshot
-  (JNIEnv *, jclass, jlong);
-
-/*
- * Class:     android_graphics_Bitmap
  * Method:    native_new
  * Signature: (III)J
  */
@@ -25,11 +17,19 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1new
 
 /*
  * Class:     android_graphics_Bitmap
- * Method:    native_create_texture
- * Signature: (JII)J
+ * Method:    native_canvas_new
+ * Signature: ()J
  */
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1create_1texture
-  (JNIEnv *, jclass, jlong, jint, jint);
+JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1canvas_1new
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     android_graphics_Bitmap
+ * Method:    native_render
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1render
+  (JNIEnv *, jclass, jlong, jlong);
 
 /*
  * Class:     android_graphics_Bitmap
@@ -49,11 +49,11 @@ JNIEXPORT jint JNICALL Java_android_graphics_Bitmap_native_1get_1height
 
 /*
  * Class:     android_graphics_Bitmap
- * Method:    native_erase_color
- * Signature: (III)J
+ * Method:    native_erase
+ * Signature: (JI)V
  */
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1erase_1color
-  (JNIEnv *, jclass, jint, jint, jint);
+JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1erase
+  (JNIEnv *, jclass, jlong, jint);
 
 /*
  * Class:     android_graphics_Bitmap
@@ -62,14 +62,6 @@ JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1erase_1color
  */
 JNIEXPORT void JNICALL Java_android_graphics_Bitmap_native_1recycle
   (JNIEnv *, jclass, jlong, jlong);
-
-/*
- * Class:     android_graphics_Bitmap
- * Method:    native_ref_texture
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_android_graphics_Bitmap_native_1ref_1texture
-  (JNIEnv *, jclass, jlong);
 
 /*
  * Class:     android_graphics_Bitmap

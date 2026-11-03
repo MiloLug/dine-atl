@@ -20,13 +20,12 @@ final class PaintableFilter {
 	void apply(Drawable drawable) {
 		if (drawable.paintable == 0)
 			return;
-		if (colorFilter instanceof PorterDuffColorFilter) {
-			PorterDuffColorFilter filter = (PorterDuffColorFilter)colorFilter;
-			Drawable.native_setColorFilter(drawable.paintable, filter.getMode().nativeInt, filter.getColor());
-		} else if (colorFilter == null && tint != null && tintMode != null) {
-			Drawable.native_setColorFilter(drawable.paintable, tintMode.nativeInt, tint.getColorForState(drawable.getState(), tint.getDefaultColor()));
+		if (colorFilter != null) {
+			Drawable.native_setColorFilter(drawable.paintable, colorFilter.atlMode(), colorFilter.atlColor(), colorFilter.atlMatrix());
+		} else if (tint != null && tintMode != null) {
+			Drawable.native_setColorFilter(drawable.paintable, tintMode.nativeInt, tint.getColorForState(drawable.getState(), tint.getDefaultColor()), null);
 		} else {
-			Drawable.native_setColorFilter(drawable.paintable, -1, 0);
+			Drawable.native_setColorFilter(drawable.paintable, -1, 0, null);
 		}
 	}
 }

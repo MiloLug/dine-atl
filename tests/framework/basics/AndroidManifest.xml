@@ -3,5 +3,6 @@
 	<uses-sdk android:minSdkVersion="27" android:targetSdkVersion="27"/>
 	<application android:label="framework basics">
 		<activity android:name=".WindowActivity"/>
+		<activity android:name=".PermissionActivity"/>
 	</application>
 </manifest>

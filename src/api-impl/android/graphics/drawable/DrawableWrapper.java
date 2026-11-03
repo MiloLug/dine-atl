@@ -363,10 +363,10 @@ public abstract class DrawableWrapper extends Drawable implements Drawable.Callb
 		}
 	}
 
-	/*@Override
+	@Override
 	protected boolean onLevelChange(int level) {
 		return mDrawable != null && mDrawable.setLevel(level);
-	}*/
+	}
 
 	@Override
 	protected void onBoundsChange(@NonNull Rect bounds) {

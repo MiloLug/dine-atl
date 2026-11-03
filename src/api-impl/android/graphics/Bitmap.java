@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/Bitmap.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.graphics;
 
 import android.os.Parcelable;
@@ -7,8 +12,8 @@ import java.io.OutputStream;
 import java.nio.Buffer;
 
 /*
- * texture is a gfx-slot bitmap (gsk: a GdkTexture). On gsk a Canvas(Bitmap) draws into a GtkSnapshot
- * instead; the Bitmap is one of the two at a time, and getTexture() and getSnapshot() convert.
+ * texture is a gfx-slot bitmap, whose pixels change in place. A Canvas(Bitmap) records into
+ * snapshot, a gfx canvas; getTexture() draws what it recorded over the pixels.
  */
 public final class Bitmap implements Parcelable {
 
@@ -60,8 +65,7 @@ public final class Bitmap implements Parcelable {
 		this.config = config;
 		this.width = width;
 		this.height = height;
-		int stride = width * config.bytes_per_pixel;
-		this.stride = (stride + 3) & ~3; // 4-byte alignment
+		this.stride = width * config.bytes_per_pixel; // Skia's minRowBytes
 	}
 
 	public static Bitmap createBitmap(int width, int height, Config config) {
@@ -93,11 +97,19 @@ public final class Bitmap implements Parcelable {
 	}
 
 	public static Bitmap createBitmap(int[] colors, int width, int height, Config config) {
-		return createBitmap(width, height, config);
+		return createBitmap(colors, 0, width, width, height, config);
 	}
 
+	public static Bitmap createBitmap(int[] colors, int offset, int stride, int width, int height, Config config) {
+		Bitmap bitmap = createBitmap(width, height, config);
+		bitmap.setPixels(colors, offset, stride, 0, 0, width, height);
+		bitmap.mutable = false;
+		return bitmap;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public static Bitmap createBitmap(Bitmap src) {
-		return new Bitmap(native_ref_texture(src.getTexture()));
+		return src.isMutable() ? src.copy(src.getConfig(), true) : src;
 	}
 
 	public static Bitmap createScaledBitmap(Bitmap src, int dstWidth, int dstHeight, boolean filter) {
@@ -119,31 +131,67 @@ public final class Bitmap implements Parcelable {
 	}
 
 	public synchronized long getTexture() {
-		if (texture == 0) {
-			texture = snapshot != 0 ? native_create_texture(snapshot, width, height) : native_new(width, height, config.nativeInt);
+		if (texture == 0)
+			texture = native_new(width, height, config.nativeInt);
+		if (snapshot != 0) {
+			native_render(texture, snapshot);
 			snapshot = 0;
 		}
 		return texture;
 	}
 
 	synchronized long getSnapshot() {
-		if (snapshot == 0) {
-			snapshot = native_create_snapshot(texture);
-			texture = 0;
-		}
+		if (texture == 0)
+			texture = native_new(width, height, config.nativeInt);
+		if (snapshot == 0)
+			snapshot = native_canvas_new();
 		return snapshot;
 	}
 
 	public void eraseColor(int color) {
-		if (color == Color.TRANSPARENT) {
-			native_recycle(texture, snapshot);
-			snapshot = native_erase_color(color, width, height);
-			texture = 0;
-		} else {
-			Paint paint = new Paint();
-			paint.setColor(color);
-			new Canvas(this).drawRect(0, 0, width, height, paint);
-		}
+		checkRecycled("Can't erase a recycled bitmap");
+		if (!isMutable())
+			throw new IllegalStateException("cannot erase immutable bitmaps");
+		native_erase(getTexture(), color);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: checkRecycled, checkPixelAccess,
+	 * checkPixelsAccess */
+	private void checkRecycled(String errorMessage) {
+		if (recycled)
+			throw new IllegalStateException(errorMessage);
+	}
+
+	private void checkPixelAccess(int x, int y) {
+		if (x < 0)
+			throw new IllegalArgumentException("x must be >= 0");
+		if (y < 0)
+			throw new IllegalArgumentException("y must be >= 0");
+		if (x >= getWidth())
+			throw new IllegalArgumentException("x must be < bitmap.width()");
+		if (y >= getHeight())
+			throw new IllegalArgumentException("y must be < bitmap.height()");
+	}
+
+	private void checkPixelsAccess(int x, int y, int width, int height, int offset, int stride, int pixels[]) {
+		if (x < 0)
+			throw new IllegalArgumentException("x must be >= 0");
+		if (y < 0)
+			throw new IllegalArgumentException("y must be >= 0");
+		if (width < 0)
+			throw new IllegalArgumentException("width must be >= 0");
+		if (height < 0)
+			throw new IllegalArgumentException("height must be >= 0");
+		if (x + width > getWidth())
+			throw new IllegalArgumentException("x + width must be <= bitmap.width()");
+		if (y + height > getHeight())
+			throw new IllegalArgumentException("y + height must be <= bitmap.height()");
+		if (Math.abs(stride) < width)
+			throw new IllegalArgumentException("abs(stride) must be >= width");
+		int lastScanline = offset + (height - 1) * stride;
+		int length = pixels.length;
+		if (offset < 0 || (offset + width > length) || lastScanline < 0 || (lastScanline + width > length))
+			throw new ArrayIndexOutOfBoundsException();
 	}
 
 	public void recycle() {
@@ -214,28 +262,39 @@ public final class Bitmap implements Parcelable {
 	}
 
 	public Bitmap copy(Bitmap.Config config, boolean isMutable) {
+		checkRecycled("Can't copy a recycled bitmap");
 		Bitmap bitmap = new Bitmap(width, height, config);
-		bitmap.texture = native_ref_texture(getTexture());
+		new Canvas(bitmap).drawBitmap(this, 0, 0, null);
+		bitmap.mutable = isMutable;
+		bitmap.hasAlpha = hasAlpha;
 		return bitmap;
 	}
 
 	public void getPixels(int[] pixels, int offset, int stride, int x, int y, int width, int height) {
+		checkRecycled("Can't call getPixels() on a recycled bitmap");
+		if (width == 0 || height == 0)
+			return;
+		checkPixelsAccess(x, y, width, height, offset, stride, pixels);
 		native_get_pixels(getTexture(), pixels, offset, stride, x, y, width, height);
 	}
 
 	public int getPixel(int x, int y) {
+		checkRecycled("Can't call getPixel() on a recycled bitmap");
+		checkPixelAccess(x, y);
 		int[] pixels = new int[1];
 		native_get_pixels(getTexture(), pixels, 0, 1, x, y, 1, 1);
 		return pixels[0];
 	}
 
 	public void copyPixelsToBuffer(Buffer buffer) {
-		if (config == Config.RGB_565 || config == Config.ARGB_4444) {
-			System.out.println("copyPixelsToBuffer: format " + config.name() + " not implemented");
-			System.exit(1);
-		}
+		int elements = buffer.remaining();
+		int shift = buffer instanceof java.nio.ByteBuffer ? 0 : buffer instanceof java.nio.ShortBuffer ? 1 : 2;
+		long bufferSize = (long)elements << shift;
+		long pixelSize = getByteCount();
+		if (bufferSize < pixelSize)
+			throw new RuntimeException("Buffer not large enough for pixels");
 		native_copy_to_buffer(getTexture(), buffer, config.nativeInt, getRowBytes());
-		buffer.position(buffer.position() + getAllocationByteCount());
+		buffer.position((int)(buffer.position() + (pixelSize >> shift)));
 	}
 
 	public int getByteCount() {
@@ -257,12 +316,21 @@ public final class Bitmap implements Parcelable {
 	}
 
 	public void setPixels(int[] pixels, int offset, int stride, int x, int y, int width, int height) {
-		native_set_pixels(getSnapshot(), pixels, offset, stride, x, y, width, height);
+		checkRecycled("Can't call setPixels() on a recycled bitmap");
+		if (!isMutable())
+			throw new IllegalStateException();
+		if (width == 0 || height == 0)
+			return;
+		checkPixelsAccess(x, y, width, height, offset, stride, pixels);
+		native_set_pixels(getTexture(), pixels, offset, stride, x, y, width, height);
 	}
 
 	public void setPixel(int x, int y, int color) {
-		int[] pixels = new int[] {color};
-		native_set_pixels(getSnapshot(), pixels, 0, 1, x, y, 1, 1);
+		checkRecycled("Can't call setPixel() on a recycled bitmap");
+		if (!isMutable())
+			throw new IllegalStateException();
+		checkPixelAccess(x, y);
+		native_set_pixels(getTexture(), new int[] {color}, 0, 1, x, y, 1, 1);
 	}
 
 	public void reconfigure(int width, int height, Bitmap.Config config) {}
@@ -283,16 +351,15 @@ public final class Bitmap implements Parcelable {
 		}
 	}
 
-	private static native long native_create_snapshot(long texture);
 	private static native long native_new(int width, int height, int config);
-	private static native long native_create_texture(long snapshot, int width, int height);
+	private static native long native_canvas_new();
+	private static native void native_render(long texture, long snapshot);
 	private static native int native_get_width(long texture);
 	private static native int native_get_height(long texture);
-	private static native long native_erase_color(int color, int width, int height);
+	private static native void native_erase(long texture, int color);
 	private static native void native_recycle(long texture, long snapshot);
-	private static native long native_ref_texture(long texture);
 	private static native void native_get_pixels(long texture, int[] pixels, int offset, int stride, int x, int y, int width, int height);
-	private static native void native_copy_to_buffer(long texture, Buffer buffer, int memory_format, int stride);
+	private static native void native_copy_to_buffer(long texture, Buffer buffer, int config, int row_bytes);
 	private static native byte[] native_save_to_png(long texture);
-	private static native void native_set_pixels(long snapshot, int[] pixels, int offset, int stride, int x, int y, int width, int height);
+	private static native void native_set_pixels(long texture, int[] pixels, int offset, int stride, int x, int y, int width, int height);
 }

@@ -13,7 +13,7 @@ struct gfx_canvas *cg_list_ref(struct gfx_canvas *list);
 void cg_list_draw(const struct gfx_canvas *list, CGContextRef context, CGFloat scale);
 
 struct gfx_bitmap;
-CGImageRef cg_bitmap_image(const struct gfx_bitmap *bitmap); // NULL: blank
+CGImageRef cg_bitmap_copy_image(const struct gfx_bitmap *bitmap); // retained, NULL: blank
 
 /* The font of gfx's text and uikit's labels; size in points. Any thread; the caller releases it. */
 CTFontRef cg_font(CGFloat size, enum gfx_font_family family, int style);

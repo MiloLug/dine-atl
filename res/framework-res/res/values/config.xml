@@ -4223,7 +4223,7 @@
          0: 3 button mode (back, home, overview buttons)
          1: 2 button mode (back, home buttons + swipe up for overview)
          2: gestures only for back, home and overview -->
-    <integer name="config_navBarInteractionMode">0</integer>
+    <integer name="config_navBarInteractionMode">2</integer>
 
     <!-- Controls whether the nav bar can move from the bottom to the side in landscape.
          Only applies if the device display is not square. -->
@@ -4240,7 +4240,7 @@
     <bool name="config_navBarAlwaysShowOnSideEdgeGesture">false</bool>
 
     <!-- Controls the size of the back gesture inset. -->
-    <dimen name="config_backGestureInset">0dp</dimen>
+    <dimen name="config_backGestureInset">20dp</dimen>
 
     <!-- Array of values used in Gesture Navigation settings page to reduce/increase the back
      gesture's inset size. These values will be multiplied into the default width, read from the

@@ -20,9 +20,12 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref(JNI
 	gfx_drawable_unref(_PTR(paintable_ptr));
 }
 
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter(JNIEnv *env, jclass class, jlong paintable_ptr, jint mode, jint color)
+struct gfx_color_filter atl_color_filter(JNIEnv *env, jint mode, jint color, jfloatArray matrix); // android_graphics_Paint.c
+
+JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter(JNIEnv *env, jclass class, jlong paintable_ptr, jint mode, jint color, jfloatArray matrix)
 {
-	gfx_drawable_set_color_filter(_PTR(paintable_ptr), mode, color);
+	struct gfx_color_filter filter = atl_color_filter(env, mode, color, matrix);
+	gfx_drawable_set_color_filter(_PTR(paintable_ptr), &filter);
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidate(JNIEnv *env, jobject this, jlong paintable_ptr)
