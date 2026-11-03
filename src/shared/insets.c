@@ -114,7 +114,7 @@ void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *new
 	app->insets = *new_insets;
 	pthread_mutex_unlock(&app->insets_lock);
 	if (app->running) // before the start: the first activity shown reads them
-		loop_main_post(insets_changed, app);
+		loop_main_post(app->loop, insets_changed, app);
 }
 
 JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets(JNIEnv *env, jobject this)

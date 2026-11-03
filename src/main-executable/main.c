@@ -239,7 +239,7 @@ static JNIEnv *start_vm(struct atl_paths *paths, struct jni_callback_data *d)
 static void uninstall(struct jni_callback_data *d)
 {
 	struct atl_paths paths;
-	atl_prepare(&paths, NULL, 0, NULL, false);
+	atl_prepare(&paths, false);
 	JNIEnv *env = start_vm(&paths, d);
 	int status = atl_uninstall(env, d->uninstall);
 	if (status == 0) {
@@ -261,17 +261,17 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	struct atl_paths paths;
 
 	if (d->install_internal) {
-		atl_prepare(&paths, NULL, 0, NULL, false);
+		atl_prepare(&paths, false);
 		JNIEnv *env = start_vm(&paths, d);
 		atl_exit(env, atl_install(env, apks, napks, d->allow_fake_signature));
 	}
-	atl_prepare(&paths, apks, napks, package, d->apk_instrumentation_class);
+	atl_prepare(&paths, d->apk_instrumentation_class != NULL);
 	JNIEnv *env = start_vm(&paths, d);
 	// before the path run's own install, which grants no fake signature
 	if (d->install && d->allow_fake_signature && atl_install(env, apks, napks, true))
 		atl_exit(env, 1);
 	host_app = atl_app_new();
-	if (atl_app_prepare(env, &paths, host_app) < 0)
+	if (atl_app_prepare(env, host_app, apks, napks, package) < 0)
 		atl_exit(env, 1);
 	atl_app_take_attaches(env, host_app);
 
@@ -280,7 +280,7 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	// libraries by libname from <data dir>/lib
 	char *ld_path = getenv("BIONIC_LD_LIBRARY_PATH");
 	ld_path = (ld_path ? ld_path : "");
-	ld_path = g_strdup_printf("%s:%s/**:%s", paths.app_lib_dir, host_app->data_dir, ld_path);
+	ld_path = g_strdup_printf("%s/lib:%s/**:%s", host_app->data_dir, host_app->data_dir, ld_path);
 	// calling directly into the shim bionic linker to whitelist the app's lib dir as containing bionic-linked libraries
 	dl_parse_library_path(ld_path, ":");
 	g_free(ld_path);

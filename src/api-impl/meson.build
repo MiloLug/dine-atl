@@ -86,6 +86,7 @@ srcs = [
 	'android/app/usage/UsageStatsManager.java',
 	'android/appwidget/AppWidgetManager.java',
 	'android/appwidget/AppWidgetProvider.java',
+	'android/atl/ATLClassLoader.java',
 	'android/atl/ATLGStub.java',
 	'android/atl/ATLInstaller.java',
 	'android/atl/ATLInstallerUi.java',

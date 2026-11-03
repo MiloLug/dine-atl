@@ -45,7 +45,7 @@ public class Instrumentation {
 				}
 			}
 
-			System.out.println("targetPackage: " + target_package);
+			report(app, "targetPackage: " + target_package);
 
 			if (target_package != null) {
 				PackageParser.Package target = android.atl.ATLRegistry.get().pkg(target_package);
@@ -203,32 +203,50 @@ public class Instrumentation {
 		sr.waitForComplete();
 	}
 
-	public void sendStatus(int resultCode, Bundle results) {
-		if (results != null) {
-			for (String key : sorted(results.keySet())) {
-				System.out.println("INSTRUMENTATION_STATUS: " + key + "=" + results.get(key));
-			}
-		}
-		System.out.println("INSTRUMENTATION_STATUS_CODE: " + resultCode);
+	/**
+	 * Prints text with "[<package>] " before each of its lines, values' continuation lines too, in
+	 * one write: apps sharing a VM print their blocks whole and the harness splits them by package.
+	 */
+	private static void report(ATLLoadedApp app, String text) {
+		String prefix = app != null ? "[" + app.pkg.packageName + "] " : "";
+		StringBuilder out = new StringBuilder();
+		for (String line : text.split("\n", -1))
+			out.append(prefix).append(line).append('\n');
+		System.out.print(out);
+		System.out.flush();
 	}
 
+	public void sendStatus(int resultCode, Bundle results) {
+		StringBuilder block = new StringBuilder();
+		if (results != null) {
+			for (String key : sorted(results.keySet())) {
+				block.append("INSTRUMENTATION_STATUS: ").append(key).append('=').append(results.get(key)).append('\n');
+			}
+		}
+		block.append("INSTRUMENTATION_STATUS_CODE: ").append(resultCode);
+		report(app, block.toString());
+	}
+
+	/** Prints the run's result and ends the test app; the other apps in the VM run on. */
 	public void finish(int resultCode, Bundle results) {
+		StringBuilder block = new StringBuilder();
 		boolean need_hack = false;
 		if (results != null) {
 			for (String key : sorted(results.keySet())) {
-				System.out.println("INSTRUMENTATION_RESULT: " + key + "=" + results.get(key));
+				block.append("INSTRUMENTATION_RESULT: ").append(key).append('=').append(results.get(key)).append('\n');
 				/* HACK: no idea why this isn't recognized as an error otherwise */
 				if (((String)results.get(key)).contains("Test run aborted due to unexpected exception"))
 					need_hack = true;
 			}
 		}
 		if (need_hack) {
-			System.out.println("INSTRUMENTATION_STATUS: shortMsg=ugly hack: Test run aborted due to unexpected exception");
-			System.out.println("INSTRUMENTATION_STATUS_CODE: -1");
+			block.append("INSTRUMENTATION_STATUS: shortMsg=ugly hack: Test run aborted due to unexpected exception\n");
+			block.append("INSTRUMENTATION_STATUS_CODE: -1\n");
 		}
 
-		System.out.println("INSTRUMENTATION_CODE: " + resultCode);
-		System.exit(0);
+		block.append("INSTRUMENTATION_CODE: ").append(resultCode);
+		report(app, block.toString());
+		app.end();
 	}
 
 	/* Copyright (C) 2006 The Android Open Source Project */
@@ -315,12 +333,11 @@ public class Instrumentation {
 		}
 	}
 
+	// on the dying thread: its app's run aborts, and the whole VM exits (no exit is scoped to one app)
 	private static class ExceptionHandler implements Thread.UncaughtExceptionHandler {
 		public void uncaughtException(Thread t, Throwable e) {
-			//onException(null /*FIXME?*/, e);
-			System.out.print("INSTRUMENTATION_RESULT: shortMsg=");
+			report(ATLLoadedApp.ofCurrentThread(), "INSTRUMENTATION_RESULT: shortMsg=" + e + "\nINSTRUMENTATION_STATUS_CODE: -1");
 			e.printStackTrace();
-			System.out.println("INSTRUMENTATION_STATUS_CODE: -1");
 			System.exit(1);
 		}
 	}

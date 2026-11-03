@@ -5,8 +5,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-/* ui slot: the app's window with its activity stack, and view nodes. Called on the Android main
- * thread. */
+/* ui slot: an app's window with its activity stack, and view nodes. Called on the app's Android
+ * main thread. */
 
 struct ui_window; // the app's surface holding the activities' root views, or a Dialog's window
 struct ui_view;   // a view node; View.widget holds it
@@ -49,6 +49,8 @@ void ui_window_show_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_remove_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_set_back_enabled(struct ui_window *window, bool enabled);
 void ui_window_close(struct ui_window *window);
+/* The app of a window or a Dialog's window. Any thread. */
+struct atl_app *ui_window_app(struct ui_window *window);
 /* The window's current size, px. */
 void ui_window_get_size(struct ui_window *window, int *width, int *height);
 /* The window shares the screen with others (Activity.isInMultiWindowMode). */
@@ -93,9 +95,9 @@ struct ui_alert {
 /* The result of a cancel (back, a tap outside, a Cancel action), next to buttons and items. */
 #define UI_DIALOG_CANCEL INT32_MIN
 
-/* A Dialog's window, with the decor view as its content. Results go to atl_upcall_dialog_result;
- * the dialog closes only through ui_dialog_close. */
-struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor);
+/* A Dialog's window in app (its Context's), with the decor view as its content. Results go to
+ * atl_upcall_dialog_result; the dialog closes only through ui_dialog_close. */
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor);
 /* Shows the alert instead of the decor view when alert isn't NULL. */
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
 /* A button of the shown alert changed (which: DialogInterface.BUTTON_*; label NULL: hidden). A result
@@ -114,6 +116,8 @@ void ui_view_remove_child(struct ui_view *parent, struct ui_view *child);
 /* Java dropped the view. A parent that still holds it was dropped too and is freed without its
  * children being walked. */
 void ui_view_free(struct ui_view *view);
+/* The app of the thread that made the view, NULL for a thread of no app. Any thread. */
+struct atl_app *ui_view_app(struct ui_view *view);
 void ui_view_set_layout_params(struct ui_view *view, const struct ui_layout_params *params);
 void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int bottom);
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb);

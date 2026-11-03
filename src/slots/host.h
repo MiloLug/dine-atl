@@ -17,5 +17,8 @@ void host_keep_screen_on(struct atl_app *app, bool on);
 struct atl_gesture_exclusion;
 /* The shown activity's gesture exclusion changed (nav.h). */
 void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gesture_exclusion *exclusion);
+/* The app ended (its window closed, its instrumentation finished): its main loop stops. Any
+ * thread. */
+void host_app_end(struct atl_app *app);
 
 #endif

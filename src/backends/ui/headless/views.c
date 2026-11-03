@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "src/shared/input.h"
+#include "src/shared/upcall.h"
 #include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 
@@ -40,7 +41,7 @@ static void draw_pass(void *window)
 // unpaced: no display to wait for
 void records_draw_wanted(struct ui_window *window)
 {
-	loop_main_post(draw_pass, window);
+	loop_main_post(atl_app_loop(window->app), draw_pass, window);
 }
 
 // no toolkit animates or clamps: the offset is reached at once

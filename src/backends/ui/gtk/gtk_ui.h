@@ -3,7 +3,10 @@
 
 #include <gtk/gtk.h>
 
+struct atl_app;
 struct ui_window;
+
+extern struct atl_app *host_app; // the gtk host's one app (main.c)
 
 /* The window's stack of activity root views. */
 GtkStack *window_stack(struct ui_window *window);

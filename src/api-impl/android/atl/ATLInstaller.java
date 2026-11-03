@@ -250,9 +250,9 @@ public final class ATLInstaller {
 	/**
 	 * A host's start of its app, after VM start: a run by package looks the row up; a run by APK path
 	 * installs the APKs (with no prompt) unless a row already holds these exact files. Returns the
-	 * row's app.
+	 * row's app, which native_app (struct atl_app) runs from here on; a package runs once per VM.
 	 */
-	public static ATLLoadedApp prepareApp(String[] apks, String packageName) throws IOException {
+	public static ATLLoadedApp prepareApp(String[] apks, String packageName, long native_app) throws IOException {
 		ATLRegistry registry = ATLRegistry.get();
 		ATLRegistry.Row row;
 		if (packageName != null) {
@@ -271,7 +271,13 @@ public final class ATLInstaller {
 		if (entry == null || entry.row.generated)
 			throw new IllegalArgumentException((packageName != null ? packageName : apks[0]) + " is not installed");
 		PackageParser.Package pkg = entry.pkg;
-		return ATLLoadedAppManager.getAppFromPackageName(pkg.packageName);
+		ATLLoadedApp app = ATLLoadedAppManager.getAppFromPackageName(pkg.packageName);
+		synchronized (app) {
+			if (app.native_app != 0)
+				throw new IllegalStateException(pkg.packageName + " already runs in this process");
+			app.native_app = native_app;
+		}
+		return app;
 	}
 
 	static boolean sameFile(File a, File b) {

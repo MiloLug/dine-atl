@@ -9,9 +9,12 @@
 void input_touches(NSSet<UITouch *> *touches, UIEvent *event, UITouchPhase phase);
 void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down);
 
+struct atl_app;
 struct ui_window;
-// view.m, on the Android main thread: the app window whose surface (the host's view) it is, or NULL
-struct ui_window *uikit_window_of(void *surface);
+// view.m, any thread: the app whose window has this surface (the host's view), or NULL
+struct atl_app *uikit_app_of(void *surface);
+// view.m, on app's main thread: its window whose surface it is, or NULL once closed
+struct ui_window *uikit_window_of(struct atl_app *app, void *surface);
 
 // keys.m: a hardware keyboard's key as Android's
 int keys_android_code(UIKeyboardHIDUsage usage);

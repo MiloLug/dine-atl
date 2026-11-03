@@ -59,8 +59,7 @@ void gfx_paint_set_shader(struct gfx_paint *paint, struct gfx_shader *shader);
 void gfx_paint_set_color_filter(struct gfx_paint *paint, int mode, uint32_t argb);
 /* For a Drawable whose class overrides draw(); the backend draws it by calling draw(). */
 struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref);
-/* Drawables share one through these; the last unref frees it. ref: any thread; unref: the Android
- * main thread. */
+/* Drawables share one through these; the last unref frees it. Any thread. */
 void gfx_drawable_ref(struct gfx_drawable *drawable);
 void gfx_drawable_unref(struct gfx_drawable *drawable);
 /* Its content changed: redraw what shows it. */

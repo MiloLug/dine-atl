@@ -78,6 +78,18 @@ struct edit_report_box {
 @end
 // UIKit's thread: the field the keyboard types into, as Java asked or the user tapped
 static UIView *keyboard_field;
+
+// the app of the thread that made the view, NULL for a thread of no app
+static struct atl_app *view_app(struct ui_view *view)
+{
+	return view->window ? view->window->app : NULL;
+}
+
+static struct loop_main *view_loop(struct ui_view *view)
+{
+	struct atl_app *app = view_app(view);
+	return app ? atl_app_loop(app) : NULL;
+}
 static void edit_box_free(struct edit_report_box *box);
 
 @implementation ATLView
@@ -453,7 +465,7 @@ FORWARD_TOUCHES
 {
 	if (!_enabled || !_record)
 		return NO;
-	loop_main_post(click_post, _record);
+	loop_main_post(view_loop(_record), click_post, _record);
 	return YES;
 }
 @end
@@ -525,7 +537,7 @@ FORWARD_TOUCHES
 	bool post = !_report->posted;
 	_report->posted = true;
 	pthread_mutex_unlock(&report_lock);
-	if (post && !loop_main_post(deliver_report, _report)) {
+	if (post && !loop_main_post(view_loop(_report->view), deliver_report, _report)) {
 		pthread_mutex_lock(&report_lock);
 		_report->posted = false;
 		pthread_mutex_unlock(&report_lock);
@@ -533,15 +545,24 @@ FORWARD_TOUCHES
 }
 @end
 
-// the apps' windows (each window's surface: blocks capture it when queued, the close clears it); the
-// Android main thread's
-static struct ui_window **app_windows;
-static size_t n_app_windows;
+/* An app's queue to UIKit and its windows (struct atl_app's ui): made with its first window, kept
+ * for the process's life. Each app's main thread flushes its own batches. */
+struct uikit_app {
+	struct atl_app *app;
+	// each window's surface: blocks capture it when queued, the close clears it; the app's main thread's
+	struct ui_window **windows;
+	size_t n_windows;
+	pthread_mutex_t pending_lock; // pending and flush_posted
+	void *pending;                // NSMutableArray<dispatch_block_t>, retained; NULL when empty
+	bool flush_posted;
+	atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
+	atomic_bool draw_wanted;      // a draw pass waits for the next frame
+};
 
-static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER; // pending and flush_posted
-static NSMutableArray<dispatch_block_t> *pending;
-static bool flush_posted;
-static atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
+// every app's, for the frame link and for input on UIKit's thread
+static pthread_mutex_t apps_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct uikit_app **apps;
+static size_t n_apps;
 
 // the surface's points: hosts pass density 160 × screen scale
 static CGFloat scale(void)
@@ -566,67 +587,103 @@ static UIFont *font(float size, int style)
 	return (__bridge_transfer UIFont *)cg_font(size / scale(), GFX_FONT_SANS, style);
 }
 
-static void flush(void)
+static void flush(struct uikit_app *ui)
 {
-	pthread_mutex_lock(&pending_lock);
-	NSArray<dispatch_block_t> *ops = pending;
-	pending = nil;
-	pthread_mutex_unlock(&pending_lock);
+	pthread_mutex_lock(&ui->pending_lock);
+	NSArray<dispatch_block_t> *ops = ui->pending ? CFBridgingRelease(ui->pending) : nil;
+	ui->pending = NULL;
+	pthread_mutex_unlock(&ui->pending_lock);
 	if (!ops.count)
 		return;
-	atomic_fetch_add(&batches_in_flight, 1);
+	atomic_fetch_add(&ui->batches_in_flight, 1);
 	dispatch_async(dispatch_get_main_queue(), ^{
 		for (dispatch_block_t op in ops)
 			op();
-		atomic_fetch_sub(&batches_in_flight, 1);
+		atomic_fetch_sub(&ui->batches_in_flight, 1);
 	});
 }
 
 static void flush_post(void *data)
 {
+	struct uikit_app *ui = data;
 	@autoreleasepool {
-		pthread_mutex_lock(&pending_lock);
-		flush_posted = false;
-		pthread_mutex_unlock(&pending_lock);
-		for (size_t i = 0; i < n_app_windows; i++) {
-			if (app_windows[i]->layout_pending) // the pass flushes, with its frames
+		pthread_mutex_lock(&ui->pending_lock);
+		ui->flush_posted = false;
+		pthread_mutex_unlock(&ui->pending_lock);
+		for (size_t i = 0; i < ui->n_windows; i++) {
+			if (ui->windows[i]->layout_pending) // the pass flushes, with its frames
 				return;
 		}
-		flush();
+		flush(ui);
 	}
 }
 
-void uikit_enqueue(dispatch_block_t op)
+void uikit_enqueue(struct atl_app *app, dispatch_block_t op)
 {
-	pthread_mutex_lock(&pending_lock);
-	if (!pending)
-		pending = [NSMutableArray array];
-	[pending addObject:op];
-	bool post = !flush_posted;
-	flush_posted = true;
-	pthread_mutex_unlock(&pending_lock);
-	if (post && !loop_main_post(flush_post, NULL)) {
-		pthread_mutex_lock(&pending_lock);
-		flush_posted = false;
-		pthread_mutex_unlock(&pending_lock);
+	if (!app) { // a view made on a thread of no app: no app's batch to wait for
+		dispatch_async(dispatch_get_main_queue(), op);
+		return;
+	}
+	struct uikit_app *ui = atl_app_ui(app);
+	pthread_mutex_lock(&ui->pending_lock);
+	if (!ui->pending)
+		ui->pending = (void *)CFBridgingRetain([NSMutableArray array]);
+	[(__bridge NSMutableArray<dispatch_block_t> *)ui->pending addObject:op];
+	bool post = !ui->flush_posted;
+	ui->flush_posted = true;
+	pthread_mutex_unlock(&ui->pending_lock);
+	if (post && !loop_main_post(atl_app_loop(app), flush_post, ui)) {
+		pthread_mutex_lock(&ui->pending_lock);
+		ui->flush_posted = false;
+		pthread_mutex_unlock(&ui->pending_lock);
 	}
 }
 
-struct ui_window *uikit_window_of(void *surface)
+struct atl_app *uikit_app_of(void *surface)
 {
-	for (size_t i = 0; i < n_app_windows; i++) {
-		if (app_windows[i]->surface == surface)
-			return app_windows[i];
+	struct atl_app *found = NULL;
+	pthread_mutex_lock(&apps_lock);
+	for (size_t i = 0; i < n_apps && !found; i++) {
+		struct uikit_app *ui = apps[i];
+		for (size_t j = 0; j < ui->n_windows; j++) {
+			if (ui->windows[j]->surface == surface) {
+				found = ui->app;
+				break;
+			}
+		}
+	}
+	pthread_mutex_unlock(&apps_lock);
+	return found;
+}
+
+struct ui_window *uikit_window_of(struct atl_app *app, void *surface)
+{
+	struct uikit_app *ui = atl_app_ui(app);
+	for (size_t i = 0; i < ui->n_windows; i++) {
+		if (ui->windows[i]->surface == surface)
+			return ui->windows[i];
 	}
 	return NULL;
 }
 
 void records_window_created(struct ui_window *window, void *surface_view)
 {
-	app_windows = realloc(app_windows, (n_app_windows + 1) * sizeof(*app_windows));
-	app_windows[n_app_windows++] = window;
+	struct atl_app *app = window->app;
+	pthread_mutex_lock(&apps_lock);
+	if (!atl_app_ui(app)) {
+		struct uikit_app *ui = calloc(1, sizeof(*ui));
+		ui->app = app;
+		pthread_mutex_init(&ui->pending_lock, NULL);
+		apps = realloc(apps, (n_apps + 1) * sizeof(*apps));
+		apps[n_apps++] = ui;
+		atl_app_set_ui(app, ui);
+	}
+	struct uikit_app *ui = atl_app_ui(app);
+	ui->windows = realloc(ui->windows, (ui->n_windows + 1) * sizeof(*ui->windows));
+	ui->windows[ui->n_windows++] = window;
 	if (surface_view)
 		window->surface = (void *)CFRetain(surface_view);
+	pthread_mutex_unlock(&apps_lock);
 }
 
 void records_view_created(struct ui_view *view)
@@ -636,7 +693,7 @@ void records_view_created(struct ui_view *view)
 		bool horizontal = view->horizontal;
 		bool is_button = view->is_button, edit = view->edit;
 		enum ui_button button = view->button;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView *created;
 			if (kind == NODE_TEXT && is_button) {
 				created = [[ATLButton alloc] initWithRecord:view kind:button];
@@ -667,7 +724,7 @@ void records_view_created(struct ui_view *view)
 void records_child_added(struct ui_view *parent, struct ui_view *child, size_t index)
 {
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(parent), ^{
 			[native(parent) insertSubview:native(child) atIndex:index];
 		});
 	}
@@ -676,7 +733,7 @@ void records_child_added(struct ui_view *parent, struct ui_view *child, size_t i
 void records_child_removed(struct ui_view *parent, struct ui_view *child)
 {
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(parent), ^{
 			UIView *removed = native(child);
 			if (removed.superview == native(parent)) // UIKit moves a view added to a second parent
 				[removed removeFromSuperview];
@@ -699,7 +756,7 @@ static void free_record(void *data)
 void records_view_freed(struct ui_view *view)
 {
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView *freed = CFBridgingRelease(view->native);
 			struct scroll_report *report = NULL;
 			if ([freed isKindOfClass:[ATLScrollView class]]) {
@@ -719,7 +776,7 @@ void records_view_freed(struct ui_view *view)
 			}
 			[freed removeFromSuperview];
 			view->native = report;
-			if (!loop_main_post(free_record, view))
+			if (!loop_main_post(view_loop(view), free_record, view))
 				free_record(view);
 		});
 	}
@@ -731,7 +788,7 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 		return;
 	void *target = window->surface;
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			ATLView *added = (ATLView *)native(root);
 			added.hidden = YES;
 			added.activityRoot = YES;
@@ -747,7 +804,7 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 	void *target = window->surface;
 	@autoreleasepool {
 		bool visible = root->visibility == UI_VIEW_VISIBLE;
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			UIView *shown = native(root);
 			UIView *surface_view = (__bridge UIView *)target;
 			for (UIView *other in surface_view.subviews)
@@ -763,7 +820,7 @@ void records_root_removed(struct ui_window *window, struct ui_view *root)
 	if (window->dialog)
 		return;
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			[native(root) removeFromSuperview];
 		});
 	}
@@ -776,7 +833,7 @@ void records_frame_changed(struct ui_window *window)
 	struct ui_frame frame = window->frame;
 	void *target = window->surface;
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			id surface_view = (__bridge id)target;
 			if ([surface_view conformsToProtocol:@protocol(ATLSurface)])
 				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light fullscreen:frame.fullscreen];
@@ -784,24 +841,27 @@ void records_frame_changed(struct ui_window *window)
 	}
 }
 
-// the loop quits after this, so no flush_post would run
+// the app's loop quits after this, so no flush_post would run
 void records_window_closed(struct ui_window *window)
 {
-	for (size_t i = 0; i < n_app_windows; i++) {
-		if (app_windows[i] == window) {
-			app_windows[i] = app_windows[--n_app_windows];
+	struct uikit_app *ui = atl_app_ui(window->app);
+	pthread_mutex_lock(&apps_lock);
+	for (size_t i = 0; i < ui->n_windows; i++) {
+		if (ui->windows[i] == window) {
+			ui->windows[i] = ui->windows[--ui->n_windows];
 			break;
 		}
 	}
-	if (!window->surface)
-		return;
 	void *closed = window->surface;
 	window->surface = NULL;
+	pthread_mutex_unlock(&apps_lock);
+	if (!closed)
+		return;
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			CFRelease(closed);
 		});
-		flush();
+		flush(ui);
 	}
 }
 
@@ -812,7 +872,7 @@ void records_padding_changed(struct ui_view *view)
 	CGFloat s = scale();
 	UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			[(id<ATLText>)native(view) atlSetPadding:padding];
 		});
 	}
@@ -822,7 +882,7 @@ void records_background_changed(struct ui_view *view, uint32_t argb)
 {
 	@autoreleasepool {
 		bool has_background = view->has_background;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView *changed = native(view);
 			changed.backgroundColor = color(argb);
 			if ([changed isKindOfClass:[ATLButton class]])
@@ -836,7 +896,7 @@ void records_progress_changed(struct ui_view *view)
 	@autoreleasepool {
 		float fraction = view->fraction;
 		bool indeterminate = view->indeterminate;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			ATLProgress *progress = (ATLProgress *)native(view);
 			progress.bar.progress = fraction;
 			progress.bar.hidden = indeterminate;
@@ -856,7 +916,7 @@ void records_visibility_changed(struct ui_view *view)
 		CGFloat alpha = view->alpha;
 		bool enabled = view->enabled;
 		void *target = view->window ? view->window->surface : NULL;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView *changed = native(view);
 			UIView *surface_view = (__bridge UIView *)target;
 			// activity roots: only the front one (records_root_shown) shows
@@ -885,7 +945,7 @@ void records_text_changed(struct ui_view *view)
 		int style = view->text_style;
 		NSTextAlignment alignment = text_alignment(view->alignment);
 		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView<ATLText> *text_view = (UIView<ATLText> *)native(view);
 			[text_view atlSetText:text font:font(size, style) alignment:alignment];
 			if ([text_view respondsToSelector:@selector(atlSetMaxLines:)])
@@ -897,7 +957,7 @@ void records_text_changed(struct ui_view *view)
 void records_text_color_changed(struct ui_view *view, uint32_t argb)
 {
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			[(id<ATLText>)native(view) atlSetColor:color(argb)];
 		});
 	}
@@ -907,7 +967,7 @@ void records_button_changed(struct ui_view *view)
 {
 	@autoreleasepool {
 		bool pressed = view->pressed, checked = view->checked;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			[(ATLButton *)native(view) atlSetPressed:pressed checked:checked];
 		});
 	}
@@ -1026,7 +1086,7 @@ void records_layout_done(struct ui_window *window)
 			size_t count = count_views(window->shown);
 			struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
 			collect_frames(window->shown, scale(), &next);
-			uikit_enqueue(^{
+			uikit_enqueue(window->app, ^{
 				for (size_t i = 0; i < count; i++) {
 					UIView *framed = native(frames[i].view);
 					framed.frame = frames[i].rect;
@@ -1036,21 +1096,22 @@ void records_layout_done(struct ui_window *window)
 				free(frames);
 			});
 		}
-		flush();
+		flush(atl_app_ui(window->app));
 	}
 }
 
-/* Draw passes run at most once per frame: a CADisplayLink on UIKit's thread, paused while no view
- * waits, posts the pass to the Android thread. A frame whose last batch UIKit hasn't run is skipped,
- * so UIKit's thread never waits and batches don't pile up behind it. */
+/* Draw passes run at most once per frame: one CADisplayLink on UIKit's thread, paused while no view
+ * waits, posts each waiting app's pass to its main thread. An app whose last batch UIKit hasn't run
+ * skips the frame, so UIKit's thread never waits and batches don't pile up behind it. */
 
 static CADisplayLink *frame_link; // UIKit's thread
 
 static void frame_post(void *data)
 {
+	struct uikit_app *ui = data;
 	@autoreleasepool {
-		for (size_t i = 0; i < n_app_windows; i++)
-			records_draw_pass(app_windows[i]);
+		for (size_t i = 0; i < ui->n_windows; i++)
+			records_draw_pass(ui->windows[i]);
 	}
 }
 
@@ -1060,15 +1121,28 @@ static void frame_post(void *data)
 @implementation ATLFrameTarget
 - (void)tick:(CADisplayLink *)link
 {
-	if (atomic_load(&batches_in_flight))
-		return;
-	link.paused = YES;
-	loop_main_post(frame_post, NULL);
+	bool waiting = false;
+	pthread_mutex_lock(&apps_lock);
+	for (size_t i = 0; i < n_apps; i++) {
+		struct uikit_app *ui = apps[i];
+		if (!atomic_load(&ui->draw_wanted))
+			continue;
+		if (atomic_load(&ui->batches_in_flight)) {
+			waiting = true;
+			continue;
+		}
+		atomic_store(&ui->draw_wanted, false);
+		loop_main_post(atl_app_loop(ui->app), frame_post, ui);
+	}
+	pthread_mutex_unlock(&apps_lock);
+	if (!waiting)
+		link.paused = YES;
 }
 @end
 
 void records_draw_wanted(struct ui_window *window)
 {
+	atomic_store(&((struct uikit_app *)atl_app_ui(window->app))->draw_wanted, true);
 	@autoreleasepool {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			if (!frame_link) {
@@ -1134,7 +1208,7 @@ void records_view_drawn(struct ui_view *view)
 		struct gfx_canvas *list = view->list ? cg_list_ref(view->list) : NULL;
 		CGFloat s = scale();
 		CGSize size = CGSizeMake(view->drawn_width / s, view->drawn_height / s);
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			show_list(native(view), list, size, s);
 			if (list)
 				gfx_canvas_free(list);
@@ -1146,7 +1220,7 @@ void records_draw_done(struct ui_window *window)
 {
 	@autoreleasepool {
 		if (!window->layout_pending) // else the layout pass flushes, with its frames
-			flush();
+			flush(atl_app_ui(window->app));
 	}
 }
 
@@ -1157,7 +1231,7 @@ void records_scroll_changed(struct ui_view *view, bool animated)
 		CGFloat s = scale();
 		CGPoint offset = CGPointMake(view->scroll_x / s, view->scroll_y / s);
 		bool scroll_node = view->kind == NODE_SCROLL;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView *scrolled = native(view);
 			if (scroll_node) {
 				[(UIScrollView *)scrolled setContentOffset:offset animated:animated];
@@ -1202,7 +1276,7 @@ static void deliver_edit(void *data)
 static void edit_post(void (*fn)(void *), struct ui_view *view)
 {
 	if (view)
-		loop_main_post(fn, view);
+		loop_main_post(view_loop(view), fn, view);
 }
 
 static void action_post(void *data)
@@ -1294,7 +1368,7 @@ static void editor_changed(UIView<UITextInput> *editor, ATLEditState *state)
 	state.prev = text;
 	state.prevStart = selection.location;
 	state.prevEnd = NSMaxRange(selection);
-	if (post && !loop_main_post(deliver_edit, box)) {
+	if (post && !loop_main_post(view_loop(box->view), deliver_edit, box)) {
 		pthread_mutex_lock(&edit_lock);
 		box->posted = false;
 		pthread_mutex_unlock(&edit_lock);
@@ -1615,7 +1689,7 @@ void records_edit_config_changed(struct ui_view *view)
 		struct ui_edit_config config = view->edit_config;
 		bool enabled = view->enabled;
 		NSString *hint = config.hint ? [NSString stringWithUTF8String:config.hint] : nil;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
 			ATLEditState *state = editor.atlState;
 			if (state.multiline != config.multiline) {
@@ -1671,7 +1745,7 @@ void records_edit_state_changed(struct ui_view *view, const char *text, int star
 	records_edit_set(view, text, start, end);
 	@autoreleasepool {
 		NSString *string = [NSString stringWithUTF8String:text] ?: @"";
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
 			ATLEditState *state = editor.atlState;
 			if (ack != state.seq || editor.markedTextRange)
@@ -1691,7 +1765,7 @@ void records_edit_state_changed(struct ui_view *view, const char *text, int star
 bool records_edit_keyboard(struct ui_view *view, bool shown)
 {
 	@autoreleasepool {
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
 			ATLEditState *state = editor.atlState;
 			state.javaFocus = true;
@@ -1720,7 +1794,7 @@ void records_selectable_changed(struct ui_view *view)
 		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 		bool selectable = view->selectable, enabled = view->enabled;
 		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
-		uikit_enqueue(^{
+		uikit_enqueue(view_app(view), ^{
 			UIView<ATLText> *old = (UIView<ATLText> *)native(view);
 			UIColor *text_color = [(id)old textColor];
 			UIView<ATLText> *replacement;

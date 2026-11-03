@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "src/api-impl-jni/app/android_app_Activity.h"
@@ -15,7 +16,12 @@ _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RES
 
 JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit(JNIEnv *env, jobject this, jlong decor_view)
 {
-	return _INTPTR(ui_dialog_new((struct atl_ref *)_WEAK_REF(this), _PTR(decor_view)));
+	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
+	struct atl_app *app = atl_app_of(env, context);
+	(*env)->DeleteLocalRef(env, context);
+	if (!app) // a Context of a package no host runs: the app whose main thread makes the dialog
+		app = atl_app_current();
+	return _INTPTR(ui_dialog_new(app, (struct atl_ref *)_WEAK_REF(this), _PTR(decor_view)));
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle(JNIEnv *env, jobject this, jlong ptr, jstring title_jstr)
@@ -41,10 +47,14 @@ static void dialog_free(void *dialog)
 	ui_dialog_free(dialog);
 }
 
-// finalize calls it on the FinalizerDaemon thread; after loop_main_quit the dialog stays allocated
+// from finalize; a dialog of no app, or one whose app's loop quit, stays allocated
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeDestroy(JNIEnv *env, jobject this, jlong ptr)
 {
-	loop_main_post(dialog_free, _PTR(ptr));
+	struct atl_app *app = ui_window_app(_PTR(ptr));
+	if (!app)
+		fprintf(stderr, "atl: a dialog made on a thread of no app is never freed\n");
+	else
+		loop_main_post(app->loop, dialog_free, _PTR(ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside(JNIEnv *env, jobject this, jlong ptr, jboolean cancel)

@@ -44,79 +44,80 @@ struct post {
 	struct post *next;
 };
 
-static struct {
+struct loop_main {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
-	pthread_t thread;
-	bool bound;
 	int64_t ready_at; // -1: no dispatch pending
 	struct post *posts, *posts_tail;
 	bool quit;
-} main_loop = {.mutex = PTHREAD_MUTEX_INITIALIZER, .ready_at = -1};
+};
 
-void loop_main_prepare(void)
+static __thread struct loop_main *current;
+
+struct loop_main *loop_main_prepare(void)
 {
-	init_cond(&main_loop.cond);
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.thread = pthread_self();
-	main_loop.bound = true;
-	main_loop.ready_at = 0;
-	pthread_mutex_unlock(&main_loop.mutex);
+	struct loop_main *loop = calloc(1, sizeof(*loop));
+	pthread_mutex_init(&loop->mutex, NULL);
+	init_cond(&loop->cond);
+	current = loop;
+	return loop;
 }
 
-bool loop_is_main_thread(void)
+struct loop_main *loop_main_current(void)
 {
-	return main_loop.bound && pthread_equal(pthread_self(), main_loop.thread);
+	return current;
 }
 
-void loop_main_schedule(int timeout_ms)
+void loop_main_schedule(struct loop_main *loop, int timeout_ms)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.ready_at = now_ms() + timeout_ms;
-	pthread_mutex_unlock(&main_loop.mutex);
+	pthread_mutex_lock(&loop->mutex);
+	loop->ready_at = now_ms() + timeout_ms;
+	pthread_mutex_unlock(&loop->mutex);
 }
 
-void loop_main_wake(void)
+void loop_main_wake(struct loop_main *loop)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.ready_at = 0;
-	pthread_cond_signal(&main_loop.cond);
-	pthread_mutex_unlock(&main_loop.mutex);
+	pthread_mutex_lock(&loop->mutex);
+	loop->ready_at = 0;
+	pthread_cond_signal(&loop->cond);
+	pthread_mutex_unlock(&loop->mutex);
 }
 
-bool loop_main_post(void (*fn)(void *data), void *data)
+bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	if (!main_loop.bound || main_loop.quit) {
-		pthread_mutex_unlock(&main_loop.mutex);
+	if (!loop)
+		return false;
+	pthread_mutex_lock(&loop->mutex);
+	if (loop->quit) {
+		pthread_mutex_unlock(&loop->mutex);
 		return false;
 	}
 	struct post *post = malloc(sizeof(*post));
 	*post = (struct post){fn, data, NULL};
-	if (main_loop.posts_tail)
-		main_loop.posts_tail->next = post;
+	if (loop->posts_tail)
+		loop->posts_tail->next = post;
 	else
-		main_loop.posts = post;
-	main_loop.posts_tail = post;
-	pthread_cond_signal(&main_loop.cond);
-	pthread_mutex_unlock(&main_loop.mutex);
+		loop->posts = post;
+	loop->posts_tail = post;
+	pthread_cond_signal(&loop->cond);
+	pthread_mutex_unlock(&loop->mutex);
 	return true;
 }
 
-void loop_main_run(void)
+void loop_main_run(struct loop_main *loop)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	while (!main_loop.quit) {
-		if (!main_loop.posts && (main_loop.ready_at < 0 || now_ms() < main_loop.ready_at)) {
-			wait_until(&main_loop.cond, &main_loop.mutex, main_loop.ready_at);
+	pthread_mutex_lock(&loop->mutex);
+	while (!loop->quit) {
+		if (!loop->posts && (loop->ready_at < 0 || now_ms() < loop->ready_at)) {
+			wait_until(&loop->cond, &loop->mutex, loop->ready_at);
 			continue;
 		}
-		struct post *posts = main_loop.posts;
-		main_loop.posts = main_loop.posts_tail = NULL;
-		bool dispatch = main_loop.ready_at >= 0 && now_ms() >= main_loop.ready_at;
+		struct post *posts = loop->posts;
+		loop->posts = loop->posts_tail = NULL;
+		bool dispatch = loop->ready_at >= 0 && now_ms() >= loop->ready_at;
 		if (dispatch)
-			main_loop.ready_at = -1;
-		pthread_mutex_unlock(&main_loop.mutex);
+			loop->ready_at = -1;
+		pthread_mutex_unlock(&loop->mutex);
 
 		while (posts) {
 			struct post *next = posts->next;
@@ -127,17 +128,17 @@ void loop_main_run(void)
 		if (dispatch)
 			atl_upcall_looper_loop();
 
-		pthread_mutex_lock(&main_loop.mutex);
+		pthread_mutex_lock(&loop->mutex);
 	}
-	pthread_mutex_unlock(&main_loop.mutex);
+	pthread_mutex_unlock(&loop->mutex);
 }
 
-void loop_main_quit(void)
+void loop_main_quit(struct loop_main *loop)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.quit = true;
-	pthread_cond_signal(&main_loop.cond);
-	pthread_mutex_unlock(&main_loop.mutex);
+	pthread_mutex_lock(&loop->mutex);
+	loop->quit = true;
+	pthread_cond_signal(&loop->cond);
+	pthread_mutex_unlock(&loop->mutex);
 }
 
 struct loop_worker {

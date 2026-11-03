@@ -225,17 +225,17 @@ static void nav_front(void *data)
 
 bool atl_nav_back(struct atl_app *app)
 {
-	return app->running && loop_main_post(nav_back, app);
+	return app->running && loop_main_post(app->loop, nav_back, app);
 }
 
 bool atl_nav_home(struct atl_app *app)
 {
-	return app->running && loop_main_post(nav_home, app);
+	return app->running && loop_main_post(app->loop, nav_home, app);
 }
 
 bool atl_nav_front(struct atl_app *app)
 {
-	return app->running && loop_main_post(nav_front, app);
+	return app->running && loop_main_post(app->loop, nav_front, app);
 }
 
 // closes activities[n-1] down to activities[0], the order the stack held them in
@@ -311,7 +311,7 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobje
 		_UNREF(removed_activity);
 	}
 	if (app->backlog_len == 0 && window)
-		loop_main_post(close_window_if_empty, app);
+		loop_main_post(app->loop, close_window_if_empty, app);
 }
 
 JNIEXPORT void JNICALL Java_android_app_Activity_nativeStartActivity(JNIEnv *env, jclass class, jobject activity)
@@ -357,7 +357,7 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeMoveTaskToBack(JNIEnv
 {
 	struct atl_app *app = atl_app_of(env, this);
 	// posted: the activity's callbacks don't run inside the app's onBackPressed
-	return host_task_to_back(app) && loop_main_post(task_to_back, app);
+	return host_task_to_back(app) && loop_main_post(app->loop, task_to_back, app);
 }
 
 JNIEXPORT jboolean JNICALL Java_android_app_Activity_isTaskRoot(JNIEnv *env, jobject this)

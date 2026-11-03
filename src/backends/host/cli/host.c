@@ -1,7 +1,9 @@
 #include <stdio.h>
 
 #include "src/shared/nav.h"
+#include "src/shared/upcall.h"
 #include "src/slots/host.h"
+#include "src/slots/loop.h"
 
 bool host_task_to_back(struct atl_app *app)
 {
@@ -36,4 +38,10 @@ void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gestur
 	print_spans(exclusion->right, exclusion->right_count);
 	printf("\n");
 	fflush(stdout);
+}
+
+// its thread returns from loop_main_run; the process ends after the last app (main.c)
+void host_app_end(struct atl_app *app)
+{
+	loop_main_quit(atl_app_loop(app));
 }

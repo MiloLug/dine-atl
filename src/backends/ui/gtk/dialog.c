@@ -15,6 +15,7 @@
 extern GtkWidget *window; // the gtk host's app window
 
 struct dialog_state {
+	struct atl_app *app;
 	struct atl_ref *ref;
 	GtkWindow *dialog;
 	bool shown;
@@ -44,12 +45,13 @@ static gboolean on_close_request(GtkWindow *dialog, struct dialog_state *state)
 	return TRUE;
 }
 
-struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
 {
 	GtkWidget *dialog = gtk_window_new();
 	gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
 
 	struct dialog_state *state = g_new0(struct dialog_state, 1);
+	state->app = app;
 	state->ref = dialog_ref;
 	state->dialog = GTK_WINDOW(dialog);
 	// kept while an alert replaces it as the window's child
@@ -142,7 +144,7 @@ static void give_answer(void *data)
 static void post_answer(struct dialog_state *state)
 {
 	if (!state->answer_posted)
-		state->answer_posted = loop_main_post(give_answer, state);
+		state->answer_posted = loop_main_post(atl_app_loop(state->app), give_answer, state);
 }
 
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)

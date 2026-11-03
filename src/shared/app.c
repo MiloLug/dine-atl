@@ -7,6 +7,7 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_atl_ATLLoadedApp.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/host.h"
 
 #include "app.h"
 #include "upcall.h"
@@ -39,7 +40,6 @@ void atl_app_bind(JNIEnv *env, struct atl_app *app, jobject record)
 	app->record = _REF(record);
 	app->apk_class_path = string_of(env, record, "classPath");
 	app->data_dir = string_of(env, record, "dataDir");
-	_SET_LONG_FIELD(record, "native_app", _INTPTR(app));
 	jobject group = group_of(env, app);
 	jclass group_class = (*env)->FindClass(env, "java/lang/ThreadGroup");
 	(*env)->SetLongField(env, group, (*env)->GetFieldID(env, group_class, "embedderTag", "J"), _INTPTR(app));
@@ -95,6 +95,32 @@ struct atl_app *atl_app_of_window(JNIEnv *env, jobject window)
 	struct atl_app *app = atl_app_of(env, context);
 	(*env)->DeleteLocalRef(env, context);
 	return app;
+}
+
+void atl_app_end(struct atl_app *app)
+{
+	app->running = false;
+	host_app_end(app);
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLLoadedApp_nativeEnd(JNIEnv *env, jclass this, jlong app)
+{
+	atl_app_end(_PTR(app));
+}
+
+struct loop_main *atl_app_loop(struct atl_app *app)
+{
+	return app->loop;
+}
+
+void *atl_app_ui(struct atl_app *app)
+{
+	return app->ui;
+}
+
+void atl_app_set_ui(struct atl_app *app, void *ui)
+{
+	app->ui = ui;
 }
 
 struct ui_window *atl_thread_app_window(void)

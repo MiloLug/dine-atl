@@ -19,6 +19,7 @@
  * the model when it presents: changes queued after a show in the same batch (onShow's) are in it. */
 @interface ATLDialog : NSObject {
 @public
+	struct atl_app *app;
 	struct atl_ref *ref;
 	NSString *title, *message;
 	NSArray<NSString *> *items;
@@ -45,12 +46,14 @@ static ATLDialog *get_dialog(struct ui_window *window)
 	return (__bridge ATLDialog *)window->dialog->dialog;
 }
 
-struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
 {
 	@autoreleasepool {
 		ATLDialog *dialog = [ATLDialog new];
+		dialog->app = app;
 		dialog->ref = dialog_ref;
 		struct ui_window *window = calloc(1, sizeof(*window));
+		window->app = app;
 		window->dialog = calloc(1, sizeof(*window->dialog));
 		window->dialog->dialog = (void *)CFBridgingRetain(dialog);
 		return window;
@@ -78,7 +81,7 @@ static void give_answer(void *data)
 		struct answer *answer = data;
 		ATLDialog *dialog = CFBridgingRelease(answer->dialog);
 		if (atl_upcall_dialog_result(answer->ref, answer->which)) {
-			uikit_enqueue(^{
+			uikit_enqueue(dialog->app, ^{
 				if (dialog->wanted && !dialog->controller)
 					request_present(dialog, false);
 			});
@@ -99,7 +102,7 @@ static UIAlertAction *action(ATLDialog *dialog, UIAlertController *controller, N
 			return;
 		struct answer *answer = malloc(sizeof(*answer));
 		*answer = (struct answer){(void *)CFBridgingRetain(dialog), dialog->ref, which};
-		if (!loop_main_post(give_answer, answer)) {
+		if (!loop_main_post(atl_app_loop(dialog->app), give_answer, answer)) {
 			CFRelease(answer->dialog);
 			free(answer);
 		}
@@ -226,7 +229,7 @@ void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 			flags.disabled[i] = alert->disabled[i];
 		}
 		bool cancelable = alert->cancelable;
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			dialog->title = title;
 			dialog->message = message;
 			dialog->items = items;
@@ -253,7 +256,7 @@ void ui_dialog_set_button(struct ui_window *window, int which, const char *label
 		ATLDialog *dialog = get_dialog(window);
 		NSString *label = string(label_chars);
 		int i = -1 - which;
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			bool relabeled = (label == nil) != (dialog->buttons[i] == nil) || (label && ![label isEqualToString:dialog->buttons[i]]);
 			dialog->buttons[i] = label;
 			dialog->disabled[i] = !enabled;
@@ -275,7 +278,7 @@ void ui_dialog_close(struct ui_window *window)
 {
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
-		uikit_enqueue(^{
+		uikit_enqueue(window->app, ^{
 			dialog->wanted = false;
 			UIAlertController *controller = dialog->controller;
 			if (!controller) // a tap closed it already, or it never showed
@@ -300,16 +303,17 @@ void ui_dialog_free(struct ui_window *window)
 {
 	@autoreleasepool {
 		ATLDialog *dialog = CFBridgingRelease(window->dialog->dialog);
+		struct atl_app *app = window->app;
 		records_observations_orphan(window);
 		free(window->dialog);
 		free(window);
-		uikit_enqueue(^{
+		uikit_enqueue(app, ^{
 			struct atl_ref *ref = dialog->ref;
 			dialog->ref = NULL;
 			dialog->wanted = false;
 			dialog->controller = nil;
 			// answers posted from this thread before stay ahead of it and still use the ref
-			loop_main_post(free_ref, ref);
+			loop_main_post(atl_app_loop(app), free_ref, ref);
 		});
 	}
 }

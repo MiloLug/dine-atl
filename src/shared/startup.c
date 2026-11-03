@@ -121,7 +121,13 @@ static char *open_prefix(void)
 	return ret ? NULL : prefix;
 }
 
-int atl_set_app(struct atl_paths *paths, char *const *apks, int napks, const char *package)
+int atl_open_prefix(void)
+{
+	prefix_dir = open_prefix();
+	return prefix_dir ? 0 : -1;
+}
+
+int atl_app_prepare(JNIEnv *env, struct atl_app *app, char *const *apks, int napks, const char *package)
 {
 	for (int i = 0; i < napks; i++) {
 		if (access(apks[i], F_OK) < 0) {
@@ -129,29 +135,15 @@ int atl_set_app(struct atl_paths *paths, char *const *apks, int napks, const cha
 			return -1;
 		}
 	}
-	prefix_dir = open_prefix();
-	if (!prefix_dir)
-		return -1;
-	paths->apks = calloc(napks + 1, sizeof(*paths->apks));
-	for (int i = 0; i < napks; i++)
-		paths->apks[i] = strdup(apks[i]);
-	paths->napks = napks;
-	paths->package = package ? strdup(package) : NULL;
-	paths->app_lib_dir = NULL;
-	return 0;
-}
-
-int atl_app_prepare(JNIEnv *env, struct atl_paths *paths, struct atl_app *app)
-{
-	jobjectArray apks = NULL;
-	if (paths->napks) {
-		apks = (*env)->NewObjectArray(env, paths->napks, (*env)->FindClass(env, "java/lang/String"), NULL);
-		for (int i = 0; i < paths->napks; i++)
-			(*env)->SetObjectArrayElement(env, apks, i, _JSTRING(paths->apks[i]));
+	jobjectArray apk_array = NULL;
+	if (napks) {
+		apk_array = (*env)->NewObjectArray(env, napks, (*env)->FindClass(env, "java/lang/String"), NULL);
+		for (int i = 0; i < napks; i++)
+			(*env)->SetObjectArrayElement(env, apk_array, i, _JSTRING(apks[i]));
 	}
 	jclass installer = (*env)->FindClass(env, "android/atl/ATLInstaller");
-	jmethodID prepare = installer ? (*env)->GetStaticMethodID(env, installer, "prepareApp", "([Ljava/lang/String;Ljava/lang/String;)Landroid/atl/ATLLoadedApp;") : NULL;
-	jobject record = prepare ? (*env)->CallStaticObjectMethod(env, installer, prepare, apks, paths->package ? _JSTRING(paths->package) : NULL) : NULL;
+	jmethodID prepare = installer ? (*env)->GetStaticMethodID(env, installer, "prepareApp", "([Ljava/lang/String;Ljava/lang/String;J)Landroid/atl/ATLLoadedApp;") : NULL;
+	jobject record = prepare ? (*env)->CallStaticObjectMethod(env, installer, prepare, apk_array, package ? _JSTRING(package) : NULL, _INTPTR(app)) : NULL;
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 		(*env)->ExceptionClear(env); // ART's ExceptionDescribe leaves it pending
@@ -160,15 +152,17 @@ int atl_app_prepare(JNIEnv *env, struct atl_paths *paths, struct atl_app *app)
 	atl_app_bind(env, app, record);
 	(*env)->DeleteLocalRef(env, record);
 	// the data dir and its lib/, which app code expects to exist
-	if (make_dir(app->data_dir) < 0 || asprintf(&paths->app_lib_dir, "%s/lib", app->data_dir) < 0)
+	char *lib_dir;
+	if (make_dir(app->data_dir) < 0 || asprintf(&lib_dir, "%s/lib", app->data_dir) < 0)
 		return -1;
-	make_dir(paths->app_lib_dir);
+	make_dir(lib_dir);
+	free(lib_dir);
 	return 0;
 }
 
-void atl_prepare(struct atl_paths *paths, char *const *apks, int napks, const char *package, bool instrument)
+void atl_prepare(struct atl_paths *paths, bool instrument)
 {
-	if (atl_set_app(paths, apks, napks, package) < 0)
+	if (atl_open_prefix() < 0)
 		exit(1);
 
 	Dl_info libart_so_dl_info;
@@ -312,9 +306,8 @@ jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *windo
 	if (atl_app_join(env, app) < 0)
 		exit(1);
 	app->window = window;
+	app->loop = prepare_main_looper(env);
 	app->running = true;
-
-	prepare_main_looper(env);
 
 	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD(_CLASS(app->record), "start", "(J)Landroid/app/Application;"), _INTPTR(window));
 	exit_on_exception(env);

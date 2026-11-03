@@ -26,3 +26,15 @@ void host_keep_screen_on(struct atl_app *app, bool on)
 		cookie = 0;
 	}
 }
+
+static gboolean quit(gpointer data)
+{
+	g_application_quit(g_application_get_default());
+	return G_SOURCE_REMOVE;
+}
+
+// one app per process: GApplication's run returns and the process exits
+void host_app_end(struct atl_app *app)
+{
+	g_idle_add(quit, NULL);
+}

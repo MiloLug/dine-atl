@@ -7,8 +7,9 @@
 
 #include "test_hooks.h"
 
-static bool loaded, scripted;
-static char *rest; // the answers not given yet
+// per Android main thread: each app answers its dialogs from the list's start
+static __thread bool loaded, scripted;
+static __thread char *rest; // the answers not given yet
 
 static bool match(const struct ui_alert *alert, const char *answer, int *which)
 {
@@ -52,8 +53,11 @@ bool atl_dialog_scripted(const struct ui_alert *alert, int *which)
 
 void atl_test_window_ready(struct ui_window *window)
 {
-	if (getenv("ATL_DUMP_VIEWTREE"))
+	if (getenv("ATL_DUMP_VIEWTREE")) {
+		flockfile(stdout); // whole, beside other apps' main threads
 		ui_window_dump(window, stdout);
+		funlockfile(stdout);
+	}
 }
 
 static void print_freed(const char *line)

@@ -154,7 +154,7 @@ static void schedule_layout(struct ui_window *window)
 	if (window->layout_pending)
 		return;
 	window->layout_pending = true;
-	loop_main_post(layout_pass, window);
+	loop_main_post(atl_app_loop(window->app), layout_pass, window);
 }
 
 struct ui_window *ui_window_new(struct atl_app *app, void *surface)
@@ -215,7 +215,12 @@ void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
 void ui_window_close(struct ui_window *window)
 {
 	records_window_closed(window);
-	loop_main_quit();
+	atl_app_end(window->app);
+}
+
+struct atl_app *ui_window_app(struct ui_window *window)
+{
+	return window->app;
 }
 
 void ui_window_get_size(struct ui_window *window, int *width, int *height)
@@ -256,6 +261,11 @@ void records_observations_orphan(struct ui_window *window)
 	for (struct ui_observation *o = window->observations; o; o = o->next)
 		o->window = NULL;
 	window->observations = NULL;
+}
+
+struct atl_app *ui_view_app(struct ui_view *view)
+{
+	return view->window ? view->window->app : NULL;
 }
 
 // the caller sets its kind's fields, then calls records_view_created

@@ -22,7 +22,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -37,9 +39,8 @@ public class ClassPathPackageInfoSource {
 
 	private static final ClassLoader CLASS_LOADER = ClassPathPackageInfoSource.class.getClassLoader();
 
-	private static String[] apkPaths;
-
-	private static ClassPathPackageInfoSource classPathSource;
+	// per test app: apps sharing a VM each run their own runner
+	private static final Map<ClassLoader, ClassPathPackageInfoSource> sources = new HashMap<>();
 
 	private final SimpleCache<String, ClassPathPackageInfo> cache =
 	    new SimpleCache<String, ClassPathPackageInfo>() {
@@ -54,20 +55,26 @@ public class ClassPathPackageInfoSource {
 
 	private final ClassLoader classLoader;
 
-	private ClassPathPackageInfoSource(ClassLoader classLoader) {
+	private final String[] apkPaths;
+
+	private ClassPathPackageInfoSource(ClassLoader classLoader, String[] apkPaths) {
 		this.classLoader = classLoader;
+		this.apkPaths = apkPaths;
 		classPath = getClassPath();
 	}
 
-	static void setApkPaths(String[] apkPaths) {
-		ClassPathPackageInfoSource.apkPaths = apkPaths;
+	/** The APKs to search for the test classes that classLoader loads. */
+	static synchronized void setApkPaths(ClassLoader classLoader, String[] apkPaths) {
+		sources.put(classLoader, new ClassPathPackageInfoSource(classLoader, apkPaths));
 	}
 
-	public static ClassPathPackageInfoSource forClassPath(ClassLoader classLoader) {
-		if (classPathSource == null) {
-			classPathSource = new ClassPathPackageInfoSource(classLoader);
+	public static synchronized ClassPathPackageInfoSource forClassPath(ClassLoader classLoader) {
+		ClassPathPackageInfoSource source = sources.get(classLoader);
+		if (source == null) {
+			source = new ClassPathPackageInfoSource(classLoader, new String[0]);
+			sources.put(classLoader, source);
 		}
-		return classPathSource;
+		return source;
 	}
 
 	public Set<Class<?>> getTopLevelClassesRecursive(String packageName) {

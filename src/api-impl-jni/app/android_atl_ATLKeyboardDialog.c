@@ -9,6 +9,7 @@
 #include "../defines.h"
 #include "../util.h"
 #include "../generated_headers/android_atl_ATLKeyboardDialog.h"
+#include "src/shared/app.h"
 #include "src/slots/ui.h"
 
 #define DEBUG(fmt, ...) android_log_printf(ANDROID_LOG_INFO, "ATLKeyboardDialog", "%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__)
@@ -154,7 +155,10 @@ static int connect_osk_dbus_iface(GtkWidget *dialog)
 
 JNIEXPORT jlong JNICALL Java_android_atl_ATLKeyboardDialog_nativeInit(JNIEnv *env, jobject this, jlong decor_view_ptr)
 {
-	GtkWidget *dialog = GTK_WIDGET(ui_dialog_new((struct atl_ref *)_WEAK_REF(this), _PTR(decor_view_ptr)));
+	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
+	struct atl_app *app = atl_app_of(env, context);
+	(*env)->DeleteLocalRef(env, context);
+	GtkWidget *dialog = GTK_WIDGET(ui_dialog_new(app, (struct atl_ref *)_WEAK_REF(this), _PTR(decor_view_ptr)));
 	GtkWindow *window = GTK_WINDOW(dialog);
 
 	gtk_window_set_transient_for(window, NULL);

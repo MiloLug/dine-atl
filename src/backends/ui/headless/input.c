@@ -22,13 +22,13 @@ struct posted_touch {
 	float x, y;
 };
 
-// the Android main thread's
-static struct atl_touch touch; // the pointers that are down
-static struct ui_view *scroll; // the gesture's scroll node, or NULL
-static bool panning;
-static float start_x, start_y;
-static int start_scroll_x, start_scroll_y;
-static int64_t key_down_time;
+// each app's Android main thread has its own
+static __thread struct atl_touch touch; // the pointers that are down
+static __thread struct ui_view *scroll; // the gesture's scroll node, or NULL
+static __thread bool panning;
+static __thread float start_x, start_y;
+static __thread int start_scroll_x, start_scroll_y;
+static __thread int64_t key_down_time;
 
 static bool contains(const struct ui_view *view, float x, float y)
 {
@@ -78,7 +78,7 @@ static void pan(float x, float y)
 	atl_upcall_scrolled(scroll->ref, scroll_x, scroll_y);
 }
 
-static struct ui_window *touch_window; // the gesture's: its first pointer's
+static __thread struct ui_window *touch_window; // the gesture's: its first pointer's
 
 static void deliver(int action)
 {
@@ -176,7 +176,7 @@ void headless_touch(struct ui_window *window, enum headless_touch what, int id, 
 {
 	struct posted_touch *posted = malloc(sizeof(*posted));
 	*posted = (struct posted_touch){window, what, id, x, y};
-	if (!loop_main_post(on_touch, posted))
+	if (!loop_main_post(atl_app_loop(window->app), on_touch, posted))
 		free(posted);
 }
 
@@ -201,7 +201,7 @@ void headless_key(struct ui_window *window, int down, int code, int meta, int un
 {
 	struct posted_key *posted = malloc(sizeof(*posted));
 	*posted = (struct posted_key){window, {.action = down ? ATL_KEY_DOWN : ATL_KEY_UP, .code = code, .meta = meta, .unicode = unicode}};
-	if (!loop_main_post(on_key, posted))
+	if (!loop_main_post(atl_app_loop(window->app), on_key, posted))
 		free(posted);
 }
 

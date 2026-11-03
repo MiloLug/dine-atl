@@ -2,7 +2,6 @@
 #include "src/api-impl-jni/generated_headers/android_graphics_drawable_Drawable.h"
 #include "src/api-impl-jni/util.h"
 #include "src/slots/gfx.h"
-#include "src/slots/loop.h"
 
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1constructor(JNIEnv *env, jobject this)
 {
@@ -16,15 +15,9 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1ref(JNIEn
 	gfx_drawable_ref(_PTR(paintable_ptr));
 }
 
-static void drawable_unref(void *drawable)
-{
-	gfx_drawable_unref(drawable);
-}
-
-// finalize calls it on the FinalizerDaemon thread; after loop_main_quit the drawable stays allocated
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref(JNIEnv *env, jobject this, jlong paintable_ptr)
 {
-	loop_main_post(drawable_unref, _PTR(paintable_ptr));
+	gfx_drawable_unref(_PTR(paintable_ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter(JNIEnv *env, jclass class, jlong paintable_ptr, jint mode, jint color)

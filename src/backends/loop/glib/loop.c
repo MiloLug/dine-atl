@@ -19,7 +19,13 @@ static GSourceFuncs source_funcs = {
 };
 static GSource *source = NULL;
 
-void loop_main_prepare(void)
+// the gtk host runs one app; its GApplication owns the loop, so there is no run or quit
+struct loop_main {
+	char unused;
+};
+static struct loop_main main_loop;
+
+struct loop_main *loop_main_prepare(void)
 {
 	main_thread_id = g_thread_self();
 	// app native code may use the main thread's ALooper
@@ -28,19 +34,20 @@ void loop_main_prepare(void)
 	source = g_source_new(&source_funcs, sizeof(GSource));
 	g_source_set_ready_time(source, 0);
 	g_source_attach(source, NULL);
+	return &main_loop;
 }
 
-bool loop_is_main_thread(void)
+struct loop_main *loop_main_current(void)
 {
-	return g_thread_self() == main_thread_id;
+	return g_thread_self() == main_thread_id ? &main_loop : NULL;
 }
 
-void loop_main_schedule(int timeout_ms)
+void loop_main_schedule(struct loop_main *loop, int timeout_ms)
 {
 	g_source_set_ready_time(source, g_source_get_time(source) + timeout_ms * 1000L);
 }
 
-void loop_main_wake(void)
+void loop_main_wake(struct loop_main *loop)
 {
 	g_source_set_ready_time(source, 0);
 	g_main_context_wakeup(NULL); // needed when called from another thread
@@ -59,10 +66,9 @@ static gboolean run_post(gpointer user_data)
 	return G_SOURCE_REMOVE;
 }
 
-// no quit: the gtk host's GApplication owns the loop
-bool loop_main_post(void (*fn)(void *data), void *data)
+bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data)
 {
-	if (!source)
+	if (!loop || !source)
 		return false;
 	struct post *post = g_new(struct post, 1);
 	*post = (struct post){fn, data};

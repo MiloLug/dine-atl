@@ -37,7 +37,7 @@ struct gfx_drawable {
 };
 
 /* A display list of plain data: each op holds a copy of its paint and the matrix it was drawn
- * under, since Paint and Matrix free their native state on the FinalizerDaemon. A finished list
+ * under, since Paint and Matrix free their native state from finalize. A finished list
  * doesn't change; coregraphics replays it on another thread, so its refs drop on any thread. */
 
 enum op_kind {

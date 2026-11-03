@@ -12,8 +12,6 @@
 
 #include "gtk_ui.h"
 
-extern struct atl_app *host_app; // the gtk host's (main.c)
-
 /* Debug agent behind `tools/dine dbg ui …` on the gtk build (ATL_DBG_AGENT), with the iOS agent's
  * wire format (native/dev/dbgagent/agent.mm): one request line, one JSON reply line per connection.
  *   ls               {"labels": [[isElement, label], …]}: the shown text of the app window, then of

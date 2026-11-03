@@ -3,23 +3,28 @@
 
 #include <stdbool.h>
 
-/* Loop slot: the Android main thread inside the platform's loop, and worker-thread loops.
- * The main loop dispatches through atl_upcall_looper_loop(). */
+/* Loop slot: each app's Android main thread inside the platform's loop, and worker-thread loops.
+ * A main loop dispatches through atl_upcall_looper_loop(). Main loops live as long as the
+ * process. */
 
-/* Binds the calling thread as the Android main thread; the first dispatch comes as soon as the
- * loop runs. */
-void loop_main_prepare(void);
-bool loop_is_main_thread(void);
-/* Next dispatch after timeout_ms (> 0). Main thread only. */
-void loop_main_schedule(int timeout_ms);
+struct loop_main;
+
+/* Binds the calling thread as an Android main thread and returns its loop; the first dispatch
+ * comes as soon as the loop runs. The glib backend has one main loop per process. */
+struct loop_main *loop_main_prepare(void);
+/* The calling thread's main loop, NULL on any other thread. */
+struct loop_main *loop_main_current(void);
+/* Next dispatch after timeout_ms (> 0). The loop's own thread only. */
+void loop_main_schedule(struct loop_main *loop, int timeout_ms);
 /* Dispatch as soon as possible. Any thread. */
-void loop_main_wake(void);
-/* Runs fn(data) once on the main thread. Any thread. False, and fn never runs, before
- * loop_main_prepare and after loop_main_quit. */
-bool loop_main_post(void (*fn)(void *data), void *data);
-/* For hosts that own the main loop; the gtk host runs GApplication instead. */
-void loop_main_run(void);
-void loop_main_quit(void);
+void loop_main_wake(struct loop_main *loop);
+/* Runs fn(data) once on the loop's thread. Any thread. False, and fn never runs, for a NULL loop
+ * and after loop_main_quit. */
+bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data);
+/* For hosts that own the main loop (not glib: the gtk host runs GApplication); returns after
+ * loop_main_quit. */
+void loop_main_run(struct loop_main *loop);
+void loop_main_quit(struct loop_main *loop);
 
 /* The calling thread's loop. */
 struct loop_worker *loop_worker_new(void);

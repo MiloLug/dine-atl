@@ -22,6 +22,7 @@ static UIView *gesture_surface; // the gesture's coordinates
 static int64_t key_down_times[512];
 
 struct posted_touch {
+	struct atl_app *app;
 	void *surface; // compared only: its window may have closed
 	struct atl_touch touch;
 };
@@ -36,7 +37,7 @@ static void deliver_touch(void *data)
 	if (pending_move == posted)
 		pending_move = NULL;
 	struct atl_touch touch = posted->touch;
-	struct ui_window *window = uikit_window_of(posted->surface);
+	struct ui_window *window = uikit_window_of(posted->app, posted->surface);
 	pthread_mutex_unlock(&post_lock);
 	free(posted);
 	if (window)
@@ -47,18 +48,26 @@ static void post(int action)
 {
 	gesture.action = action;
 	gesture.time = atl_uptime_ms();
+	void *surface = (__bridge void *)gesture_surface;
 	pthread_mutex_lock(&post_lock);
-	if (action == ATL_ACTION_MOVE && pending_move) {
+	if (action == ATL_ACTION_MOVE && pending_move && pending_move->surface == surface) {
 		pending_move->touch = gesture;
 		pthread_mutex_unlock(&post_lock);
 		return;
 	}
+	struct atl_app *app = uikit_app_of(surface);
+	if (!app) {
+		pending_move = NULL;
+		pthread_mutex_unlock(&post_lock);
+		return;
+	}
 	struct posted_touch *posted = malloc(sizeof(*posted));
-	posted->surface = (__bridge void *)gesture_surface;
+	posted->app = app;
+	posted->surface = surface;
 	posted->touch = gesture;
 	pending_move = action == ATL_ACTION_MOVE ? posted : NULL;
 	pthread_mutex_unlock(&post_lock);
-	if (!loop_main_post(deliver_touch, posted)) {
+	if (!loop_main_post(atl_app_loop(app), deliver_touch, posted)) {
 		pthread_mutex_lock(&post_lock);
 		if (pending_move == posted)
 			pending_move = NULL;
@@ -183,13 +192,14 @@ void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase
 
 struct posted_key {
 	struct atl_key key;
+	struct atl_app *app;
 	void *surface; // compared only
 };
 
 static void deliver_key(void *data)
 {
 	struct posted_key *posted = data;
-	struct ui_window *window = uikit_window_of(posted->surface);
+	struct ui_window *window = uikit_window_of(posted->app, posted->surface);
 	if (window)
 		records_key(window, &posted->key);
 	free(posted);
@@ -198,11 +208,15 @@ static void deliver_key(void *data)
 void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down)
 {
 	void *surface = (__bridge void *)surface_of(view);
+	struct atl_app *app = uikit_app_of(surface);
+	if (!app)
+		return;
 	for (UIPress *press in presses) {
 		UIKey *key = press.key;
 		if (!key)
 			continue;
 		struct posted_key *posted_key = calloc(1, sizeof(*posted_key));
+		posted_key->app = app;
 		posted_key->surface = surface;
 		struct atl_key *posted = &posted_key->key;
 		posted->action = down ? ATL_KEY_DOWN : ATL_KEY_UP;
@@ -214,7 +228,7 @@ void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down)
 		if (down)
 			*down_time = posted->time;
 		posted->down_time = *down_time;
-		if (!loop_main_post(deliver_key, posted_key))
+		if (!loop_main_post(atl_app_loop(app), deliver_key, posted_key))
 			free(posted_key);
 	}
 }

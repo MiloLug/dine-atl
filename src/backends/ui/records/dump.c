@@ -40,10 +40,12 @@ void records_test_view_drawn(const struct ui_view *view)
 {
 	if (!getenv("ATL_DUMP_DISPLAYLIST"))
 		return;
+	flockfile(stdout); // whole, beside other apps' main threads
 	printf("displaylist: %s %dx%d\n", view->class_name, view->drawn_width, view->drawn_height);
 	gfx_canvas_dump(view->list, stdout);
 	printf("displaylist: end\n");
 	fflush(stdout);
+	funlockfile(stdout);
 }
 
 static double ms(const struct timespec *t)
@@ -53,8 +55,8 @@ static double ms(const struct timespec *t)
 
 void records_test_frame_drawn(const struct timespec *start, const struct timespec *end)
 {
-	static double first, last, total, max;
-	static int frames;
+	static __thread double first, last, total, max; // the window's: one per app's main thread
+	static __thread int frames;
 	double s = ms(start), e = ms(end);
 	if (!frames || s - last > 500) {
 		first = s;

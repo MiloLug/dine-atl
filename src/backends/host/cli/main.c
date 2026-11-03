@@ -16,12 +16,16 @@
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
-/* Plain C entry for builds without a desktop toolkit: one app, and its main activity or an
- * instrumentation; or an install or uninstall into the prefix. */
+/* Plain C entry for builds without a desktop toolkit: apps in one VM, each with its main activity
+ * or an instrumentation; or an install or uninstall into the prefix. */
 
-#define USAGE "usage: %s [-c] [-d DPI] [-l ACTIVITY | --instrument CLASS] [-X JVM_OPTION]... APK... | --package PACKAGE\n" \
-              "       %s --install [--allow-fake-signature] [-X JVM_OPTION]... APK...\n"           \
+#define USAGE "usage: %s [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] APK... [{-l ACTIVITY | --instrument CLASS} APK...]...\n" \
+              "       %s [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] --package PACKAGE\n"                                \
+              "       %s --install [--allow-fake-signature] [-X JVM_OPTION]... APK...\n"                                                      \
               "       %s --uninstall PACKAGE [-X JVM_OPTION]...\n"
+
+// each app runs on its own thread, with the process main thread's stack size (host_linux.c)
+#define APP_THREAD_STACK (8 * 1024 * 1024)
 
 // "insets" and 12 dp: system gestures, mandatory gestures, navigation bars, each left top right bottom
 static bool parse_insets(const char *line, struct atl_window_insets *insets)
@@ -154,13 +158,53 @@ static void start_instrumentation(JNIEnv *env, struct atl_app *app, const char *
 	}
 }
 
+/* One app of the command line: an -l or --instrument opens the next one, and the APKs after it are
+ * its splits (APKs before the first opener belong to the first app). */
+struct cli_app {
+	char **apks; // the base first
+	int napks;
+	const char *activity;        // NULL: the main activity
+	const char *instrumentation; // NULL: none
+	struct atl_app *app;
+	pthread_t thread;
+};
+
+static JavaVM *vm;
+static bool commands;
+
+static void *run_app(void *data)
+{
+	struct cli_app *cli = data;
+	struct atl_app *app = cli->app;
+	JNIEnv *env;
+	JavaVMAttachArgs args = {.version = JNI_VERSION_1_6, .name = "main"};
+	if ((*vm)->AttachCurrentThread(vm, (void **)&env, &args) != JNI_OK) {
+		fprintf(stderr, "error: can't attach the thread of %s\n", cli->apks ? cli->apks[0] : "the app");
+		exit(1);
+	}
+	atl_app_create(env, app, ui_window_new(app, NULL));
+	if (commands) {
+		pthread_t reader;
+		pthread_create(&reader, NULL, read_commands, app);
+		pthread_detach(reader);
+	}
+	if (cli->instrumentation) {
+		start_instrumentation(env, app, cli->instrumentation);
+	} else {
+		jobject main_activity = atl_activity_create_main(env, app, cli->activity, NULL);
+		activity_start(env, app, main_activity);
+		(*env)->DeleteLocalRef(env, main_activity);
+	}
+	loop_main_run(app->loop);
+	// ART aborts the process when a thread it knows exits attached
+	(*vm)->DetachCurrentThread(vm);
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	atl_linux_host_init();
 
-	const char *activity = NULL;
-	const char *instrumentation = NULL;
-	bool commands = false;
 	struct atl_window_config window = {ATL_WINDOW_WIDTH_DEFAULT, ATL_WINDOW_HEIGHT_DEFAULT, ATL_DENSITY_DPI_DEFAULT, UI_DISPLAY_UNKNOWN};
 	char **jvm_options = calloc(argc, sizeof(*jvm_options));
 	int n_jvm_options = 0;
@@ -168,6 +212,9 @@ int main(int argc, char **argv)
 	bool allow_fake_signature = false;
 	const char *uninstall = NULL;
 	const char *package = NULL;
+	struct cli_app *apps = calloc(argc, sizeof(*apps));
+	int n_apps = 0;
+	bool usage = false;
 	static const struct option long_options[] = {
 		{"instrument", required_argument, NULL, 'I'},
 		{"install", no_argument, NULL, 'i'},
@@ -177,13 +224,25 @@ int main(int argc, char **argv)
 		{0},
 	};
 	int opt;
-	while ((opt = getopt_long(argc, argv, "cd:l:X:", long_options, NULL)) != -1) {
+	// "-": APKs come in order (as 1), so each belongs to the app opened before it
+	while ((opt = getopt_long(argc, argv, "-cd:l:X:", long_options, NULL)) != -1) {
+		struct cli_app *current = n_apps ? &apps[n_apps - 1] : NULL;
 		switch (opt) {
-			case 'c':
-				commands = true;
+			case 1:
+				if (!current)
+					current = &apps[n_apps++];
+				if (!current->apks)
+					current->apks = calloc(argc, sizeof(*current->apks));
+				current->apks[current->napks++] = optarg;
 				break;
 			case 'I':
-				instrumentation = optarg;
+			case 'l':
+				if (!current || current->activity || current->instrumentation)
+					current = &apps[n_apps++];
+				*(opt == 'I' ? &current->instrumentation : &current->activity) = optarg;
+				break;
+			case 'c':
+				commands = true;
 				break;
 			case 'i':
 				install = true;
@@ -199,58 +258,68 @@ int main(int argc, char **argv)
 				break;
 			case 'd':
 				window.density_dpi = atoi(optarg);
-				if (window.density_dpi <= 0) {
-					fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
-					return 1;
-				}
-				break;
-			case 'l':
-				activity = optarg;
+				usage |= window.density_dpi <= 0;
 				break;
 			case 'X':
 				jvm_options[n_jvm_options++] = optarg;
 				break;
 			default:
-				fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
-				return 1;
+				usage = true;
 		}
 	}
 	bool app = !install && !uninstall;
-	bool apks = optind < argc;
-	if (apks + (package != NULL) + (uninstall != NULL) != 1 || (instrumentation && activity) || (install && !apks) ||
-	    (!app && (commands || activity || instrumentation)) || (allow_fake_signature && !install)) {
-		fprintf(stderr, USAGE, argv[0], argv[0], argv[0]);
+	bool openers = false, apkless = false;
+	for (int i = 0; i < n_apps; i++) {
+		openers |= apps[i].activity || apps[i].instrumentation;
+		apkless |= !apps[i].napks;
+	}
+	if (package) // its activity or instrumentation, if any, opened an app without APKs
+		usage |= n_apps > 1 || (n_apps && apps[0].napks);
+	else
+		usage |= apkless;
+	usage |= (n_apps > 0 && !package) + (package != NULL) + (uninstall != NULL) != 1 || (install && !n_apps) ||
+	         (!app && (commands || openers)) || (install && n_apps > 1) || (allow_fake_signature && !install) ||
+	         (commands && n_apps > 1);
+	if (usage) {
+		fprintf(stderr, USAGE, argv[0], argv[0], argv[0], argv[0]);
 		return 1;
 	}
 
 	struct atl_paths paths;
 	if (!app) {
-		atl_prepare(&paths, NULL, 0, NULL, false);
+		atl_prepare(&paths, false);
 		JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
-		atl_exit(env, install ? atl_install(env, &argv[optind], argc - optind, allow_fake_signature) : atl_uninstall(env, uninstall));
+		atl_exit(env, install ? atl_install(env, apps[0].apks, apps[0].napks, allow_fake_signature) : atl_uninstall(env, uninstall));
 	}
-	atl_prepare(&paths, &argv[optind], argc - optind, package, instrumentation != NULL);
+	if (!n_apps) // --package alone
+		n_apps = 1;
+	bool instrument = false;
+	for (int i = 0; i < n_apps; i++)
+		instrument |= apps[i].instrumentation != NULL;
+	atl_prepare(&paths, instrument);
 	JNIEnv *env = atl_vm_start(&paths, jvm_options, &window);
-	struct atl_app *host_app = atl_app_new();
-	if (atl_app_prepare(env, &paths, host_app) < 0)
-		atl_exit(env, 1);
-	atl_app_take_attaches(env, host_app);
+	(*env)->GetJavaVM(env, &vm);
+	for (int i = 0; i < n_apps; i++) {
+		apps[i].app = atl_app_new();
+		if (atl_app_prepare(env, apps[i].app, apps[i].apks, apps[i].napks, package) < 0)
+			atl_exit(env, 1);
+	}
+	// design.md: groupless attaches have the host's app only while it runs one
+	if (n_apps == 1)
+		atl_app_take_attaches(env, apps[0].app);
 
-	atl_app_create(env, host_app, ui_window_new(host_app, NULL));
-	if (commands) {
-		pthread_t reader;
-		pthread_create(&reader, NULL, read_commands, host_app);
-		pthread_detach(reader);
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setstacksize(&attr, APP_THREAD_STACK);
+	for (int i = 0; i < n_apps; i++) {
+		if (pthread_create(&apps[i].thread, &attr, run_app, &apps[i])) {
+			fprintf(stderr, "error: can't start an app's thread\n");
+			atl_exit(env, 1);
+		}
 	}
-	if (instrumentation) {
-		// the runner's thread ends the process with System.exit
-		start_instrumentation(env, host_app, instrumentation);
-	} else {
-		jobject main_activity = atl_activity_create_main(env, host_app, activity, NULL);
-		activity_start(env, host_app, main_activity);
-		(*env)->DeleteLocalRef(env, main_activity); // this frame lasts the app's lifetime
-	}
-	loop_main_run();
+	pthread_attr_destroy(&attr);
+	for (int i = 0; i < n_apps; i++)
+		pthread_join(apps[i].thread, NULL);
 
 	atl_exit(env, 0);
 	return 0;

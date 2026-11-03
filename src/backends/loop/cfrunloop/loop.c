@@ -5,7 +5,7 @@
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 
-/* Loops on CoreFoundation run loops: the main loop is the run loop of the thread that calls
+/* Loops on CoreFoundation run loops: a main loop is the run loop of the thread that calls
  * loop_main_prepare, so it also works on the UIKit main thread. */
 
 // a timer that is not due; repeating, because a one-shot timer is invalidated after it fires
@@ -17,32 +17,33 @@ struct post {
 	struct post *next;
 };
 
-static struct {
+struct loop_main {
 	pthread_mutex_t mutex;
-	pthread_t thread;
-	bool bound;
 	CFRunLoopRef loop;
 	CFRunLoopSourceRef source;
 	CFRunLoopTimerRef timer;
 	bool dispatch_pending;
 	struct post *posts, *posts_tail;
 	bool quit;
-} main_loop = {.mutex = PTHREAD_MUTEX_INITIALIZER};
+};
 
-static void dispatch(void)
+static __thread struct loop_main *current;
+
+static void dispatch(struct loop_main *loop)
 {
-	CFRunLoopTimerSetNextFireDate(main_loop.timer, CFAbsoluteTimeGetCurrent() + IDLE_INTERVAL);
+	CFRunLoopTimerSetNextFireDate(loop->timer, CFAbsoluteTimeGetCurrent() + IDLE_INTERVAL);
 	atl_upcall_looper_loop();
 }
 
 static void main_perform(void *info)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	struct post *posts = main_loop.posts;
-	main_loop.posts = main_loop.posts_tail = NULL;
-	bool pending = main_loop.dispatch_pending;
-	main_loop.dispatch_pending = false;
-	pthread_mutex_unlock(&main_loop.mutex);
+	struct loop_main *loop = info;
+	pthread_mutex_lock(&loop->mutex);
+	struct post *posts = loop->posts;
+	loop->posts = loop->posts_tail = NULL;
+	bool pending = loop->dispatch_pending;
+	loop->dispatch_pending = false;
+	pthread_mutex_unlock(&loop->mutex);
 
 	while (posts) {
 		struct post *next = posts->next;
@@ -51,83 +52,96 @@ static void main_perform(void *info)
 		posts = next;
 	}
 	if (pending)
-		dispatch();
+		dispatch(loop);
 }
 
 static void main_timer_fired(CFRunLoopTimerRef timer, void *info)
 {
-	dispatch();
+	dispatch(info);
 }
 
-static void signal_main(void)
+static void signal_main(struct loop_main *loop)
 {
-	CFRunLoopSourceSignal(main_loop.source);
-	CFRunLoopWakeUp(main_loop.loop);
+	CFRunLoopSourceSignal(loop->source);
+	CFRunLoopWakeUp(loop->loop);
 }
 
-void loop_main_prepare(void)
+struct loop_main *loop_main_prepare(void)
 {
-	main_loop.thread = pthread_self();
-	main_loop.loop = (CFRunLoopRef)CFRetain(CFRunLoopGetCurrent());
-	CFRunLoopSourceContext context = {.perform = main_perform};
-	main_loop.source = CFRunLoopSourceCreate(NULL, 0, &context);
-	main_loop.timer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent() + IDLE_INTERVAL, IDLE_INTERVAL, 0, 0, main_timer_fired, NULL);
-	CFRunLoopAddSource(main_loop.loop, main_loop.source, kCFRunLoopCommonModes);
-	CFRunLoopAddTimer(main_loop.loop, main_loop.timer, kCFRunLoopCommonModes);
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.bound = true;
-	pthread_mutex_unlock(&main_loop.mutex);
-	loop_main_wake();
+	struct loop_main *loop = calloc(1, sizeof(*loop));
+	pthread_mutex_init(&loop->mutex, NULL);
+	loop->loop = (CFRunLoopRef)CFRetain(CFRunLoopGetCurrent());
+	CFRunLoopSourceContext context = {.info = loop, .perform = main_perform};
+	loop->source = CFRunLoopSourceCreate(NULL, 0, &context);
+	CFRunLoopTimerContext timer_context = {.info = loop};
+	loop->timer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent() + IDLE_INTERVAL, IDLE_INTERVAL, 0, 0, main_timer_fired, &timer_context);
+	CFRunLoopAddSource(loop->loop, loop->source, kCFRunLoopCommonModes);
+	CFRunLoopAddTimer(loop->loop, loop->timer, kCFRunLoopCommonModes);
+	current = loop;
+	loop_main_wake(loop);
+	return loop;
 }
 
-bool loop_is_main_thread(void)
+struct loop_main *loop_main_current(void)
 {
-	return main_loop.bound && pthread_equal(pthread_self(), main_loop.thread);
+	return current;
 }
 
-void loop_main_schedule(int timeout_ms)
+void loop_main_schedule(struct loop_main *loop, int timeout_ms)
 {
-	CFRunLoopTimerSetNextFireDate(main_loop.timer, CFAbsoluteTimeGetCurrent() + timeout_ms / 1000.0);
+	CFRunLoopTimerSetNextFireDate(loop->timer, CFAbsoluteTimeGetCurrent() + timeout_ms / 1000.0);
 }
 
-void loop_main_wake(void)
+void loop_main_wake(struct loop_main *loop)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.dispatch_pending = true;
-	pthread_mutex_unlock(&main_loop.mutex);
-	signal_main();
+	pthread_mutex_lock(&loop->mutex);
+	loop->dispatch_pending = true;
+	pthread_mutex_unlock(&loop->mutex);
+	signal_main(loop);
 }
 
-bool loop_main_post(void (*fn)(void *data), void *data)
+bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	if (!main_loop.bound || main_loop.quit) {
-		pthread_mutex_unlock(&main_loop.mutex);
+	if (!loop)
+		return false;
+	pthread_mutex_lock(&loop->mutex);
+	if (loop->quit) {
+		pthread_mutex_unlock(&loop->mutex);
 		return false;
 	}
 	struct post *post = malloc(sizeof(*post));
 	*post = (struct post){fn, data, NULL};
-	if (main_loop.posts_tail)
-		main_loop.posts_tail->next = post;
+	if (loop->posts_tail)
+		loop->posts_tail->next = post;
 	else
-		main_loop.posts = post;
-	main_loop.posts_tail = post;
-	pthread_mutex_unlock(&main_loop.mutex);
-	signal_main();
+		loop->posts = post;
+	loop->posts_tail = post;
+	pthread_mutex_unlock(&loop->mutex);
+	signal_main(loop);
 	return true;
 }
 
-void loop_main_run(void)
+// CFRunLoopStop is lost on a run loop that isn't running yet: the quit also signals the source,
+// and each handled source returns here to read the flag
+void loop_main_run(struct loop_main *loop)
 {
-	CFRunLoopRun();
+	for (;;) {
+		pthread_mutex_lock(&loop->mutex);
+		bool quit = loop->quit;
+		pthread_mutex_unlock(&loop->mutex);
+		if (quit)
+			return;
+		CFRunLoopRunInMode(kCFRunLoopDefaultMode, IDLE_INTERVAL, true);
+	}
 }
 
-void loop_main_quit(void)
+void loop_main_quit(struct loop_main *loop)
 {
-	pthread_mutex_lock(&main_loop.mutex);
-	main_loop.quit = true;
-	pthread_mutex_unlock(&main_loop.mutex);
-	CFRunLoopStop(main_loop.loop);
+	pthread_mutex_lock(&loop->mutex);
+	loop->quit = true;
+	pthread_mutex_unlock(&loop->mutex);
+	CFRunLoopStop(loop->loop);
+	signal_main(loop);
 }
 
 struct loop_worker {

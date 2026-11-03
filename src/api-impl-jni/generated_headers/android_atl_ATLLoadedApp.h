@@ -15,6 +15,14 @@ extern "C" {
 JNIEXPORT jobject JNICALL Java_android_atl_ATLLoadedApp_ofCurrentThread
   (JNIEnv *, jclass);
 
+/*
+ * Class:     android_atl_ATLLoadedApp
+ * Method:    nativeEnd
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLLoadedApp_nativeEnd
+  (JNIEnv *, jclass, jlong);
+
 #ifdef __cplusplus
 }
 #endif

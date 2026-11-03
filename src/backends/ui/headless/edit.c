@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "src/shared/input.h"
+#include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 
 #include "../records/records.h"
@@ -17,14 +18,14 @@ struct held_report {
 	struct atl_edit_report report;
 };
 
-// the Android main thread's
-static struct ui_view *target;
-static bool marked; // marked text spans [mark_start, mark_end)
-static int mark_start, mark_end;
-static char *before_marked; // the state the composition started from
-static int before_start, before_end;
-static bool holding;
-static struct held_report *held;
+// each app's Android main thread has its own
+static __thread struct ui_view *target;
+static __thread bool marked; // marked text spans [mark_start, mark_end)
+static __thread int mark_start, mark_end;
+static __thread char *before_marked; // the state the composition started from
+static __thread int before_start, before_end;
+static __thread bool holding;
+static __thread struct held_report *held;
 
 // a newline as \n, to keep one line
 static void print_state(const struct ui_view *view)
@@ -281,6 +282,6 @@ void headless_text(struct ui_window *window, const struct headless_text *line)
 	struct posted_text *posted = malloc(sizeof(*posted) + size);
 	*posted = (struct posted_text){window, *line};
 	posted->line.text = memcpy((char *)(posted + 1), line->text, size);
-	if (!loop_main_post(on_text, posted))
+	if (!loop_main_post(atl_app_loop(window->app), on_text, posted))
 		free(posted);
 }

@@ -112,6 +112,11 @@ void ui_view_free(struct ui_view *view)
 	g_object_unref(gtk_widget_get_parent(GTK_WIDGET(view)));
 }
 
+struct atl_app *ui_view_app(struct ui_view *view)
+{
+	return host_app;
+}
+
 void ui_view_set_layout_params(struct ui_view *view, const struct ui_layout_params *params)
 {
 	GtkWidget *widget = gtk_widget_get_parent(GTK_WIDGET(view));

@@ -92,7 +92,7 @@ struct ui_window {
 
 /* What the backend does besides keeping the records, after the records changed. The view and
  * property hooks also run on app threads (apps build views off the main one); the window, layout
- * and draw hooks only on the Android main thread. */
+ * and draw hooks only on the window's app's main thread. */
 void records_window_created(struct ui_window *window, void *surface);
 void records_view_created(struct ui_view *view);
 void records_child_added(struct ui_view *parent, struct ui_view *child, size_t index);

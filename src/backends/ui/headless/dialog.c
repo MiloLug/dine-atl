@@ -20,9 +20,10 @@ struct ui_dialog_state {
 	struct ui_alert alert; // the shown one, as ui_dialog_set_button changed it; owns its strings
 };
 
-struct ui_window *ui_dialog_new(struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
 {
 	struct ui_window *window = calloc(1, sizeof(*window));
+	window->app = app;
 	window->dialog = calloc(1, sizeof(*window->dialog));
 	window->dialog->ref = dialog_ref;
 	return window;
@@ -78,7 +79,7 @@ static void give_answer(void *data)
 static void post_answer(struct ui_window *dialog)
 {
 	if (!dialog->dialog->answer_posted)
-		dialog->dialog->answer_posted = loop_main_post(give_answer, dialog);
+		dialog->dialog->answer_posted = loop_main_post(atl_app_loop(dialog->app), give_answer, dialog);
 }
 
 static void print_labels(const char *name, const char *const *labels, int count)

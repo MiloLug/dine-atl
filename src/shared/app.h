@@ -3,19 +3,23 @@
 
 #include <jni.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 
 #include "nav.h"
 
+struct loop_main;
 struct ui_window;
 
 /* An app ATL runs: the C half of its record (ATLLoadedApp.native_app). A host makes it before the
  * app starts and keeps it for the process's life. */
 struct atl_app {
 	jobject record; // ATLLoadedApp, global ref; NULL until atl_app_bind
-	bool running;   // from atl_app_create until its window closes
+	struct loop_main *loop; // its Android main thread's, set before running
+	atomic_bool running;    // from atl_app_create until its window closes
 	struct ui_window *window;
+	void *ui; // the ui backend's state for the app, or NULL
 	char *apk_class_path; // its APKs, the base first
 	char *data_dir;
 	const struct atl_embedded_listener *listener; // the embedded host's, or NULL
@@ -36,7 +40,8 @@ struct atl_app {
 };
 
 struct atl_app *atl_app_new(void);
-/* Ties app to its record: record's native_app and its thread group's tag (art_embedder.h). */
+/* Ties app to its record (which ATLInstaller.prepareApp gave app): its thread group's tag
+ * (art_embedder.h). */
 void atl_app_bind(JNIEnv *env, struct atl_app *app, jobject record);
 /* Moves the calling thread into app's thread group. -1 on error, after printing it. */
 int atl_app_join(JNIEnv *env, struct atl_app *app);

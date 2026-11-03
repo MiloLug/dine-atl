@@ -199,9 +199,16 @@ void gfx_drawable_ref(struct gfx_drawable *drawable)
 	g_object_ref(drawable);
 }
 
-void gfx_drawable_unref(struct gfx_drawable *drawable)
+static gboolean unref_on_main(gpointer drawable)
 {
 	g_object_unref(drawable);
+	return G_SOURCE_REMOVE;
+}
+
+// GTK objects are the main thread's: finalizers unref from theirs
+void gfx_drawable_unref(struct gfx_drawable *drawable)
+{
+	g_idle_add(unref_on_main, drawable);
 }
 
 static gboolean queue_invalidate_contents(GdkPaintable *paintable)

@@ -140,7 +140,7 @@ public final class MessageQueue {
 			}
 
 			if (nativePollOnce(ptr, nextPollTimeoutMillis))
-				return null; // thread is managed by glib, so return instead of blocking
+				return null; // the platform loop owns the main thread: return instead of blocking
 
 			synchronized (this) {
 				// Try to retrieve the next message.  Return if found.

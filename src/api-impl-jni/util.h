@@ -19,13 +19,14 @@ jstring utf8_to_jstring(JNIEnv *env, const char *utf8);
 char *attribute_set_get_string(JNIEnv *env, jobject attrs, char *attribute, char *schema);
 int attribute_set_get_int(JNIEnv *env, jobject attrs, char *attribute, char *schema, int default_value);
 struct atl_app;
+struct loop_main;
 /* Files of the app's APKs into its data dir: AssetManager.extractFromAPK. */
 void extract_from_apk(struct atl_app *app, const char *path, const char *target);
 
-/* $DINE_PREFIX or ~/.dine, opened by atl_set_app */
+/* $DINE_PREFIX or ~/.dine, opened by atl_open_prefix */
 char *get_prefix_dir(void);
 
-void prepare_main_looper(JNIEnv *env);
+struct loop_main *prepare_main_looper(JNIEnv *env);
 
 /* For an exception thrown into C code where Android's main loop would see it: the thread's uncaught
  * handler gets it and the process ends, as an Android app's does. Returns only when none is pending. */

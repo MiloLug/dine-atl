@@ -24,9 +24,9 @@ import android.util.Slog;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import dalvik.system.BaseDexClassLoader;
-import dalvik.system.PathClassLoader;
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.CleanupDomain;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,7 +53,8 @@ public final class ATLLoadedApp {
 	private Resources.Theme default_theme;
 	/** The app's threads; a host's C half (atl_app_bind) gives it the app. */
 	public final ThreadGroup group;
-	long native_app; // struct atl_app, 0 while no host runs this app
+	private final CleanupDomain cleanup_domain;
+	long native_app; // struct atl_app, 0 while no host runs this app; set once per VM
 	/** @hide Looper's; written under Looper.class */
 	public volatile Looper main_looper;
 	/** Whether a host started the app (its Application, providers, onCreate); else it is only loaded. */
@@ -91,10 +92,18 @@ public final class ATLLoadedApp {
 		while (root.getParent() != null)
 			root = root.getParent();
 		this.group = new ThreadGroup(root, pkg.packageName);
+		this.cleanup_domain = new CleanupDomain(group);
 	}
 
 	/** The calling thread's app; null on a thread of no app. */
 	public static native ATLLoadedApp ofCurrentThread();
+
+	private static native void nativeEnd(long app);
+
+	/** Ends the app (its instrumentation finished): its main loop stops; the other apps run on. */
+	public void end() {
+		nativeEnd(native_app);
+	}
 
 	/** The calling thread's app, for the APIs that have no answer without one. */
 	public static ATLLoadedApp ofCurrentThreadOrThrow() {
@@ -131,6 +140,8 @@ public final class ATLLoadedApp {
 	 */
 	public Application start(long native_window) {
 		started = true;
+		if (class_loader instanceof ATLClassLoader)
+			((ATLClassLoader) class_loader).domain = cleanup_domain;
 		Application application = getApplication();
 		application.native_window = native_window;
 		ContentProvider.createContentProviders(this);
@@ -166,7 +177,7 @@ public final class ATLLoadedApp {
 			classLoaderPath = ATLPaths.ghax_jar.getPath() + File.pathSeparator + classLoaderPath;
 		}
 		String nativePath = System.getProperty("java.library.path") + File.pathSeparator + pkg.applicationInfo.nativeLibraryDir;
-		BaseDexClassLoader classLoader = new PathClassLoader(classLoaderPath, nativePath, ATLLoadedApp.class.getClassLoader());
+		BaseDexClassLoader classLoader = new ATLClassLoader(classLoaderPath, nativePath, ATLLoadedApp.class.getClassLoader());
 		AssetManager assetManager = new AssetManager(classLoaderPath + ":" + System.getProperty("java.class.path"),
 		                                             pkg.applicationInfo.dataDir);
 		Configuration config = new Configuration(Context.sys_config);

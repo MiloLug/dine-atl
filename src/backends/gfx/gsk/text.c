@@ -22,7 +22,7 @@ static GPrivate thread_context = G_PRIVATE_INIT(context_free);
  * one gets its own context from its own default font map (per thread since Pango 1.32.6). */
 static PangoContext *context(void)
 {
-	if (window && loop_is_main_thread())
+	if (window && loop_main_current())
 		return gtk_widget_get_pango_context(window);
 	PangoContext *context = g_private_get(&thread_context);
 	if (!context) {

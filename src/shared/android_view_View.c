@@ -48,11 +48,16 @@ static void view_free(void *view)
 	ui_view_free(view);
 }
 
-// on the FinalizerDaemon thread; after loop_main_quit the view stays allocated
+// from finalize; a view of no app, or one whose app's loop quit, stays allocated
 JNIEXPORT void JNICALL Java_android_view_View_native_1destructor(JNIEnv *env, jobject this, jlong widget_ptr)
 {
-	if (widget_ptr) // 0: the constructor threw first
-		loop_main_post(view_free, _PTR(widget_ptr));
+	if (!widget_ptr) // the constructor threw first
+		return;
+	struct atl_app *app = ui_view_app(_PTR(widget_ptr));
+	if (!app)
+		fprintf(stderr, "atl: a view made on a thread of no app is never freed\n");
+	else
+		loop_main_post(app->loop, view_free, _PTR(widget_ptr));
 }
 
 JNIEXPORT void JNICALL Java_android_view_View_native_1setLayoutParams(JNIEnv *env, jobject this, jlong widget_ptr, jint width, jint height, jint gravity, jfloat weight,

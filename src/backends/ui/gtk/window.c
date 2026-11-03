@@ -57,6 +57,11 @@ void ui_window_close(struct ui_window *window)
 		gtk_window_close(GTK_WINDOW(window));
 }
 
+struct atl_app *ui_window_app(struct ui_window *window)
+{
+	return host_app;
+}
+
 void ui_window_get_size(struct ui_window *window, int *width, int *height)
 {
 	gtk_window_get_default_size(GTK_WINDOW(window), width, height);

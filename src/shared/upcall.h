@@ -7,6 +7,7 @@
 
 struct atl_app;
 struct atl_ref;
+struct loop_main;
 struct ui_window;
 struct ui_display;
 struct gfx_canvas;
@@ -39,6 +40,13 @@ void atl_upcall_view_layout(struct atl_ref *view, int width, int height);
 /* View.atlDraw: the view's draw() into canvas, which only that call uses; an exception is printed
  * and cleared. */
 void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas);
+/* The app ended: its window closed or its instrumentation finished. Any thread. */
+void atl_app_end(struct atl_app *app);
+/* The app's main loop, NULL before its start. Any thread. */
+struct loop_main *atl_app_loop(struct atl_app *app);
+/* The ui backend's state for the app, NULL until the backend sets it. */
+void *atl_app_ui(struct atl_app *app);
+void atl_app_set_ui(struct atl_app *app, void *ui);
 /* The window of the app the calling thread belongs to, NULL on a thread of no app: for the views an
  * app makes. */
 struct ui_window *atl_thread_app_window(void);

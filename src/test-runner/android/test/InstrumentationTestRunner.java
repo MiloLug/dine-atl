@@ -314,7 +314,7 @@ public class InstrumentationTestRunner extends Instrumentation implements TestSu
 		// Apk paths used to search for test classes when using TestSuiteBuilders.
 		String[] apkPaths =
 		    {getTargetContext().getPackageCodePath(), getContext().getPackageCodePath()};
-		ClassPathPackageInfoSource.setApkPaths(apkPaths);
+		ClassPathPackageInfoSource.setApkPaths(getTargetContext().getClassLoader(), apkPaths);
 
 		Predicate<TestMethod> testSizePredicate = null;
 		Predicate<TestMethod> testAnnotationPredicate = null;

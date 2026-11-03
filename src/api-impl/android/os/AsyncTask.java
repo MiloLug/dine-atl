@@ -16,7 +16,11 @@
 
 package android.os;
 
+import android.atl.ATLLoadedApp;
 import java.util.ArrayDeque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -24,6 +28,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -182,33 +188,62 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	private static final int MAXIMUM_POOL_SIZE = CPU_COUNT * 2 + 1;
 	private static final int KEEP_ALIVE = 1;
 
-	private static final ThreadFactory sThreadFactory = new ThreadFactory() {
-		private final AtomicInteger mCount = new AtomicInteger(1);
+	/* Each app has its own pool, serial executor and default executor, so its tasks run on threads
+	 * of its own; the static executors forward to the calling thread's app's. */
+	private static final class AppExecutors {
+		final ThreadPoolExecutor pool;
+		final SerialExecutor serial;
+		volatile Executor defaultExecutor;
 
-		public Thread newThread(Runnable r) {
-			return new Thread(r, "AsyncTask #" + mCount.getAndIncrement());
+		AppExecutors(final ATLLoadedApp app) {
+			ThreadFactory factory = new ThreadFactory() {
+				private final AtomicInteger mCount = new AtomicInteger(1);
+
+				public Thread newThread(Runnable r) {
+					return new Thread(app.group, r, "AsyncTask #" + mCount.getAndIncrement());
+				}
+			};
+			pool = new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE, TimeUnit.SECONDS,
+			                              new LinkedBlockingQueue<Runnable>(128), factory);
+			serial = new SerialExecutor(pool);
+			defaultExecutor = serial;
 		}
-	};
+	}
 
-	private static final BlockingQueue<Runnable> sPoolWorkQueue =
-	    new LinkedBlockingQueue<Runnable>(128);
+	private static final Map<ATLLoadedApp, AppExecutors> sAppExecutors = new IdentityHashMap<>();
+
+	private static AppExecutors appExecutors() {
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		if (app == null)
+			throw new IllegalStateException("AsyncTask used on a thread of no app");
+		synchronized (sAppExecutors) {
+			AppExecutors executors = sAppExecutors.get(app);
+			if (executors == null) {
+				executors = new AppExecutors(app);
+				sAppExecutors.put(app, executors);
+			}
+			return executors;
+		}
+	}
 
 	/**
 	 * An {@link Executor} that can be used to execute tasks in parallel.
 	 */
-	public static final Executor THREAD_POOL_EXECUTOR = new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE,
-	                                                                           TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory);
+	public static final Executor THREAD_POOL_EXECUTOR = new AppPoolExecutor();
 
 	/**
 	 * An {@link Executor} that executes tasks one at a time in serial
 	 * order.  This serialization is global to a particular process.
 	 */
-	public static final Executor SERIAL_EXECUTOR = new SerialExecutor();
+	public static final Executor SERIAL_EXECUTOR = new Executor() {
+		public void execute(Runnable r) {
+			appExecutors().serial.execute(r);
+		}
+	};
 
 	private static final int MESSAGE_POST_RESULT = 0x1;
 	private static final int MESSAGE_POST_PROGRESS = 0x2;
 
-	private static volatile Executor sDefaultExecutor = SERIAL_EXECUTOR;
 	private final InternalHandler mHandler; // on the main looper of the app that made the task
 	private final WorkerRunnable<Params, Result> mWorker;
 	private final FutureTask<Result> mFuture;
@@ -220,7 +255,12 @@ public abstract class AsyncTask<Params, Progress, Result> {
 
 	private static class SerialExecutor implements Executor {
 		final ArrayDeque<Runnable> mTasks = new ArrayDeque<Runnable>();
+		final Executor mPool;
 		Runnable mActive;
+
+		SerialExecutor(Executor pool) {
+			mPool = pool;
+		}
 
 		public synchronized void execute(final Runnable r) {
 			mTasks.offer(new Runnable() {
@@ -239,7 +279,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 
 		protected synchronized void scheduleNext() {
 			if ((mActive = mTasks.poll()) != null) {
-				THREAD_POOL_EXECUTOR.execute(mActive);
+				mPool.execute(mActive);
 			}
 		}
 	}
@@ -267,7 +307,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	 * @hide
 	 */
 	public static void setDefaultExecutor(Executor exec) {
-		sDefaultExecutor = exec;
+		appExecutors().defaultExecutor = exec;
 	}
 
 	/**
@@ -528,7 +568,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	 * @see #execute(Runnable)
 	 */
 	public final AsyncTask<Params, Progress, Result> execute(Params... params) {
-		return executeOnExecutor(sDefaultExecutor, params);
+		return executeOnExecutor(appExecutors().defaultExecutor, params);
 	}
 
 	/**
@@ -597,7 +637,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	 * @see #executeOnExecutor(java.util.concurrent.Executor, Object[])
 	 */
 	public static void execute(Runnable runnable) {
-		sDefaultExecutor.execute(runnable);
+		appExecutors().defaultExecutor.execute(runnable);
 	}
 
 	/**
@@ -673,5 +713,47 @@ public abstract class AsyncTask<Params, Progress, Result> {
 			mTask = task;
 			mData = data;
 		}
+	}
+
+	// apps cast THREAD_POOL_EXECUTOR to ThreadPoolExecutor: each method is the calling app's pool's
+	private static final class AppPoolExecutor extends ThreadPoolExecutor {
+		AppPoolExecutor() {
+			super(0, 1, KEEP_ALIVE, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+		}
+
+		private static ThreadPoolExecutor pool() {
+			return appExecutors().pool;
+		}
+
+		@Override public void execute(Runnable command) { pool().execute(command); }
+		@Override public void shutdown() { pool().shutdown(); }
+		@Override public List<Runnable> shutdownNow() { return pool().shutdownNow(); }
+		@Override public boolean isShutdown() { return pool().isShutdown(); }
+		@Override public boolean isTerminating() { return pool().isTerminating(); }
+		@Override public boolean isTerminated() { return pool().isTerminated(); }
+		@Override public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException { return pool().awaitTermination(timeout, unit); }
+		@Override public void setThreadFactory(ThreadFactory threadFactory) { pool().setThreadFactory(threadFactory); }
+		@Override public ThreadFactory getThreadFactory() { return pool().getThreadFactory(); }
+		@Override public void setRejectedExecutionHandler(RejectedExecutionHandler handler) { pool().setRejectedExecutionHandler(handler); }
+		@Override public RejectedExecutionHandler getRejectedExecutionHandler() { return pool().getRejectedExecutionHandler(); }
+		@Override public void setCorePoolSize(int corePoolSize) { pool().setCorePoolSize(corePoolSize); }
+		@Override public int getCorePoolSize() { return pool().getCorePoolSize(); }
+		@Override public boolean prestartCoreThread() { return pool().prestartCoreThread(); }
+		@Override public int prestartAllCoreThreads() { return pool().prestartAllCoreThreads(); }
+		@Override public boolean allowsCoreThreadTimeOut() { return pool().allowsCoreThreadTimeOut(); }
+		@Override public void allowCoreThreadTimeOut(boolean value) { pool().allowCoreThreadTimeOut(value); }
+		@Override public void setMaximumPoolSize(int maximumPoolSize) { pool().setMaximumPoolSize(maximumPoolSize); }
+		@Override public int getMaximumPoolSize() { return pool().getMaximumPoolSize(); }
+		@Override public void setKeepAliveTime(long time, TimeUnit unit) { pool().setKeepAliveTime(time, unit); }
+		@Override public long getKeepAliveTime(TimeUnit unit) { return pool().getKeepAliveTime(unit); }
+		@Override public BlockingQueue<Runnable> getQueue() { return pool().getQueue(); }
+		@Override public boolean remove(Runnable task) { return pool().remove(task); }
+		@Override public void purge() { pool().purge(); }
+		@Override public int getPoolSize() { return pool().getPoolSize(); }
+		@Override public int getActiveCount() { return pool().getActiveCount(); }
+		@Override public int getLargestPoolSize() { return pool().getLargestPoolSize(); }
+		@Override public long getTaskCount() { return pool().getTaskCount(); }
+		@Override public long getCompletedTaskCount() { return pool().getCompletedTaskCount(); }
+		@Override public String toString() { return pool().toString(); }
 	}
 }
