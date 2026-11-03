@@ -23,7 +23,7 @@ struct ui_dialog_state {
 struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
 {
 	struct ui_window *window = calloc(1, sizeof(*window));
-	window->app = app;
+	records_dialog_init(window, app, dialog_ref, decor);
 	window->dialog = calloc(1, sizeof(*window->dialog));
 	window->dialog->ref = dialog_ref;
 	return window;
@@ -94,6 +94,7 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 	if (!alert) {
 		printf("dialog: show content view\n");
 		fflush(stdout);
+		records_overlay_show(dialog);
 		return;
 	}
 	printf("dialog: show");
@@ -136,6 +137,7 @@ void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label
 
 void ui_dialog_close(struct ui_window *dialog)
 {
+	records_overlay_hide(dialog);
 	dialog->dialog->shown = false;
 	printf("dialog: close\n");
 	fflush(stdout);
@@ -143,6 +145,7 @@ void ui_dialog_close(struct ui_window *dialog)
 
 void ui_dialog_free(struct ui_window *dialog)
 {
+	records_overlay_hide(dialog);
 	records_observations_orphan(dialog);
 	atl_ref_free(dialog->dialog->ref);
 	alert_clear(&dialog->dialog->alert);

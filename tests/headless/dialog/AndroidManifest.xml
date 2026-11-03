@@ -9,5 +9,6 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".KeepActivity"/>
+		<activity android:name=".ContentActivity"/>
 	</application>
 </manifest>

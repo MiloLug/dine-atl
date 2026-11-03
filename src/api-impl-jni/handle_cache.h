@@ -103,6 +103,7 @@ struct handle_cache {
 		jclass class;
 		jmethodID atlDialogResult;
 		jmethodID atlTaskMoved;
+		jmethodID atlWindowFrame;
 	} dialog;
 	struct {
 		jclass class;

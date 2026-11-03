@@ -30,6 +30,7 @@ struct atl_app {
 	jobject activity_current;
 	bool task_front; // in the back, no activity is focused; the stack and the window stay
 	bool keep_screen_on;
+	float screen_brightness; // the last sent: negative is the screen's own
 
 	// insets.c
 	pthread_mutex_t insets_lock;

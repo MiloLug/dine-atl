@@ -25,6 +25,12 @@ void ui_window_set_title(struct ui_window *window, const char *title)
 	gtk_window_set_title(GTK_WINDOW(window), title);
 }
 
+void ui_window_set_layout(struct ui_window *window, const struct ui_window_layout *layout)
+{
+	if (layout->width > 0 && layout->height > 0)
+		gtk_window_set_default_size(GTK_WINDOW(window), layout->width, layout->height);
+}
+
 void ui_window_clear_background(struct ui_window *window)
 {
 	gtk_widget_add_css_class(GTK_WIDGET(window), "ATL-no-background");

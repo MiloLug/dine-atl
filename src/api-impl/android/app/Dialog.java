@@ -14,6 +14,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.util.TypedValue;
+import android.view.ContextThemeWrapper;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -50,12 +53,24 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	private OnCancelListener onCancelListener;
 	private OnKeyListener onKeyListener;
 
+	/* Copyright (C) 2006 The Android Open Source Project: the theme and the gravity */
 	public Dialog(Context context, int themeResId) {
-		this.context = context;
-		window = new Window(context, this);
+		if (themeResId == 0) {
+			TypedValue outValue = new TypedValue();
+			context.getTheme().resolveAttribute(R.attr.dialogTheme, outValue, true);
+			themeResId = outValue.resourceId;
+		}
+		this.context = themeResId != 0 ? new ContextThemeWrapper(context, themeResId) : context;
+		window = new Window(this.context, this);
+		window.setGravity(Gravity.CENTER);
 		nativePtr = nativeInit(window.getDecorView().widget);
 
 		window.set_native_window(nativePtr);
+	}
+
+	// records' layout placed the window (records/ui.c lay_out_overlay)
+	void atlWindowFrame(int left, int top, int width, int height) {
+		window.atlSetFrame(left, top);
 	}
 
 	public Dialog(Context context) {
@@ -141,8 +156,11 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 				getWindow().getDecorView().getWindowVisibleDisplayFrame(displayFrame);
 
 				TypedArray a = context.obtainStyledAttributes(R.styleable.Window);
-				if (a.hasValue(R.styleable.Window_windowCloseOnTouchOutside))
+				if (a.hasValue(R.styleable.Window_windowCloseOnTouchOutside)) {
 					nativeSetCanceledOnTouchOutside(nativePtr, a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, true));
+					if (a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, false))
+						window.setCloseOnTouchOutsideIfNotSet(true);
+				}
 				float windowWidthFraction = 1;
 				if (a.getBoolean(R.styleable.Window_windowIsFloating, false)) {
 					if (displayFrame.width() > displayFrame.height())
@@ -251,6 +269,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	public void setCanceledOnTouchOutside(boolean cancel) {
 		if (cancel)
 			cancelable = true;
+		window.setCloseOnTouchOutside(cancel);
 		nativeSetCanceledOnTouchOutside(nativePtr, cancel);
 	}
 
@@ -327,6 +346,10 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	}
 
 	public boolean onTouchEvent(MotionEvent event) {
+		if (cancelable && showing && window.shouldCloseOnTouch(context, event)) {
+			cancel();
+			return true;
+		}
 		return false;
 	}
 

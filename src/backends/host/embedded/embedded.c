@@ -73,6 +73,12 @@ void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gestur
 		app->listener->exclusion_changed(app->listener->context, app, exclusion);
 }
 
+void host_screen_brightness(struct atl_app *app, float brightness)
+{
+	if (app->listener && app->listener->screen_brightness)
+		app->listener->screen_brightness(app->listener->context, app, brightness);
+}
+
 void host_keep_screen_on(struct atl_app *app, bool on)
 {
 	if (app->listener && app->listener->keep_screen_on)

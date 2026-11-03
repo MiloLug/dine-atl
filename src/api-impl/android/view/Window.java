@@ -1,7 +1,8 @@
 /*
  * Portions Copyright (C) 2006 The Android Open Source Project, from
- * core/java/com/android/internal/policy/PhoneWindow.java at android-security-10.0.0_r75, Apache License 2.0;
- * see doc/AOSP.md.
+ * core/java/com/android/internal/policy/PhoneWindow.java, core/java/android/view/Window.java and
+ * core/java/com/android/internal/policy/DecorView.java at android-security-10.0.0_r75, Apache
+ * License 2.0; see doc/AOSP.md.
  */
 package android.view;
 
@@ -13,6 +14,8 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.transition.Transition;
+import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.widget.FrameLayout;
 import android.widget.Toolbar;
 import java.util.ArrayList;
@@ -25,7 +28,7 @@ public class Window {
 	public ViewTreeObserver view_tree_observer = null;
 	// AOSP keeps one per ViewRootImpl: key tracking (Back on its up) and long presses
 	final KeyEvent.DispatcherState key_dispatcher_state = new KeyEvent.DispatcherState();
-	private WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, 0, 0, 0);
+	private WindowManager.LayoutParams params = new WindowManager.LayoutParams();
 
 	public static interface Callback {
 		public void onContentChanged();
@@ -76,6 +79,53 @@ public class Window {
 
 	public void set_native_window(long native_window) {
 		this.native_window = native_window;
+		layoutChanged();
+	}
+
+	// a dialog's window in its app's window, set by records' layout; 0, 0 for an activity's
+	private int frame_left, frame_top;
+
+	/** @hide */
+	public void atlSetFrame(int left, int top) {
+		frame_left = left;
+		frame_top = top;
+	}
+
+	int atlFrameLeft() {
+		return frame_left;
+	}
+
+	int atlFrameTop() {
+		return frame_top;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: closing on a touch outside */
+	private boolean mCloseOnTouchOutside = false;
+	private boolean mSetCloseOnTouchOutside = false;
+
+	public void setCloseOnTouchOutside(boolean close) {
+		mCloseOnTouchOutside = close;
+		mSetCloseOnTouchOutside = true;
+	}
+
+	public void setCloseOnTouchOutsideIfNotSet(boolean close) {
+		if (!mSetCloseOnTouchOutside) {
+			mCloseOnTouchOutside = close;
+			mSetCloseOnTouchOutside = true;
+		}
+	}
+
+	public boolean shouldCloseOnTouch(Context context, MotionEvent event) {
+		final boolean isOutside = event.getAction() == MotionEvent.ACTION_UP && isOutOfBounds(context, event)
+		                          || event.getAction() == MotionEvent.ACTION_OUTSIDE;
+		return mCloseOnTouchOutside && isOutside;
+	}
+
+	private boolean isOutOfBounds(Context context, MotionEvent event) {
+		final int x = (int)event.getX();
+		final int y = (int)event.getY();
+		final int slop = ViewConfiguration.get(context).getScaledWindowTouchSlop();
+		return (x < -slop) || (y < -slop) || (x > (decorView.getWidth() + slop)) || (y > (decorView.getHeight() + slop));
 	}
 
 	public void addFlags(int flags) {
@@ -165,9 +215,7 @@ public class Window {
 	public void setAttributes(WindowManager.LayoutParams params) {
 		this.params = params;
 		frameChanged();
-		if (params.screenBrightness != -1)
-			set_screen_brightness(params.screenBrightness);
-		setLayout(params.width, params.height);
+		layoutChanged();
 	}
 
 	public void takeSurface(SurfaceHolder.Callback2 callback) {}
@@ -185,7 +233,27 @@ public class Window {
 	public void setLayout(int width, int height) {
 		params.width = width;
 		params.height = height;
-		set_layout(native_window, width, height);
+		layoutChanged();
+	}
+
+	// a Dialog's window gets its native one after the constructor's
+	private void layoutChanged() {
+		if (native_window != 0)
+			set_layout(native_window, params.flags, params.gravity, params.x, params.y, params.width, params.height, minWidth());
+	}
+
+	private final TypedValue min_width_major = new TypedValue(), min_width_minor = new TypedValue();
+
+	/* Copyright (C) 2006 The Android Open Source Project: DecorView.onMeasure's least width of a
+	 * floating window, which the window's layout applies to WRAP_CONTENT */
+	private int minWidth() {
+		DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+		TypedValue tv = metrics.widthPixels < metrics.heightPixels ? min_width_minor : min_width_major;
+		if (tv.type == TypedValue.TYPE_DIMENSION)
+			return (int)tv.getDimension(metrics);
+		if (tv.type == TypedValue.TYPE_FRACTION)
+			return (int)tv.getFraction(metrics.widthPixels, metrics.widthPixels);
+		return 0;
 	}
 
 	public WindowManager getWindowManager() {
@@ -325,7 +393,28 @@ public class Window {
 			light_status_bar = a.getBoolean(com.android.internal.R.styleable.Window_windowLightStatusBar, false);
 		if (a.getBoolean(com.android.internal.R.styleable.Window_windowFullscreen, false))
 			params.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN & ~forced_flags;
+		/* Copyright (C) 2006 The Android Open Source Project: PhoneWindow.generateLayout's floating
+		 * window, dim and minimum width */
+		boolean floating = a.getBoolean(com.android.internal.R.styleable.Window_windowIsFloating, false);
+		if (floating) {
+			params.width = WindowManager.LayoutParams.WRAP_CONTENT;
+			params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+			params.flags &= ~(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR) | forced_flags;
+		}
+		if (a.getBoolean(com.android.internal.R.styleable.Window_backgroundDimEnabled, floating)) {
+			if ((forced_flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) == 0)
+				params.flags |= WindowManager.LayoutParams.FLAG_DIM_BEHIND;
+			if (!dim_amount_set)
+				params.dimAmount = a.getFloat(com.android.internal.R.styleable.Window_backgroundDimAmount, 0.5f);
+		}
+		a.getValue(com.android.internal.R.styleable.Window_windowMinWidthMajor, min_width_major);
+		a.getValue(com.android.internal.R.styleable.Window_windowMinWidthMinor, min_width_minor);
+		for (TypedValue min : new TypedValue[] {min_width_major, min_width_minor}) {
+			if (min.type == TypedValue.TYPE_REFERENCE && min.resourceId != 0) // @dimen/dialog_min_width_*
+				context.getResources().getValue(min.resourceId, min, true);
+		}
 		a.recycle();
+		layoutChanged();
 	}
 
 	// activity.c calls it by name (handle_cache) when the activity is shown
@@ -334,6 +423,7 @@ public class Window {
 		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
 		          view_fullscreen || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0);
 		set_keep_screen_on(views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
+		set_screen_brightness(params.screenBrightness);
 		set_exclusion_rects(exclusion_rects);
 	}
 
@@ -377,7 +467,10 @@ public class Window {
 
 	public void setEnterTransition(Transition transition) {}
 
-	public void setGravity(int gravity) {}
+	public void setGravity(int gravity) {
+		params.gravity = gravity;
+		layoutChanged();
+	}
 
 	public void setDecorFitsSystemWindows(boolean fits) {}
 
@@ -397,11 +490,17 @@ public class Window {
 
 	public void setWindowAnimations(int resId) {}
 
-	public void setDimAmount(float dimAmount) {}
+	private boolean dim_amount_set;
+
+	public void setDimAmount(float dimAmount) {
+		params.dimAmount = dimAmount;
+		dim_amount_set = true;
+		layoutChanged();
+	}
 
 	private native void set_title(long native_window, String title);
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
-	public native void set_layout(long native_window, int width, int height);
+	private native void set_layout(long native_window, int flags, int gravity, int x, int y, int width, int height, int min_width);
 	private native void clear_background(long native_window);
 	private native void set_frame(boolean has_color, int color, boolean light, boolean fullscreen);
 	private native void set_keep_screen_on(boolean keep);

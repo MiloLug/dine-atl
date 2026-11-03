@@ -44,6 +44,18 @@ struct atl_app;
 struct ui_window *ui_window_new(struct atl_app *app, void *surface);
 void ui_window_set_title(struct ui_window *window, const char *title);
 void ui_window_clear_background(struct ui_window *window);
+/* WindowManager.LayoutParams' placement of a window: width and height px or MATCH_PARENT (-1) and
+ * WRAP_CONTENT (-2), x and y px from the gravity's edges. An activity's window fills the
+ * screen whatever it says; gtk sizes a top-level window from a positive width and height. */
+struct ui_window_layout {
+	int flags, gravity;
+	int x, y, width, height;
+	int min_width; // px, for WRAP_CONTENT: a floating window's least width from its theme (AOSP's DecorView)
+};
+#define UI_WINDOW_NOT_FOCUSABLE   0x00000008 // LayoutParams.FLAG_*
+#define UI_WINDOW_NOT_TOUCHABLE   0x00000010
+#define UI_WINDOW_NOT_TOUCH_MODAL 0x00000020
+void ui_window_set_layout(struct ui_window *window, const struct ui_window_layout *layout);
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_show_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_remove_activity(struct ui_window *window, struct ui_view *root);

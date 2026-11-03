@@ -1,7 +1,13 @@
+/*
+ * Portions Copyright (C) 2008 The Android Open Source Project, from
+ * core/java/android/app/AlertDialog.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.app;
 
 import android.content.Context;
 import android.content.DialogInterface;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -24,7 +30,17 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	}
 
 	public AlertDialog(Context context, int themeResId) {
-		super(context, themeResId);
+		super(context, resolveDialogTheme(context, themeResId));
+	}
+
+	/* Copyright (C) 2008 The Android Open Source Project: a resource id as is, else the theme's
+	 * alertDialogTheme; without the THEME_* constants */
+	static int resolveDialogTheme(Context context, int themeResId) {
+		if ((themeResId >>> 24) >= 1)
+			return themeResId;
+		TypedValue outValue = new TypedValue();
+		context.getTheme().resolveAttribute(android.R.attr.alertDialogTheme, outValue, true);
+		return outValue.resourceId;
 	}
 
 	public void setMessage(CharSequence message) {

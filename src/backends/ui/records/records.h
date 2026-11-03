@@ -88,7 +88,18 @@ struct ui_window {
 	int passes_in_a_row;
 	bool ready;
 	struct ui_frame frame;
+	struct ui_window_layout layout;
 	struct ui_dialog_state *dialog; // NULL for the app's window
+	/* A dialog's content view shows over its app's window: the app window lays it out in its own
+	 * pass, after the activity, with the views' window still the app's (view_new). */
+	struct ui_window *app_window; // a dialog's
+	struct ui_view *content;      // a dialog's decor view
+	struct atl_ref *owner;        // a dialog's Dialog, borrowed until ui_dialog_free
+	int left, top, width, height; // a shown dialog's frame in the app window, px
+	struct ui_window **overlays;  // the app window's shown dialogs, the topmost last
+	size_t n_overlays, cap_overlays;
+	struct ui_window *touched;    // the app window's: where the gesture's DOWN went
+	bool touch_dropped;           // its dialog closed mid-gesture: the rest goes nowhere
 	void *surface; // an app window's platform view (uikit: a retained UIView), else NULL
 };
 
@@ -126,6 +137,12 @@ bool records_edit_keyboard(struct ui_view *view, bool shown);
 void records_edit_report(struct ui_view *view, const struct atl_edit_report *report);
 /* ui_dialog_free's part: the window's observations wait for their ui_window_unobserve. */
 void records_observations_orphan(struct ui_window *window);
+/* ui_dialog_new's part: the dialog's content is laid out over app's window while shown. */
+void records_dialog_init(struct ui_window *dialog, struct atl_app *app, struct atl_ref *owner, struct ui_view *decor);
+/* The dialog's content view comes on top of its app window, or leaves it (hidden or never shown:
+ * nothing happens). */
+void records_overlay_show(struct ui_window *dialog);
+void records_overlay_hide(struct ui_window *dialog);
 /* The text's size in px within max_width (-1: unbounded), without padding. */
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
 /* How often ui_view_measure found a text's size cached, and computed it. */

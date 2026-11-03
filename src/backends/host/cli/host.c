@@ -22,6 +22,12 @@ void host_keep_screen_on(struct atl_app *app, bool on)
 	fflush(stdout);
 }
 
+void host_screen_brightness(struct atl_app *app, float brightness)
+{
+	printf("host: brightness %.2f\n", brightness);
+	fflush(stdout);
+}
+
 static void print_spans(const struct atl_span *spans, int count)
 {
 	if (!count)

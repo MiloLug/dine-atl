@@ -53,6 +53,11 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 {
 	if (window->shown)
 		dump_view(out, window->shown, 0);
+	for (size_t i = 0; i < window->n_overlays; i++) {
+		const struct ui_window *overlay = window->overlays[i];
+		fprintf(out, "viewtree: window dialog %d,%d %dx%d\n", overlay->left, overlay->top, overlay->width, overlay->height);
+		dump_view(out, overlay->content, 1);
+	}
 	fprintf(out, "viewtree: end\n");
 	fflush(out);
 }

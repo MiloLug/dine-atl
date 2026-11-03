@@ -180,6 +180,79 @@ void headless_touch(struct ui_window *window, enum headless_touch what, int id, 
 		free(posted);
 }
 
+struct posted_tap {
+	struct ui_window *window;
+	char *label;
+};
+
+// x, y: the parent's content origin in the window
+static bool find_text(const struct ui_view *view, const char *label, float x, float y, float *found_x, float *found_y)
+{
+	if (view->visibility != UI_VIEW_VISIBLE)
+		return false;
+	float left = x + view->left, top = y + view->top;
+	if (view->kind == NODE_TEXT && view->text && !strcmp(view->text, label)) {
+		*found_x = left + (view->right - view->left) / 2.f;
+		*found_y = top + (view->bottom - view->top) / 2.f;
+		return true;
+	}
+	for (size_t i = view->n_children; i-- > 0;) {
+		if (find_text(view->children[i], label, left - view->scroll_x, top - view->scroll_y, found_x, found_y))
+			return true;
+	}
+	return false;
+}
+
+static void on_tap(void *data)
+{
+	struct posted_tap *tap = data;
+	struct ui_window *window = tap->window;
+	float x, y;
+	bool found = false;
+	for (size_t i = window->n_overlays; i-- > 0 && !found;) {
+		const struct ui_window *overlay = window->overlays[i];
+		found = find_text(overlay->content, tap->label, overlay->left, overlay->top, &x, &y);
+	}
+	if (!found && window->shown)
+		found = find_text(window->shown, tap->label, 0, 0, &x, &y);
+	if (found) {
+		printf("tap: %s %.0f,%.0f\n", tap->label, x, y);
+		fflush(stdout);
+		for (enum headless_touch what = HEADLESS_TOUCH_DOWN; what <= HEADLESS_TOUCH_UP; what += HEADLESS_TOUCH_UP - HEADLESS_TOUCH_DOWN) {
+			struct posted_touch *posted = malloc(sizeof(*posted));
+			*posted = (struct posted_touch){window, what, 0, x, y};
+			on_touch(posted);
+		}
+	} else {
+		printf("tap: no %s\n", tap->label);
+		fflush(stdout);
+	}
+	free(tap->label);
+	free(tap);
+}
+
+void headless_tap(struct ui_window *window, const char *label)
+{
+	struct posted_tap *posted = malloc(sizeof(*posted));
+	*posted = (struct posted_tap){window, strdup(label)};
+	if (!loop_main_post(atl_app_loop(window->app), on_tap, posted)) {
+		free(posted->label);
+		free(posted);
+	}
+}
+
+static void on_dump(void *data)
+{
+#ifdef ATL_TEST_HOOKS
+	ui_window_dump(data, stdout);
+#endif
+}
+
+void headless_dump(struct ui_window *window)
+{
+	loop_main_post(atl_app_loop(window->app), on_dump, window);
+}
+
 struct posted_key {
 	struct ui_window *window;
 	struct atl_key key;

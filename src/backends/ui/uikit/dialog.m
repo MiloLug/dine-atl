@@ -53,7 +53,7 @@ struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref,
 		dialog->app = app;
 		dialog->ref = dialog_ref;
 		struct ui_window *window = calloc(1, sizeof(*window));
-		window->app = app;
+		records_dialog_init(window, app, dialog_ref, decor);
 		window->dialog = calloc(1, sizeof(*window->dialog));
 		window->dialog->dialog = (void *)CFBridgingRetain(dialog);
 		return window;
@@ -209,7 +209,7 @@ static NSString *string(const char *chars)
 
 void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 {
-	if (!alert) {
+	if (!alert) { // an undrawn dialog must not take touches: shown from M6b3
 		log_line("show content view (not drawn yet)");
 		return;
 	}

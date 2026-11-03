@@ -4,14 +4,22 @@
 # KeepActivity's alert, whose onShow disables "Yes" and hides "Later": "No" keeps it open and brings
 # "Yes" back as "Sure", which closes it, while "Yes" or "Later" first has no button to answer.
 # Each run's last dialog finishes the app, so ATL exits by itself.
-# --headless: no display, and the headless backend's "dialog:" lines are checked too.
-# Usage: run-dialog.sh [--headless] <build dir> <dialog.apk>
+# --headless: no display, and the headless backend's "dialog:" lines are checked too, then
+# ContentActivity's Dialog with a content view through the cli host's -c: the view-tree dump with
+# the dialog's window over the activity (dialog-content.viewtree; --update rewrites it), a tap on
+# its button, then a second dialog canceled by a touch outside it.
+# Usage: run-dialog.sh [--headless [--update]] <build dir> <dialog.apk>
 set -euo pipefail
 
-headless=0
+here="$(cd "$(dirname "$0")" && pwd)"
+headless=0 update=0
 if [[ ${1-} == --headless ]]; then
   headless=1
   shift
+  if [[ ${1-} == --update ]]; then
+    update=1
+    shift
+  fi
 fi
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
@@ -75,4 +83,49 @@ for answer in Yes Later; do
   [[ $rc == 1 ]] || fail "\"$answer\" on the keep alert: exit status $rc, want 1"
   grep -qF "dialog: no scripted answer for \"Keep test\" (next answer: $answer)" "$log" || fail "\"$answer\" was answered"
 done
+
+if ((headless)); then
+  log="$work/content.log"
+  mkdir -p "$work/data-content"
+  coproc ATL {
+    cd "$build"
+    exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-content" timeout 60 \
+      ./android-translation-layer -c "$apk" -l dev/dine/dialog/ContentActivity -X -Xint 2>&1
+  }
+  pid=$ATL_PID
+  : >"$log"
+  # reads ATL's lines into the log until one matches
+  wait_for() {
+    local line
+    while IFS= read -r -t 30 line <&"${ATL[0]}"; do
+      printf '%s\n' "$line" >>"$log"
+      [[ $line =~ $1 ]] && return 0
+    done
+    kill "$pid" 2>/dev/null || true
+    fail "no line matching \"$1\""
+  }
+  wait_for 'content shown'
+  echo dump >&"${ATL[1]}"
+  : >"$work/content.viewtree"
+  while IFS= read -r -t 30 line <&"${ATL[0]}"; do
+    printf '%s\n' "$line" >>"$log"
+    [[ $line == viewtree:* ]] && printf '%s\n' "$line" >>"$work/content.viewtree"
+    [[ $line == "viewtree: end" ]] && break
+  done
+  if ((update)); then
+    cp "$work/content.viewtree" "$here/dialog-content.viewtree"
+  else
+    diff -u "$here/dialog-content.viewtree" "$work/content.viewtree" || fail "view tree differs from dialog-content.viewtree"
+  fi
+  echo "tap Close" >&"${ATL[1]}"
+  for line in 'tap: Close' 'content click' 'content dismissed' 'content shown'; do
+    wait_for "$line"
+  done
+  printf 'touch down 0 5 5\ntouch up 0 5 5\n' >&"${ATL[1]}"
+  for line in 'content canceled' 'content dismissed'; do
+    wait_for "$line"
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+fi
 echo "PASS"

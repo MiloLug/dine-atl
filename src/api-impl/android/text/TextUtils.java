@@ -24,6 +24,17 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 public class TextUtils {
+	/** @hide */
+	public static CharSequence stringOrSpannedString(CharSequence source) {
+		if (source == null)
+			return null;
+		if (source instanceof SpannedString)
+			return source;
+		if (source instanceof Spanned)
+			return new SpannedString(source);
+		return source.toString();
+	}
+
 	public static int getLayoutDirectionFromLocale(Locale locale) {
 		return 0 /*LTR*/; // FIXME
 	}

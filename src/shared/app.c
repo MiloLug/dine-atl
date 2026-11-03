@@ -17,6 +17,7 @@ struct atl_app *atl_app_new(void)
 	struct atl_app *app = calloc(1, sizeof(struct atl_app));
 	pthread_mutex_init(&app->insets_lock, NULL);
 	app->task_front = true;
+	app->screen_brightness = -1;
 	return app;
 }
 
@@ -121,6 +122,12 @@ void *atl_app_ui(struct atl_app *app)
 void atl_app_set_ui(struct atl_app *app, void *ui)
 {
 	app->ui = ui;
+}
+
+// NULL for a dialog made on a thread of no app (android_app_Dialog.c)
+struct ui_window *atl_app_window(struct atl_app *app)
+{
+	return app ? app->window : NULL;
 }
 
 struct ui_window *atl_thread_app_window(void)

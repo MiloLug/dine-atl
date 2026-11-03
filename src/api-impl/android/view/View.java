@@ -2131,8 +2131,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	// the window's origin is the origin of ATL's coordinates
+	// a dialog's window starts where records' layout placed it
 	public void getLocationOnScreen(int[] location) {
 		getLocationInWindow(location);
+		Window window = getRootView().decor_window;
+		if (window != null) {
+			location[0] += window.atlFrameLeft();
+			location[1] += window.atlFrameTop();
+		}
 	}
 
 	public boolean performHapticFeedback(int feedbackConstant) {

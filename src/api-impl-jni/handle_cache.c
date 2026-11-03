@@ -98,6 +98,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
 	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)Z");
 	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Landroid/atl/ATLLoadedApp;Z)V");
+	handle_cache.dialog.atlWindowFrame = _METHOD(handle_cache.dialog.class, "atlWindowFrame", "(IIII)V");
 
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));
 	handle_cache.window.updateFrame = _METHOD(handle_cache.window.class, "updateFrame", "()V");

@@ -50,11 +50,15 @@ void atl_app_set_ui(struct atl_app *app, void *ui);
 /* The window of the app the calling thread belongs to, NULL on a thread of no app: for the views an
  * app makes. */
 struct ui_window *atl_thread_app_window(void);
+struct ui_window *atl_app_window(struct atl_app *app);
 /* The app's window got its first layout: the activities regain focus. */
 void atl_upcall_window_ready(struct atl_app *app);
 /* A dialog's button (DialogInterface.BUTTON_*), item index or UI_DIALOG_CANCEL. Returns whether the
  * dialog is still drawn afterwards; false after an exception, which is printed and cleared. */
 bool atl_upcall_dialog_result(struct atl_ref *dialog, int which);
+/* Where the window manager placed a dialog's window in its app's window, px: its views' screen
+ * locations start there. */
+void atl_upcall_window_frame(struct atl_ref *dialog, int left, int top, int width, int height);
 /* The toolkit's own activation of a control (iOS accessibility): View.performClick, as AOSP's
  * ACTION_CLICK, only for a clickable view. */
 void atl_upcall_click(struct atl_ref *view);

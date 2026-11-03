@@ -32,6 +32,22 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on(JNIEnv *en
 	host_keep_screen_on(app, keep);
 }
 
+JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness(JNIEnv *env, jobject this, jfloat brightness)
+{
+	struct atl_app *app = atl_app_of_window(env, this);
+	if (brightness < 0)
+		brightness = -1;
+	if (!activity_window_shown(env, app, this) || app->screen_brightness == brightness)
+		return;
+	app->screen_brightness = brightness;
+	host_screen_brightness(app, brightness);
+}
+
+JNIEXPORT void JNICALL Java_android_view_Window_set_1layout(JNIEnv *env, jobject this, jlong window, jint flags, jint gravity, jint x, jint y, jint width, jint height, jint min_width)
+{
+	ui_window_set_layout(_PTR(window), &(struct ui_window_layout){flags, gravity, x, y, width, height, min_width});
+}
+
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame(JNIEnv *env, jobject this, jboolean has_color, jint color, jboolean light, jboolean fullscreen)
 {
 	struct atl_app *app = atl_app_of_window(env, this);

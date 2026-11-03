@@ -14,6 +14,9 @@ bool host_task_to_back(struct atl_app *app);
 void host_task_moved(struct atl_app *app, bool front, bool by_host);
 /* Whether the shown activity's window keeps the screen on (FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn). */
 void host_keep_screen_on(struct atl_app *app, bool on);
+/* The shown activity's window brightness (LayoutParams.screenBrightness): 0 to 1, or a negative
+ * value for the screen's own. Sent on change. */
+void host_screen_brightness(struct atl_app *app, float brightness);
 struct atl_gesture_exclusion;
 /* The shown activity's gesture exclusion changed (nav.h). */
 void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gesture_exclusion *exclusion);

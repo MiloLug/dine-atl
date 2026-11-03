@@ -27,7 +27,11 @@ name another project.
 | `view/ATLInput.java` | `core/java/android/view/ViewRootImpl.java` | touch mode (`enterTouchMode`, `leaveTouchMode`, `findAncestorToTakeFocusInTouchMode`, `checkForLeavingTouchModeAndConsume`, `isNavigationKey`, `isTypingKey`) and `performFocusNavigation` |
 | `view/MotionEvent.java` | `core/java/android/view/MotionEvent.java` | an AOSP copy; `split` written over ATL's pointer arrays after AOSP's |
 | `view/MotionEvent.java` | `frameworks/native`: `libs/input/Input.cpp` | `isTouchEvent`, after `MotionEvent::isTouchEvent` |
-| `view/Window.java` | `core/java/com/android/internal/policy/PhoneWindow.java` | `superDispatchKeyEvent`, `superDispatchTouchEvent`, `getCurrentFocus` |
+| `view/WindowManager.java` | `core/java/android/view/WindowManager.java` | `LayoutParams`' public constants, fields with their defaults and constructors, `setTitle`, `getTitle`, `mayUseInputMethod`; no parcelling or `copyFrom` |
+| `view/Window.java` | `core/java/com/android/internal/policy/PhoneWindow.java` | `superDispatchKeyEvent`, `superDispatchTouchEvent`, `getCurrentFocus`; `generateLayout`'s floating window (WRAP_CONTENT) and dim (`FLAG_DIM_BEHIND`, `backgroundDimAmount`) |
+| `view/Window.java` | `core/java/android/view/Window.java` | `shouldCloseOnTouch`, `isOutOfBounds`, `setCloseOnTouchOutside`, `setCloseOnTouchOutsideIfNotSet` |
+| `view/Window.java` | `core/java/com/android/internal/policy/DecorView.java` | `onMeasure`'s least width of a floating window (`windowMinWidthMajor`/`Minor`), as `minWidth` for records' layout to apply |
+| `src/backends/ui/records/ui.c` (dine-atl root) | `core/java/android/view/Gravity.java` | `apply` on one axis, left to right, without `AXIS_CLIP` |
 | `app/Activity.java` | `core/java/android/app/Activity.java` | `dispatchKeyEvent`, `onKeyDown` and `onKeyUp` (Back), `dispatchTouchEvent`; `requestPermissions` with its checks and its result (answered from `checkSelfPermission`, no permission activity); the activity lifecycle callbacks: `registerActivityLifecycleCallbacks`, the application's and the activity's callbacks called before, in and after each lifecycle method, in AOSP's order |
 | `app/Application.java` | `core/java/android/app/Application.java` | `ActivityLifecycleCallbacks` with API 29's pre and post methods, `registerActivityLifecycleCallbacks`, `unregisterActivityLifecycleCallbacks`, `collectActivityLifecycleCallbacks` |
 | `app/ActionBar.java` | `core/java/android/app/ActionBar.java` | the API: constants, methods and their defaults, `Tab`, `TabListener`, `LayoutParams`, the listener interfaces; no documentation |
@@ -42,7 +46,8 @@ name another project.
 | `graphics/drawable/Drawable.java` | `graphics/java/android/graphics/drawable/Drawable.java` | `setLevel`, `getLevel`, `onLevelChange`, `getAlpha` |
 | `graphics/drawable/ColorDrawable.java` | `graphics/java/android/graphics/drawable/ColorDrawable.java` | `inflate`'s color |
 | `graphics/drawable/AdaptiveIconDrawable.java` | `graphics/java/android/graphics/drawable/AdaptiveIconDrawable.java` | an AOSP copy; `draw` as AOSP's again (the layers through a BitmapShader into the mask) |
-| `app/Dialog.java` | `core/java/android/app/Dialog.java` | `dispatchTouchEvent`, `dispatchKeyEvent`, `onKeyDown`, `onKeyUp`, `onBackPressed` |
+| `app/Dialog.java` | `core/java/android/app/Dialog.java` | `dispatchTouchEvent`, `dispatchKeyEvent`, `onKeyDown`, `onKeyUp`, `onBackPressed`; the constructor's `dialogTheme` wrapper and `Gravity.CENTER`; `onTouchEvent` |
+| `app/AlertDialog.java` | `core/java/android/app/AlertDialog.java` | `resolveDialogTheme` without the `THEME_*` constants |
 | `widget/ScrollView.java` | `core/java/android/widget/ScrollView.java` | `scrollTo` and `clamp`, scrolling a focused child or a rectangle into view (`computeScrollDeltaToGetChildRectOnScreen`) |
 | `widget/HorizontalScrollView.java` | `core/java/android/widget/HorizontalScrollView.java` | the same across |
 | `graphics/drawable/DrawableContainer.java` | `graphics/java/android/graphics/drawable/DrawableContainer.java` | `getCurrent`, `selectDrawable` without fades, `initializeDrawableForDisplay` (visibility, state, bounds, layout direction), `setConstantState`, `getConstantState`, `mutate`, `cloneConstantState`, the `Drawable.Callback` forwarding, `onBoundsChange`; `DrawableContainerState`'s copy constructor with its child futures, `getChild`, `getChildren`, `addChild`, `createAllFutures`, `prepareDrawable`, `mutate`, `canConstantState` |

@@ -15,6 +15,11 @@ enum headless_touch {
 
 /* One pointer changed: id, px in the window. */
 void headless_touch(struct ui_window *window, enum headless_touch what, int id, float x, float y);
+/* A DOWN and an UP at the middle of the shown text view whose text is label, a dialog's before the
+ * activity's; prints "tap: <label> <x>,<y>" or "tap: no <label>". */
+void headless_tap(struct ui_window *window, const char *label);
+/* The view-tree dump of the window and its shown dialogs (ui_window_dump), now. */
+void headless_dump(struct ui_window *window);
 /* down: KeyEvent.ACTION_DOWN, else ACTION_UP; unicode: the character it types, or 0. */
 void headless_key(struct ui_window *window, int down, int code, int meta, int unicode);
 

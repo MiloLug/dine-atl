@@ -133,6 +133,20 @@ void atl_upcall_pre_draw(struct atl_ref *observer)
 	call_observer(observer, handle_cache.view_tree_observer.dispatchOnPreDraw);
 }
 
+void atl_upcall_window_frame(struct atl_ref *dialog, int left, int top, int width, int height)
+{
+	JNIEnv *env = get_jni_env();
+	jobject dialog_obj = (*env)->NewLocalRef(env, (jobject)dialog);
+	if (!dialog_obj)
+		return;
+	(*env)->CallVoidMethod(env, dialog_obj, handle_cache.dialog.atlWindowFrame, left, top, width, height);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionDescribe(env);
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->DeleteLocalRef(env, dialog_obj);
+}
+
 bool atl_upcall_dialog_result(struct atl_ref *dialog, int which)
 {
 	JNIEnv *env = get_jni_env();

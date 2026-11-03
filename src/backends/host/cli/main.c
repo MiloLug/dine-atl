@@ -137,8 +137,12 @@ static void *read_commands(void *data)
 			atl_nav_front(app);
 		else if (parse_insets(line, &insets))
 			atl_nav_set_insets(app, &insets);
+		else if (!strcmp(line, "dump"))
+			headless_dump(app->window);
+		else if (!strncmp(line, "tap ", 4))
+			headless_tap(app->window, line + 4);
 		else if (!parse_touch(app->window, line) && !parse_key(app->window, line) && !parse_text(app->window, line))
-			fprintf(stderr, "commands: back, home, front, insets <12 dp>, touch down|move|up|cancel <id> <x> <y>, "
+			fprintf(stderr, "commands: back, home, front, insets <12 dp>, dump, tap <text>, touch down|move|up|cancel <id> <x> <y>, "
 			                "key down|up <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
 			                "text select <start> <end>, text tap <x> <y>, text action|dismiss|hold|release; not \"%s\"\n",
 			        line);
