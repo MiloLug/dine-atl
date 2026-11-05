@@ -8,7 +8,7 @@
 
 #include "gtk_ui.h"
 
-/* A dialog is a GtkWindow over the app window. Java decides when it closes: close-request and a
+/* An alert is a GtkWindow over the app window. Java decides when it closes: close-request and a
  * tap outside become cancel results. ATL_DIALOG_ANSWERS answers alerts through their widgets, as
  * they are when the answer comes. */
 
@@ -20,7 +20,6 @@ struct dialog_state {
 	GtkWindow *dialog;
 	bool shown;
 	bool answer_posted; // a listener's dismiss() and show() would post a second one
-	GtkWidget *decor;                  // the decor view's wrapper
 	GtkEventController *touch_outside; // on the app window while set
 	GtkWidget *buttons[3];             // the shown alert's, as in ui_alert; hidden without a label
 	GtkListBox *items;
@@ -45,7 +44,7 @@ static gboolean on_close_request(GtkWindow *dialog, struct dialog_state *state)
 	return TRUE;
 }
 
-struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref)
 {
 	GtkWidget *dialog = gtk_window_new();
 	gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
@@ -54,11 +53,8 @@ struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref,
 	state->app = app;
 	state->ref = dialog_ref;
 	state->dialog = GTK_WINDOW(dialog);
-	// kept while an alert replaces it as the window's child
-	state->decor = g_object_ref(gtk_widget_get_parent(GTK_WIDGET(decor)));
 	g_object_set_data(G_OBJECT(dialog), "atl-dialog", state);
 
-	gtk_window_set_child(GTK_WINDOW(dialog), state->decor);
 	g_signal_connect(dialog, "close-request", G_CALLBACK(on_close_request), state);
 	input_attach_window(GTK_WINDOW(dialog));
 	return (struct ui_window *)dialog;
@@ -150,21 +146,18 @@ static void post_answer(struct dialog_state *state)
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 {
 	struct dialog_state *state = get_state(dialog);
-	if (alert) {
-		if (alert->title)
-			gtk_window_set_title(GTK_WINDOW(dialog), alert->title);
-		gtk_window_set_child(GTK_WINDOW(dialog), alert_content(state, alert));
-	}
+	if (alert->title)
+		gtk_window_set_title(GTK_WINDOW(dialog), alert->title);
+	gtk_window_set_child(GTK_WINDOW(dialog), alert_content(state, alert));
 	gtk_window_present(GTK_WINDOW(dialog));
 	state->shown = true;
-	if (alert)
-		post_answer(state);
+	post_answer(state);
 }
 
 void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label, bool enabled)
 {
 	GtkWidget *button = get_state(dialog)->buttons[-1 - which];
-	if (!button) // a dialog with a content view
+	if (!button) // not shown yet
 		return;
 	gtk_button_set_label(GTK_BUTTON(button), label ?: "");
 	gtk_widget_set_visible(button, label != NULL);
@@ -193,7 +186,6 @@ void ui_dialog_free(struct ui_window *dialog)
 	remove_touch_outside(state);
 	gtk_window_destroy(GTK_WINDOW(dialog)); // before state goes: its signal handlers get it
 
-	g_object_unref(state->decor);
 	atl_ref_free(state->ref);
 	g_free(state);
 }

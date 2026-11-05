@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Drives the windows APK (windows/, built by the superproject's tests/harness/apk.py) in the
-# headless build: the shown activity's window brightness reaches the cli host once it shows, and
-# the screen's own (-1) once the activity clears it.
+# headless build: the shown activity's window brightness reaches the cli host while it shows, the
+# screen's own (-1) while the task is in the back (Home), again on its return, and -1 once Back
+# finished the activity.
 # Usage: run-windows.sh <headless build dir> <windows.apk>
 set -euo pipefail
 
@@ -34,10 +35,17 @@ next() {
   fail "ATL went quiet or exited"
 }
 
-for want in "host: brightness 0.50" "host: brightness -1.00"; do
+expect() {
   next
-  [[ $REPLY == "$want" ]] || fail "got \"$REPLY\", want \"$want\""
-done
+  [[ $REPLY == "$1" ]] || fail "got \"$REPLY\", want \"$1\""
+}
+expect "host: brightness 0.50"
+echo home >&"${ATL[1]}"
+expect "host: brightness -1.00"
+echo front >&"${ATL[1]}"
+expect "host: brightness 0.50"
+echo back >&"${ATL[1]}"
+expect "host: brightness -1.00"
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
 echo PASS

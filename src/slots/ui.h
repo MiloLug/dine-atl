@@ -44,18 +44,27 @@ struct atl_app;
 struct ui_window *ui_window_new(struct atl_app *app, void *surface);
 void ui_window_set_title(struct ui_window *window, const char *title);
 void ui_window_clear_background(struct ui_window *window);
-/* WindowManager.LayoutParams' placement of a window: width and height px or MATCH_PARENT (-1) and
- * WRAP_CONTENT (-2), x and y px from the gravity's edges. An activity's window fills the
- * screen whatever it says; gtk sizes a top-level window from a positive width and height. */
+/* WindowManager.LayoutParams of a window over the activities: width and height px or
+ * MATCH_PARENT (-1) and WRAP_CONTENT (-2), x and y px from the gravity's edges. */
 struct ui_window_layout {
-	int flags, gravity;
+	int type, flags, gravity;
 	int x, y, width, height;
-	int min_width; // px, for WRAP_CONTENT: a floating window's least width from its theme (AOSP's DecorView)
+	int min_width;    // px, for WRAP_CONTENT: a floating window's least width from its theme (AOSP's DecorView)
+	float dim_amount; // with UI_WINDOW_DIM_BEHIND: the dark over what's below, 0 to 1
 };
-#define UI_WINDOW_NOT_FOCUSABLE   0x00000008 // LayoutParams.FLAG_*
+#define UI_WINDOW_DIM_BEHIND      0x00000002 // LayoutParams.FLAG_*
+#define UI_WINDOW_NOT_FOCUSABLE   0x00000008
 #define UI_WINDOW_NOT_TOUCHABLE   0x00000010
 #define UI_WINDOW_NOT_TOUCH_MODAL 0x00000020
-void ui_window_set_layout(struct ui_window *window, const struct ui_window_layout *layout);
+struct atl_subwindow;
+/* A window over the activities as the backend shows it; windows_place (shared/windows.h) places it. */
+struct ui_root {
+	struct atl_subwindow *window;
+	struct ui_view *view; // its root: the decor view
+	struct ui_window_layout layout;
+};
+/* The windows shown over the shown activity, bottom first; replaces the last list. */
+void ui_window_set_roots(struct ui_window *window, const struct ui_root *roots, size_t n);
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_show_activity(struct ui_window *window, struct ui_view *root);
 void ui_window_remove_activity(struct ui_window *window, struct ui_view *root);
@@ -107,10 +116,10 @@ struct ui_alert {
 /* The result of a cancel (back, a tap outside, a Cancel action), next to buttons and items. */
 #define UI_DIALOG_CANCEL INT32_MIN
 
-/* A Dialog's window in app (its Context's), with the decor view as its content. Results go to
- * atl_upcall_dialog_result; the dialog closes only through ui_dialog_close. */
-struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor);
-/* Shows the alert instead of the decor view when alert isn't NULL. */
+/* An AlertDialog's native alert in app (its Context's); a Dialog with a content view is a window
+ * over the activities (ui_window_set_roots). Results go to atl_upcall_dialog_result; the alert
+ * closes only through ui_dialog_close. */
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref);
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
 /* A button of the shown alert changed (which: DialogInterface.BUTTON_*; label NULL: hidden). A result
  * that leaves the dialog drawn means it stays shown: a backend whose toolkit closed it shows it again. */
@@ -189,10 +198,6 @@ struct ui_text_run {
 };
 /* The text and its runs at once, so no measure sees one without the other. */
 void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_text_run *runs, size_t n_runs);
-static inline void ui_text_set_text(struct ui_view *view, const char *text)
-{
-	ui_text_set_styled(view, text, NULL, 0);
-}
 void ui_text_set_color(struct ui_view *view, uint32_t argb);
 void ui_text_set_size(struct ui_view *view, float size); // px
 /* The size ui_text_set_size set, else the toolkit's default, in the same unit. */

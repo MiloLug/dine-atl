@@ -25,14 +25,6 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidat
 
 /*
  * Class:     android_graphics_drawable_Drawable
- * Method:    native_draw
- * Signature: (JJII)V
- */
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1draw
-  (JNIEnv *, jobject, jlong, jlong, jint, jint);
-
-/*
- * Class:     android_graphics_drawable_Drawable
  * Method:    native_ref
  * Signature: (J)V
  */

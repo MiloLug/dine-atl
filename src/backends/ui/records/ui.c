@@ -1,8 +1,3 @@
-/*
- * Portions Copyright (C) 2006 The Android Open Source Project, from
- * core/java/android/view/Gravity.java at android-security-10.0.0_r75, Apache License 2.0; see
- * doc/AOSP.md.
- */
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,6 +5,7 @@
 
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
+#include "src/shared/windows.h"
 #include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
@@ -35,63 +31,21 @@ void ui_display_get(struct ui_display *display)
 	display->night = config->night;
 }
 
-#define GRAVITY_PULL_BEFORE  0x2
-#define GRAVITY_PULL_AFTER   0x4
-#define GRAVITY_Y_SHIFT      4
-
-/* Copyright (C) 2006 The Android Open Source Project: Gravity.apply on one axis, left to right
- * (START and END are LEFT and RIGHT), without AXIS_CLIP; FILL stretches *size */
-static int gravity_apply(int gravity, int *size, int container, int adjust)
+// a window over the activity as the window manager places it on the screen
+static void lay_out_root(struct ui_root *root, int screen_width, int screen_height)
 {
-	switch (gravity & (GRAVITY_PULL_BEFORE | GRAVITY_PULL_AFTER)) {
-	case 0:
-		return (container - *size) / 2 + adjust;
-	case GRAVITY_PULL_BEFORE:
-		return adjust;
-	case GRAVITY_PULL_AFTER:
-		return container - adjust - *size;
-	default:
-		*size = container;
-		return adjust;
-	}
-}
-
-// LayoutParams' width or height: px, MATCH_PARENT (-1) or WRAP_CONTENT (-2)
-static int window_spec(int size, int available)
-{
-	return size >= 0 ? size | MEASURE_SPEC_EXACTLY : size == -1 ? available | MEASURE_SPEC_EXACTLY : available | MEASURE_SPEC_AT_MOST;
-}
-
-// a dialog's content as the window manager places it on the screen
-static void lay_out_overlay(struct ui_window *overlay, int screen_width, int screen_height)
-{
-	struct ui_view *root = overlay->content;
-	const struct ui_window_layout *layout = &overlay->layout;
-	atl_upcall_view_measure(root->ref, window_spec(layout->width, screen_width), window_spec(layout->height, screen_height));
-	int width = atl_upcall_view_get_measured(root->ref, false), height = atl_upcall_view_get_measured(root->ref, true);
-	if (layout->width == -2 && width < layout->min_width) {
-		atl_upcall_view_measure(root->ref, layout->min_width | MEASURE_SPEC_EXACTLY, window_spec(layout->height, screen_height));
-		width = atl_upcall_view_get_measured(root->ref, false);
-		height = atl_upcall_view_get_measured(root->ref, true);
-	}
-	int measured_width = width, measured_height = height;
-	overlay->left = gravity_apply(layout->gravity, &width, screen_width, layout->x);
-	overlay->top = gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, screen_height, layout->y);
-	if (width != measured_width || height != measured_height)
-		atl_upcall_view_measure(root->ref, width | MEASURE_SPEC_EXACTLY, height | MEASURE_SPEC_EXACTLY);
-	overlay->width = width;
-	overlay->height = height;
-	root->left = root->top = 0;
-	root->right = width;
-	root->bottom = height;
-	atl_upcall_window_frame(overlay->owner, overlay->left, overlay->top, width, height);
-	atl_upcall_view_layout(root->ref, width, height);
+	struct atl_window_frame frame;
+	windows_place(root->window, screen_width, screen_height, &frame);
+	root->view->left = root->view->top = 0;
+	root->view->right = frame.width;
+	root->view->bottom = frame.height;
+	atl_upcall_view_layout(root->view->ref, frame.width, frame.height);
 }
 
 static void lay_out(struct ui_window *window)
 {
 	struct ui_view *root = window->shown;
-	if (!root && !window->n_overlays)
+	if (!root && !window->n_roots)
 		return;
 	if (++window->passes_in_a_row > MAX_PASSES_IN_A_ROW) {
 		fprintf(stderr, "records ui: layout still requested after %d passes, giving up\n", MAX_PASSES_IN_A_ROW);
@@ -106,8 +60,8 @@ static void lay_out(struct ui_window *window)
 		atl_upcall_view_measure(root->ref, config->width | MEASURE_SPEC_EXACTLY, config->height | MEASURE_SPEC_EXACTLY);
 		atl_upcall_view_layout(root->ref, config->width, config->height);
 	}
-	for (size_t i = 0; i < window->n_overlays; i++)
-		lay_out_overlay(window->overlays[i], config->width, config->height);
+	for (size_t i = 0; i < window->n_roots; i++)
+		lay_out_root(&window->roots[i], config->width, config->height);
 	if (!root)
 		return;
 
@@ -179,8 +133,8 @@ static void draw_frame(struct ui_window *window)
 	struct timespec start, end;
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	int drawn = window->shown ? draw_tree(window->shown) : 0;
-	for (size_t i = 0; i < window->n_overlays; i++)
-		drawn += draw_tree(window->overlays[i]->content);
+	for (size_t i = 0; i < window->n_roots; i++)
+		drawn += draw_tree(window->roots[i].view);
 	clock_gettime(CLOCK_MONOTONIC, &end);
 	if (drawn)
 		records_test_frame_drawn(&start, &end);
@@ -232,31 +186,23 @@ struct ui_window *ui_window_new(struct atl_app *app, void *surface)
 	return window;
 }
 
-/* AOSP's input dispatch at a DOWN: the topmost touchable dialog under it, else the topmost
- * touch-modal one (neither NOT_FOCUSABLE nor NOT_TOUCH_MODAL: it sees the touch outside its
- * bounds), else the activity */
-static struct ui_window *touch_target(struct ui_window *window, const struct atl_pointer *pointer)
+static const struct ui_root *root_of(const struct ui_window *window, const struct ui_view *view)
 {
-	for (size_t i = window->n_overlays; i-- > 0;) {
-		struct ui_window *overlay = window->overlays[i];
-		int flags = overlay->layout.flags;
-		if (flags & UI_WINDOW_NOT_TOUCHABLE)
-			continue;
-		bool inside = pointer->x >= overlay->left && pointer->x < overlay->left + overlay->width
-		              && pointer->y >= overlay->top && pointer->y < overlay->top + overlay->height;
-		if (inside || !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)))
-			return overlay;
+	for (size_t i = 0; i < window->n_roots; i++) {
+		if (window->roots[i].view == view)
+			return &window->roots[i];
 	}
-	return window;
+	return NULL;
 }
 
 void records_touch(struct ui_window *window, const struct atl_touch *touch)
 {
 	if (touch->action == ATL_ACTION_DOWN) {
-		window->touched = touch_target(window, &touch->pointers[0]);
+		const struct ui_root *target = windows_touch_target(window->roots, window->n_roots, touch->pointers[0].x, touch->pointers[0].y);
+		window->touched = target ? target->view : NULL;
 		window->touch_dropped = false;
 	}
-	struct ui_window *target = window->touched ? window->touched : window;
+	struct ui_view *target = window->touched;
 	bool ends = touch->action == ATL_ACTION_UP || touch->action == ATL_ACTION_CANCEL;
 	if (window->touch_dropped) {
 		if (ends)
@@ -265,45 +211,22 @@ void records_touch(struct ui_window *window, const struct atl_touch *touch)
 	}
 	if (ends)
 		window->touched = NULL;
-	if (target == window) {
+	const struct ui_root *root = target ? root_of(window, target) : NULL;
+	if (!root) {
 		if (window->shown)
 			atl_upcall_touch(window->shown->ref, touch);
 		return;
 	}
-	struct atl_touch moved = *touch; // in the dialog's window
+	const struct atl_window_frame *frame = windows_frame(root->window);
+	struct atl_touch moved = *touch; // in the window's own coordinates
 	for (int i = 0; i < moved.count; i++) {
-		moved.pointers[i].x -= target->left;
-		moved.pointers[i].y -= target->top;
+		moved.pointers[i].x -= frame->left;
+		moved.pointers[i].y -= frame->top;
 	}
-	atl_upcall_touch(target->content->ref, &moved);
+	atl_upcall_touch(target->ref, &moved);
 }
 
-void records_dialog_init(struct ui_window *dialog, struct atl_app *app, struct atl_ref *owner, struct ui_view *decor)
-{
-	dialog->app = app;
-	dialog->app_window = atl_app_window(app);
-	dialog->owner = owner;
-	dialog->content = decor;
-}
-
-void records_overlay_show(struct ui_window *dialog)
-{
-	struct ui_window *window = dialog->app_window;
-	if (!window) // the app has no window yet
-		return;
-	for (size_t i = 0; i < window->n_overlays; i++) {
-		if (window->overlays[i] == dialog)
-			return;
-	}
-	if (window->n_overlays == window->cap_overlays) {
-		window->cap_overlays = window->cap_overlays ? window->cap_overlays * 2 : 4;
-		window->overlays = realloc(window->overlays, window->cap_overlays * sizeof(*window->overlays));
-	}
-	window->overlays[window->n_overlays++] = dialog;
-	schedule_layout(window);
-}
-
-// posted: the dialog may close from inside its own touch dispatch
+// posted: the window may close from inside its own touch dispatch
 static void cancel_touch(void *data)
 {
 	struct atl_ref *root = data;
@@ -312,25 +235,23 @@ static void cancel_touch(void *data)
 	atl_ref_free(root);
 }
 
-void records_overlay_hide(struct ui_window *dialog)
+void ui_window_set_roots(struct ui_window *window, const struct ui_root *roots, size_t n)
 {
-	struct ui_window *window = dialog->app_window;
-	if (!window)
+	if (!records_shows_roots())
 		return;
-	size_t i = 0;
-	while (i < window->n_overlays && window->overlays[i] != dialog)
-		i++;
-	if (i == window->n_overlays)
-		return;
-	memmove(&window->overlays[i], &window->overlays[i + 1], (window->n_overlays - i - 1) * sizeof(*window->overlays));
-	window->n_overlays--;
-	if (window->touched == dialog) { // AOSP cancels a gesture whose window goes
-		struct atl_ref *root = atl_ref_dup(dialog->content->ref);
+	bool touched_stays = false;
+	for (size_t i = 0; i < n; i++)
+		touched_stays |= roots[i].view == window->touched;
+	if (window->touched && !touched_stays) { // AOSP cancels a gesture whose window goes
+		struct atl_ref *root = atl_ref_dup(window->touched->ref);
 		if (!loop_main_post(atl_app_loop(window->app), cancel_touch, root))
 			atl_ref_free(root);
 		window->touched = NULL;
 		window->touch_dropped = true;
 	}
+	free(window->roots);
+	window->roots = n ? memcpy(malloc(n * sizeof(*roots)), roots, n * sizeof(*roots)) : NULL;
+	window->n_roots = n;
 	schedule_layout(window);
 }
 
@@ -343,11 +264,6 @@ void records_key(struct ui_window *window, const struct atl_key *key)
 void ui_window_set_title(struct ui_window *window, const char *title) {}
 
 void ui_window_clear_background(struct ui_window *window) {}
-
-void ui_window_set_layout(struct ui_window *window, const struct ui_window_layout *layout)
-{
-	window->layout = *layout;
-}
 
 void ui_window_add_activity(struct ui_window *window, struct ui_view *root)
 {
@@ -769,7 +685,7 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 {
 	struct ui_view *view = created(view_new(NODE_TEXT, view_ref, class_name, traits));
 	if (text)
-		ui_text_set_text(view, text);
+		ui_text_set_styled(view, text, NULL, 0);
 	return view;
 }
 

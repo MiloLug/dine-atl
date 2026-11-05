@@ -81,6 +81,23 @@ public class BitmapShaderTest extends android.test.InstrumentationTestCase {
 		assertEquals(0, got[1] >>> 24);
 	}
 
+	// its layers draw in its own space, wherever its bounds are
+	public void testAdaptiveIconAwayFromTheOrigin() {
+		final int[] got = new int[2];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				Drawable icon = getInstrumentation().getTargetContext().getResources().getDrawable(R.drawable.adaptive);
+				Bitmap target = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888);
+				icon.setBounds(200, 200, 300, 300);
+				icon.draw(new Canvas(target));
+				got[0] = target.getPixel(250, 250);
+				got[1] = target.getPixel(201, 201);
+			}
+		});
+		assertEquals(getInstrumentation().getTargetContext().getResources().getColor(R.color.pressed), got[0]);
+		assertEquals(0, got[1] >>> 24);
+	}
+
 	public void testBitmapDrawablePaintDraws() {
 		Bitmap bitmap = Bitmap.createBitmap(new int[] {RED, RED, RED, RED}, 2, 2, Bitmap.Config.ARGB_8888);
 		BitmapDrawable drawable = new BitmapDrawable(getInstrumentation().getTargetContext().getResources(), bitmap);

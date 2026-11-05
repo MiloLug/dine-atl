@@ -67,6 +67,14 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color
 
 /*
  * Class:     android_graphics_Paint
+ * Method:    native_set_blend
+ * Signature: (JI)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1blend
+  (JNIEnv *, jclass, jlong, jint);
+
+/*
+ * Class:     android_graphics_Paint
  * Method:    native_get_color
  * Signature: (J)I
  */

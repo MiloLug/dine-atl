@@ -73,10 +73,10 @@ void host_gesture_exclusion_changed(struct atl_app *app, const struct atl_gestur
 		app->listener->exclusion_changed(app->listener->context, app, exclusion);
 }
 
+/* A no-op: no public iOS API withdraws an app's brightness request, so the user's level wouldn't
+ * come back (Dine's notes/general-todo.md DINE-11). */
 void host_screen_brightness(struct atl_app *app, float brightness)
 {
-	if (app->listener && app->listener->screen_brightness)
-		app->listener->screen_brightness(app->listener->context, app, brightness);
 }
 
 void host_keep_screen_on(struct atl_app *app, bool on)

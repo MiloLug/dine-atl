@@ -1,14 +1,14 @@
-#include <gdk/gdk.h>
 #include <jni.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // FIXME: put the header in a common place
 #include "../api-impl-jni/defines.h"
-#include "../backends/gfx/gsk/bitmap.h"
-#include "../backends/gfx/gsk/memory_format.h"
+#include "../shared/bitmap.h"
 #include "bitmap.h"
 
 #define ANDROID_BITMAP_RESULT_SUCCESS 0
+#define ANDROID_BITMAP_RESULT_JNI_EXCEPTION -2
 
 /* app threads that never return to Java keep every local ref they make */
 static int config_int(JNIEnv *env, jobject bitmap, const char *field)
@@ -17,6 +17,11 @@ static int config_int(JNIEnv *env, jobject bitmap, const char *field)
 	int value = _GET_INT_FIELD(config, field);
 	(*env)->DeleteLocalRef(env, config);
 	return value;
+}
+
+static struct gfx_bitmap *native_of(JNIEnv *env, jobject bitmap)
+{
+	return _PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getNativeInstance", "()J")));
 }
 
 int AndroidBitmap_getInfo(JNIEnv *env, jobject bitmap, struct AndroidBitmapInfo *info)
@@ -28,58 +33,31 @@ int AndroidBitmap_getInfo(JNIEnv *env, jobject bitmap, struct AndroidBitmapInfo 
 	return ANDROID_BITMAP_RESULT_SUCCESS;
 }
 
+// a copy in the config's NDK format until unlockPixels writes it back
 int AndroidBitmap_lockPixels(JNIEnv *env, jobject bitmap, void **pixels)
 {
-	printf("AndroidBitmap_lockPixels\n");
-	GdkTexture *texture = gsk_bitmap_ref_texture(_PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J"))));
+	struct gfx_bitmap *native = native_of(env, bitmap);
+	if (!native) // recycled
+		return ANDROID_BITMAP_RESULT_JNI_EXCEPTION;
 	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = gsk_memory_format(config_int(env, bitmap, "nativeInt"));
-	if (format == -1) {
-		printf("AndroidBitmap_lockPixels: format not implemented\n");
-		exit(1);
-	}
-	GdkTextureDownloader *downloader = gdk_texture_downloader_new(texture);
-	gdk_texture_downloader_set_format(downloader, format);
-	GBytes *bytes = NULL;
-	if (GDK_IS_MEMORY_TEXTURE(texture)) { // try to get the bytes non-copying
-		gsize texture_stride;
-		bytes = gdk_texture_downloader_download_bytes(downloader, &texture_stride);
-		if (texture_stride != stride) { // texture was not created by us, fall back to copy
-			g_bytes_unref(bytes);
-			bytes = NULL;
-		}
-	}
-	if (bytes == NULL) {
-		guchar *data = g_malloc(stride * gdk_texture_get_height(texture));
-		gdk_texture_downloader_download_into(downloader, data, stride);
-		bytes = g_bytes_new_take(data, stride * gdk_texture_get_height(texture));
-	}
-	gdk_texture_downloader_free(downloader);
-	g_object_unref(texture);
-	_SET_LONG_FIELD(bitmap, "bytes", _INTPTR(bytes));
-	*pixels = (void *)g_bytes_get_data(bytes, NULL);
+	uint8_t *buffer = malloc((size_t)stride * native->height);
+	bitmap_pack(native, buffer, stride);
+	_SET_LONG_FIELD(bitmap, "bytes", _INTPTR(buffer));
+	*pixels = buffer;
 	return ANDROID_BITMAP_RESULT_SUCCESS;
 }
 
 int AndroidBitmap_unlockPixels(JNIEnv *env, jobject bitmap)
 {
-	printf("AndroidBitmap_unlockPixels\n");
-	GBytes *bytes = _PTR(_GET_LONG_FIELD(bitmap, "bytes"));
-	if (!bytes) {
-		printf("AndroidBitmap_unlockPixels: no bytes! Was AndroidBitmap_lockPixels called?\n");
-		exit(1);
+	uint8_t *buffer = _PTR(_GET_LONG_FIELD(bitmap, "bytes"));
+	if (!buffer) {
+		fprintf(stderr, "AndroidBitmap_unlockPixels: no pixels; was AndroidBitmap_lockPixels called?\n");
+		return -1; // ANDROID_BITMAP_RESULT_BAD_PARAMETER
 	}
-	int width = _GET_INT_FIELD(bitmap, "width");
-	int height = _GET_INT_FIELD(bitmap, "height");
-	int stride = _GET_INT_FIELD(bitmap, "stride");
-	int format = gsk_memory_format(config_int(env, bitmap, "nativeInt"));
-	if (format == -1) {
-		printf("AndroidBitmap_lockPixels: format not implemented\n");
-		exit(1);
-	}
-	GdkTexture *texture = gdk_memory_texture_new(width, height, format, bytes, stride);
-	g_bytes_unref(bytes);
-	gsk_bitmap_set_texture(_PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getTexture", "()J"))), texture);
+	struct gfx_bitmap *native = native_of(env, bitmap);
+	if (native) // else recycled while locked
+		bitmap_unpack(native, buffer, _GET_INT_FIELD(bitmap, "stride"));
+	free(buffer);
 	_SET_LONG_FIELD(bitmap, "bytes", 0);
-	return ANDROID_BITMAP_RESULT_SUCCESS;
+	return native ? ANDROID_BITMAP_RESULT_SUCCESS : ANDROID_BITMAP_RESULT_JNI_EXCEPTION;
 }

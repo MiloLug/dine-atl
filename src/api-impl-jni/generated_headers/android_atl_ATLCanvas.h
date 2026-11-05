@@ -153,6 +153,14 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipPath
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawRenderNode
   (JNIEnv *, jobject, jlong, jlong);
 
+/*
+ * Class:     android_atl_ATLCanvas
+ * Method:    native_drawDrawable
+ * Signature: (JJII)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawDrawable
+  (JNIEnv *, jobject, jlong, jlong, jint, jint);
+
 #ifdef __cplusplus
 }
 #endif

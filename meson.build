@@ -120,6 +120,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_widget_ProgressBar.c',
 	'src/shared/android_widget_ScrollView.c',
 	'src/shared/android_widget_TextView.c',
+	'src/shared/bitmap.c',
 	'src/shared/input.c',
 	'src/shared/insets.c',
 	'src/shared/ninepatch.c',
@@ -129,9 +130,10 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/startup.c',
 	'src/shared/text.c',
 	'src/shared/upcall.c',
-] + (test_hooks ? ['src/shared/test_hooks.c'] : []) + (desktop ? [] : ['src/shared/android_os_Vibrator.c']),
+	'src/shared/windows.c',
+] + (test_hooks ? ['src/shared/android_atl_ATLTestHooks.c', 'src/shared/test_hooks.c'] : []) + (desktop ? [] : ['src/shared/android_os_Vibrator.c']),
    dependencies: [jni_dep, sqlite3_dep, art_incdir_dep, graphene_dep, jni_headers_dep],
-   c_args: ['-D_LARGEFILE64_SOURCE'])
+   c_args: ['-D_LARGEFILE64_SOURCE'] + (desktop ? ['-DATL_LIBANDROID'] : []))
 
 backend_libs = []
 legacy_srcs = []
@@ -267,7 +269,7 @@ if desktop
   ]
   legacy_deps = [
   	extra_deps,
-  	dependency('gtk4', version: '>=4.14'), dependency('gl'), dependency('egl'), dependency('wayland-client'),
+  	dependency('gtk4', version: '>=4.22'), dependency('gl'), dependency('egl'), dependency('wayland-client'),
   	dependency('libportal'), dependency('libavcodec', version: '>=59'), dependency('libdrm'),
   	dependency('gudev-1.0'), dependency('libswscale'), dependency('webkitgtk-6.0'), dependency('libsecret-1'),
   	wayland_protos_dep,
@@ -314,17 +316,20 @@ endif
 
 record_srcs = ['src/backends/gfx/record/canvas.c', 'src/backends/gfx/record/paint.c']
 if gfx_backend == 'record'
-  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/record/bitmap.c', 'src/backends/gfx/record/raster.c', 'src/backends/gfx/record/text.c'],
+  backend_libs += static_library('atl_gfx_record', record_srcs + ['src/backends/gfx/cairo/painter.c', 'src/backends/gfx/record/bitmap.c', 'src/backends/gfx/record/painter.c',
+                                                                  'src/backends/gfx/record/text.c'],
                                  dependencies: [graphene_dep, dependency('libpng'), dependency('cairo')])
 elif gfx_backend == 'coregraphics'
   # record's lists, replayed by uikit's layers
   backend_libs += static_library('atl_gfx_coregraphics', record_srcs + ['src/backends/gfx/coregraphics/bitmap.c',
                                                                         'src/backends/gfx/coregraphics/draw.c',
+                                                                        'src/backends/gfx/coregraphics/painter.c',
                                                                         'src/backends/gfx/coregraphics/text.c'],
                                  dependencies: graphene_dep)
 else
-  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/gsk/bitmap.c', 'src/backends/gfx/gsk/canvas.c', 'src/backends/gfx/gsk/container.c',
-                                  'src/backends/gfx/gsk/ninepatch.c', 'src/backends/gfx/gsk/paint.c', 'src/backends/gfx/gsk/path.c', 'src/backends/gfx/gsk/text.c'],
+  backend_libs += static_library('atl_gfx_gsk', ['src/backends/gfx/cairo/painter.c', 'src/backends/gfx/gsk/bitmap.c', 'src/backends/gfx/gsk/canvas.c',
+                                  'src/backends/gfx/gsk/container.c', 'src/backends/gfx/gsk/ninepatch.c', 'src/backends/gfx/gsk/paint.c',
+                                  'src/backends/gfx/gsk/painter.c', 'src/backends/gfx/gsk/path.c', 'src/backends/gfx/gsk/text.c'],
                                  dependencies: [dependency('gtk4'), dependency('jni')])
 endif
 

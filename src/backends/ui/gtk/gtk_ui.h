@@ -8,8 +8,13 @@ struct ui_window;
 
 extern struct atl_app *host_app; // the gtk host's one app (main.c)
 
-/* The window's stack of activity root views. */
+/* The window's stack of activity root views, under an overlay of the windows over the activity
+ * (ui_window_set_roots). */
 GtkStack *window_stack(struct ui_window *window);
+void window_attach_stack(GtkWindow *window, GtkWidget *stack);
+/* The root wrapper a DOWN at x, y in the window's content goes to: a window over the activity, or
+ * the shown activity's; NULL: none. */
+GtkWidget *window_touch_root(GtkWindow *window, double x, double y);
 /* A text node's label, next to its compound drawables in a box; NULL on other handles. */
 GtkLabel *text_get_label(GtkWidget *handle);
 /* A text node's height without the lines past ui_text_set_lines' max. */
@@ -26,6 +31,8 @@ void input_attach_window(GtkWindow *window);
  * on it or its children, Java doesn't see it. */
 void input_take_native(GtkWidget *widget);
 void input_return_native(GtkWidget *widget);
+/* A root wrapper left the window: a gesture on it ends with a CANCEL, as Android's does. */
+void input_root_removed(GtkWidget *root);
 /* No pointer is down; hover exits wait for it. */
 bool input_pointers_up(void);
 /* One pointer's DOWN and UP at the view's centre, through its window's root view as a press there

@@ -347,13 +347,12 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
 				continue;
 			}
 
-			/*int insetWidth = (int)(bounds.width() / (DEFAULT_VIEW_PORT_SCALE * 2));
+			int insetWidth = (int)(bounds.width() / (DEFAULT_VIEW_PORT_SCALE * 2));
 			int insetHeight = (int)(bounds.height() / (DEFAULT_VIEW_PORT_SCALE * 2));
 			final Rect outRect = mTmpOutRect;
 			outRect.set(cX - insetWidth, cY - insetHeight, cX + insetWidth, cY + insetHeight);
 
-			d.setBounds(outRect);*/
-			d.setBounds(bounds);
+			d.setBounds(outRect);
 		}
 	}
 

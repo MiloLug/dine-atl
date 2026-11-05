@@ -22,6 +22,7 @@ struct gfx_paint {
 	enum gfx_font_family font_family;
 	int font_style; // GFX_FONT_BOLD, GFX_FONT_ITALIC
 	struct gfx_color_filter filter;
+	enum gfx_blend blend;
 	struct gfx_shader *shader; // held: a copy of the struct takes a ref (record_paint_copy)
 };
 
@@ -49,7 +50,7 @@ enum op_kind {
 	OP_PATH,       // even-odd
 	OP_CLIP_PATH,  // even-odd, enum gfx_clip_op
 	OP_ARC,        // left, top, right, bottom, start, sweep, use center
-	OP_LAYER,      // left, top, right, bottom, has bounds, alpha, PorterDuff mode or -1
+	OP_LAYER,      // left, top, right, bottom, has bounds, alpha, enum gfx_blend
 	OP_UNLAYER,    // ends the level's OP_LAYER, after its OP_UNCLIP; no paint
 };
 
@@ -62,6 +63,8 @@ struct op {
 	uint16_t *text;            // OP_TEXT's, owned
 	size_t text_len;
 	struct gfx_path *path; // OP_PATH's and OP_CLIP_PATH's, held
+	void *cache;           // coregraphics: OP_BITMAP's filtered image, of cache_generation's pixels
+	unsigned cache_generation;
 };
 
 struct canvas_state {
@@ -77,7 +80,25 @@ struct gfx_canvas {
 	size_t n_saved, saved_size;
 	struct op *ops;
 	size_t n_ops, ops_size;
+	struct painter *painter; // a Canvas(Bitmap)'s: ops draw into the bitmap as they come, ops stays empty
 };
+
+/* A Canvas(Bitmap)'s drawing, per backend (record: painter.c, cairo; coregraphics: painter.c):
+ * each op drawn at once, its paint, path, bitmap and text only borrowed for the call. One
+ * painter_save or painter_save_layer per save; clips stay until their level's painter_restore. */
+struct painter;
+struct painter *painter_new(struct gfx_bitmap *bitmap);
+void painter_free(struct painter *painter); // restores what's open
+void painter_save(struct painter *painter);
+void painter_save_layer(struct painter *painter, const struct op *op); // OP_LAYER's
+void painter_restore(struct painter *painter);
+void painter_clip(struct painter *painter, const struct op *op); // OP_CLIP's or OP_CLIP_PATH's
+void painter_draw(struct painter *painter, const struct op *op);
+// what a draw op can change, under its matrix, its stroke included; false: unknown (text)
+bool record_op_bounds(const struct op *op, struct gfx_rect *bounds);
+
+// an op's cache, freed with its list (coregraphics: a CGImage)
+void record_op_cache_free(void *cache);
 
 /* *dst = *src with the refs a copy holds */
 void record_paint_copy(struct gfx_paint *dst, const struct gfx_paint *src);

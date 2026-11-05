@@ -3,16 +3,16 @@
 struct handle_cache {
 	struct {
 		jclass class;
-		jmethodID onCreate;
+		jmethodID performCreate;
 		jmethodID onPostCreate;
-		jmethodID onStart;
-		jmethodID onResume;
-		jmethodID onPostResume;
+		jmethodID performStart;
+		jmethodID performResume;
+		jmethodID performPostResume;
 		jmethodID onWindowFocusChanged;
-		jmethodID onDestroy;
-		jmethodID onStop;
+		jmethodID performDestroy;
+		jmethodID performStop;
 		jmethodID onRestart;
-		jmethodID onPause;
+		jmethodID performPause;
 		jmethodID onBackPressed;
 		jmethodID onNewIntent;
 	} activity;
@@ -102,13 +102,14 @@ struct handle_cache {
 	struct {
 		jclass class;
 		jmethodID atlDialogResult;
-		jmethodID atlTaskMoved;
-		jmethodID atlWindowFrame;
 	} dialog;
 	struct {
 		jclass class;
 		jmethodID updateFrame;
 		jmethodID dispatchInsets;
+		jmethodID atlSetFrame;
+		jmethodID atlSetVisible;
+		jmethodID atlLeaked;
 	} window;
 	struct {
 		jclass class;

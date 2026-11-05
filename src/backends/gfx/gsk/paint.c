@@ -2,6 +2,7 @@
 
 #include "src/api-impl-jni/graphics/AndroidPaint.h"
 #include "src/api-impl-jni/graphics/java_paintable.h"
+#include "src/shared/blend.h"
 #include "src/shared/shader.h"
 #include "src/slots/gfx.h"
 
@@ -13,7 +14,14 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->font = pango_font_description_new();
 	pango_font_description_set_absolute_size(paint->font, 12 * PANGO_SCALE); // Android's default
 	paint->is_fill = true;
+	paint->filter = GFX_NO_COLOR_FILTER;
+	paint->blend = GFX_BLEND_SRC_OVER;
 	return (struct gfx_paint *)paint;
+}
+
+void gfx_paint_set_blend(struct gfx_paint *gfx_paint, enum gfx_blend blend)
+{
+	((struct AndroidPaint *)gfx_paint)->blend = blend;
 }
 
 struct gfx_paint *gfx_paint_clone(const struct gfx_paint *gfx_paint)
@@ -148,54 +156,18 @@ void gfx_paint_set_typeface(struct gfx_paint *gfx_paint, enum gfx_font_family fa
 	pango_font_description_set_style(font, style & GFX_FONT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
-/* A color filter as a color matrix over unpremultiplied colors (out = in M + offset): a ColorMatrix
- * as it is, a PorterDuff filter for the modes one can express; the others draw as SRC_IN. */
 void gfx_paint_set_color_filter(struct gfx_paint *gfx_paint, const struct gfx_color_filter *filter)
 {
 	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
-	float m[4][4] = {0}, offset[4] = {0};
-	if (filter && filter->has_matrix) {
-		paint->use_color_filter = true;
-		for (int out = 0; out < 4; out++) {
-			for (int in = 0; in < 4; in++)
-				m[in][out] = filter->m[out * 5 + in];
-			offset[out] = filter->m[out * 5 + 4] / 255.f;
-		}
-		graphene_matrix_init_from_float(&paint->color_matrix, *m);
-		graphene_vec4_init(&paint->color_offset, offset[0], offset[1], offset[2], offset[3]);
+	paint->filter = filter ? *filter : GFX_NO_COLOR_FILTER;
+	float color_matrix[20], m[4][4], offset[4];
+	paint->use_color_filter = blend_filter_matrix(&paint->filter, color_matrix);
+	if (!paint->use_color_filter)
 		return;
-	}
-	int mode = filter ? filter->mode : -1;
-	uint32_t color = filter ? filter->color : 0;
-	float a = ((color >> 24) & 0xFF) / 255.f, r = ((color >> 16) & 0xFF) / 255.f, g = ((color >> 8) & 0xFF) / 255.f, b = (color & 0xFF) / 255.f;
-	paint->use_color_filter = mode != -1 && mode != 2; // 2: DST keeps the colors
-	switch (mode) {
-		case 0: // CLEAR
-			break;
-		case 1: // SRC
-			offset[0] = r, offset[1] = g, offset[2] = b, offset[3] = a;
-			break;
-		case 6: // DST_IN
-		case 8: // DST_OUT
-			m[0][0] = m[1][1] = m[2][2] = 1;
-			m[3][3] = mode == 6 ? a : 1 - a;
-			break;
-		case 7: // SRC_OUT
-			offset[0] = r, offset[1] = g, offset[2] = b, offset[3] = a;
-			m[3][3] = -a;
-			break;
-		case 9: // SRC_ATOP
-			m[0][0] = m[1][1] = m[2][2] = 1 - a;
-			m[3][3] = 1;
-			offset[0] = a * r, offset[1] = a * g, offset[2] = a * b;
-			break;
-		case 14: // MULTIPLY, Skia's modulate
-			m[0][0] = r, m[1][1] = g, m[2][2] = b, m[3][3] = a;
-			break;
-		default: // SRC_IN
-			offset[0] = r, offset[1] = g, offset[2] = b;
-			m[3][3] = a;
-			break;
+	for (int out = 0; out < 4; out++) {
+		for (int in = 0; in < 4; in++)
+			m[in][out] = color_matrix[out * 5 + in];
+		offset[out] = color_matrix[out * 5 + 4] / 255.f;
 	}
 	graphene_matrix_init_from_float(&paint->color_matrix, *m);
 	graphene_vec4_init(&paint->color_offset, offset[0], offset[1], offset[2], offset[3]);

@@ -10,8 +10,10 @@ public class WallpaperManager {
 	}
 
 	public void setBitmap(Bitmap bitmap) {
-		set_bitmap(bitmap.getTexture());
+		if (bitmap.isRecycled()) // Android 10's compress
+			throw new IllegalStateException("Can't compress a recycled bitmap");
+		set_bitmap(bitmap.getNativeInstance());
 	}
 
-	private static native void set_bitmap(long texture);
+	private static native void set_bitmap(long bitmap);
 }

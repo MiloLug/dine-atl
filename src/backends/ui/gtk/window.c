@@ -1,35 +1,143 @@
 #include <gtk/gtk.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "src/main-executable/back_button.h"
 #include "src/shared/upcall.h"
+#include "src/shared/windows.h"
 #include "src/slots/ui.h"
 
 #include "gtk_ui.h"
-
-/* The window is the gtk host's GtkApplicationWindow holding a GtkStack; a view handle is the inner
- * widget of its WrapperWidget. */
-
-GtkStack *window_stack(struct ui_window *window)
-{
-	return GTK_STACK(gtk_window_get_child(GTK_WINDOW(window)));
-}
 
 static GtkWidget *view_wrapper(struct ui_view *view)
 {
 	return gtk_widget_get_parent(GTK_WIDGET(view));
 }
 
+/* The window is the gtk host's GtkApplicationWindow holding a GtkOverlay over a GtkStack: the
+ * stack has the activities' roots, the overlay the windows over the shown one, each over its dim.
+ * A view handle is the inner widget of its WrapperWidget. */
+
+static GtkOverlay *window_overlay(GtkWindow *window)
+{
+	return GTK_OVERLAY(gtk_window_get_child(window));
+}
+
+GtkStack *window_stack(struct ui_window *window)
+{
+	return GTK_STACK(gtk_overlay_get_child(window_overlay(GTK_WINDOW(window))));
+}
+
+// the shown roots, as ui_window_set_roots gave them, on the overlay
+struct roots {
+	struct ui_root *roots;
+	size_t n;
+	GPtrArray *widgets; // on the overlay in order: each root's wrapper, after its dim if it has one
+};
+
+static struct roots *get_roots(GtkOverlay *overlay)
+{
+	return g_object_get_data(G_OBJECT(overlay), "atl-roots");
+}
+
+static void roots_free(struct roots *roots)
+{
+	free(roots->roots);
+	g_ptr_array_unref(roots->widgets);
+	g_free(roots);
+}
+
+static gboolean place_child(GtkOverlay *overlay, GtkWidget *child, GdkRectangle *allocation, gpointer data)
+{
+	int width = gtk_widget_get_width(GTK_WIDGET(overlay)), height = gtk_widget_get_height(GTK_WIDGET(overlay));
+	if (g_object_get_data(G_OBJECT(child), "atl-dim")) {
+		*allocation = (GdkRectangle){0, 0, width, height};
+		return TRUE;
+	}
+	struct atl_subwindow *subwindow = g_object_get_data(G_OBJECT(child), "atl-subwindow");
+	if (!subwindow)
+		return FALSE;
+	struct atl_window_frame frame;
+	windows_place(subwindow, width, height, &frame);
+	*allocation = (GdkRectangle){frame.left, frame.top, frame.width, frame.height};
+	return TRUE;
+}
+
+void window_attach_stack(GtkWindow *window, GtkWidget *stack)
+{
+	GtkWidget *overlay = gtk_overlay_new();
+	gtk_overlay_set_child(GTK_OVERLAY(overlay), stack);
+	g_signal_connect(overlay, "get-child-position", G_CALLBACK(place_child), NULL);
+	gtk_window_set_child(window, overlay);
+}
+
+// a root's dim, kept on its wrapper so that it stays the same widget
+static GtkWidget *dim_of(GtkWidget *wrapper, float amount)
+{
+	GtkWidget *dim = g_object_get_data(G_OBJECT(wrapper), "atl-dim-widget");
+	if (!dim) {
+		dim = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+		gtk_widget_add_css_class(dim, "ATL-dim");
+		gtk_widget_set_can_target(dim, FALSE);
+		g_object_set_data(G_OBJECT(dim), "atl-dim", GINT_TO_POINTER(TRUE));
+		g_object_set_data_full(G_OBJECT(wrapper), "atl-dim-widget", g_object_ref_sink(dim), g_object_unref);
+	}
+	gtk_widget_set_opacity(dim, amount);
+	return dim;
+}
+
+// unchanged widgets stay on the overlay: a removal would drop GTK's focus in them
+void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, size_t n)
+{
+	GtkOverlay *overlay = window_overlay(GTK_WINDOW(window));
+	GPtrArray *widgets = g_ptr_array_new_with_free_func(g_object_unref);
+	for (size_t i = 0; i < n; i++) {
+		GtkWidget *wrapper = view_wrapper(list[i].view);
+		g_object_set_data(G_OBJECT(wrapper), "atl-subwindow", list[i].window);
+		if (list[i].layout.flags & UI_WINDOW_DIM_BEHIND && list[i].layout.dim_amount > 0)
+			g_ptr_array_add(widgets, g_object_ref(dim_of(wrapper, list[i].layout.dim_amount)));
+		g_ptr_array_add(widgets, g_object_ref(wrapper));
+	}
+	struct roots *old = get_roots(overlay);
+	guint same = 0;
+	while (old && same < old->widgets->len && same < widgets->len && g_ptr_array_index(old->widgets, same) == g_ptr_array_index(widgets, same))
+		same++;
+	for (guint i = old ? old->widgets->len : 0; i-- > same;) {
+		GtkWidget *widget = g_ptr_array_index(old->widgets, i);
+		bool stays = false;
+		for (guint j = 0; j < widgets->len; j++)
+			stays |= g_ptr_array_index(widgets, j) == widget;
+		if (!stays && !g_object_get_data(G_OBJECT(widget), "atl-dim"))
+			input_root_removed(widget);
+		gtk_overlay_remove_overlay(overlay, widget);
+	}
+	for (guint i = same; i < widgets->len; i++)
+		gtk_overlay_add_overlay(overlay, g_ptr_array_index(widgets, i));
+	struct roots *roots = g_new0(struct roots, 1);
+	roots->roots = n ? memcpy(malloc(n * sizeof(*list)), list, n * sizeof(*list)) : NULL;
+	roots->n = n;
+	roots->widgets = widgets;
+	g_object_set_data_full(G_OBJECT(overlay), "atl-roots", roots, (GDestroyNotify)roots_free);
+	gtk_widget_queue_allocate(GTK_WIDGET(overlay)); // a layout change places them again
+}
+
+GtkWidget *window_touch_root(GtkWindow *window, double x, double y)
+{
+	GtkOverlay *overlay = window_overlay(window);
+	struct roots *roots = get_roots(overlay);
+	const struct ui_root *target = roots ? windows_touch_target(roots->roots, roots->n, x, y) : NULL;
+	if (target)
+		return view_wrapper(target->view);
+	return gtk_stack_get_visible_child(GTK_STACK(gtk_overlay_get_child(overlay)));
+}
+
+
 void ui_window_set_title(struct ui_window *window, const char *title)
 {
 	gtk_window_set_title(GTK_WINDOW(window), title);
 }
 
-void ui_window_set_layout(struct ui_window *window, const struct ui_window_layout *layout)
-{
-	if (layout->width > 0 && layout->height > 0)
-		gtk_window_set_default_size(GTK_WINDOW(window), layout->width, layout->height);
-}
 
 void ui_window_clear_background(struct ui_window *window)
 {

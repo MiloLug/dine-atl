@@ -141,6 +141,7 @@ FORWARD_TOUCHES
 
 static CGFloat scale(void);
 static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment);
+static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color);
 
 // a node's display list (background, onDraw) under its subviews, drawn asynchronously by CA
 @interface ATLDrawLayer : CALayer
@@ -385,7 +386,9 @@ FORWARD_TOUCHES
 			config = [UIButtonConfiguration filledButtonConfiguration];
 		else
 			config = [UIButtonConfiguration grayButtonConfiguration];
-		config.attributedTitle = styled(_text, _runs, _font, color, NSTextAlignmentNatural);
+		// the title's lines align by titleAlignment, which a paragraph style would override
+		config.attributedTitle = styled_runs(_text, _runs, _font, color);
+		config.titleAlignment = box ? UIButtonConfigurationTitleAlignmentLeading : UIButtonConfigurationTitleAlignmentCenter;
 		if (box) {
 			config.image = box_image(_kind, _checked);
 			config.imagePadding = 8;
@@ -613,12 +616,10 @@ static NSData *runs_data(const struct ui_view *view)
 	return view->n_runs ? [NSData dataWithBytes:view->runs length:view->n_runs * sizeof(*view->runs)] : nil;
 }
 
-// text in font, color and alignment, each run's styles over its range; the runs' indices are UTF-16, as NSString's
-static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment)
+// text in font and color, each run's styles over its range; the runs' indices are UTF-16, as NSString's
+static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color)
 {
-	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
-	paragraph.alignment = alignment;
-	NSMutableDictionary *base = [NSMutableDictionary dictionaryWithObject:paragraph forKey:NSParagraphStyleAttributeName];
+	NSMutableDictionary *base = [NSMutableDictionary dictionary];
 	if (base_font)
 		base[NSFontAttributeName] = base_font;
 	if (base_color)
@@ -651,6 +652,16 @@ static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_fon
 		if (run->set & UI_RUN_SCALE_X && run->scale_x > 0)
 			[out addAttribute:NSExpansionAttributeName value:@(logf(run->scale_x)) range:range];
 	}
+	return out;
+}
+
+// styled_runs in a paragraph of that alignment
+static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment)
+{
+	NSMutableAttributedString *out = styled_runs(text, runs, base_font, base_color);
+	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+	paragraph.alignment = alignment;
+	[out addAttribute:NSParagraphStyleAttributeName value:paragraph range:NSMakeRange(0, out.length)];
 	return out;
 }
 
@@ -1282,6 +1293,8 @@ static struct gfx_canvas *shown_list(UIView *view, CGSize *size)
 void records_view_drawn(struct ui_view *view)
 {
 	@autoreleasepool {
+		if (view->list) // UIKit's replay draws its bitmaps' published copies
+			cg_list_publish(view->list);
 		struct gfx_canvas *list = view->list ? cg_list_ref(view->list) : NULL;
 		CGFloat s = scale();
 		CGSize size = CGSizeMake(view->drawn_width / s, view->drawn_height / s);

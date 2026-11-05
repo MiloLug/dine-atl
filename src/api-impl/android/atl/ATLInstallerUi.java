@@ -8,6 +8,7 @@ import android.content.pm.PackageInstaller;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.WindowManager;
 import android.util.Slog;
 import java.io.File;
 import java.io.FileInputStream;
@@ -69,13 +70,16 @@ public final class ATLInstallerUi {
 				answer.answer(yesNo);
 			}
 		};
-		new AlertDialog.Builder(context)
-		    .setTitle(title)
-		    .setMessage(message)
-		    .setPositiveButton(yes, (dialog, which) -> once.answer(true))
-		    .setNegativeButton(no, (dialog, which) -> once.answer(false))
-		    .setOnCancelListener(dialog -> once.answer(false))
-		    .show();
+		AlertDialog dialog = new AlertDialog.Builder(context)
+		                         .setTitle(title)
+		                         .setMessage(message)
+		                         .setPositiveButton(yes, (d, which) -> once.answer(true))
+		                         .setNegativeButton(no, (d, which) -> once.answer(false))
+		                         .setOnCancelListener(d -> once.answer(false))
+		                         .create();
+		// the system's installer, no activity of the app's: a window of the app's own
+		dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+		dialog.show();
 	}
 
 	/** The install question, then the fake-signature one when the package asks for it. */

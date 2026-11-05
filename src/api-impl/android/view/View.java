@@ -2375,17 +2375,38 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	boolean layouted = false;
 	private boolean layoutRequired; // AOSP's PFLAG_LAYOUT_REQUIRED: measured since its last layout
+	// what layout() asks of the toolkit's layoutInternal upcall: onLayout, setFrame's changed, the
+	// frame before
+	private boolean on_layout_pending, frame_changed;
+	private int old_left, old_top, old_right, old_bottom;
 
-	// onLayout runs (through the toolkit's upcall) for a new size or a measure, as AOSP's
+	/* Copyright (C) 2006 The Android Open Source Project: setFrame's changed */
+	// onLayout runs (through the toolkit's upcall) for a new frame or a measure
 	public void layout(int l, int t, int r, int b) {
-		boolean relayout = !layouted || layoutRequired || r - l != right - left || b - t != bottom - top;
+		boolean changed = l != left || t != top || r != right || b != bottom;
+		boolean relayout = changed || layoutRequired || !layouted;
+		if (relayout && !on_layout_pending) {
+			old_left = left;
+			old_top = top;
+			old_right = right;
+			old_bottom = bottom;
+		}
 		this.layouted = true;
 		this.left = l;
 		this.top = t;
 		this.right = r;
 		this.bottom = b;
 		layoutRequired = false;
+		on_layout_pending |= relayout;
+		frame_changed |= changed;
 		native_layout(widget, l, t, r, b, relayout);
+		if (on_layout_pending) // no upcall: gtk keeps a moved widget's allocation, records skip leaves
+			layoutInternal(r - l, b - t);
+	}
+
+	// the frame again, without layout(): offsets, and a toolkit's own allocation
+	private void place() {
+		native_layout(widget, left, top, right, bottom, false);
 	}
 
 	// the records ui backends' draw pass (atl_upcall_view_draw); a canvas kept past it draws nothing
@@ -2405,8 +2426,28 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			requestLayout();
 			measure(width | MeasureSpec.EXACTLY, height | MeasureSpec.EXACTLY);
 		}
-		boolean changed = oldWidth != width || oldHeight != height;
-		if (changed)
+		boolean size_changed = oldWidth != width || oldHeight != height;
+		if (!on_layout_pending && !size_changed && !layoutRequired) {
+			// GTK allocates again on its own: the children keep their frames, no onLayout
+			if (this instanceof ViewGroup) {
+				for (View child : ((ViewGroup)this).children) {
+					if (child.visibility != GONE)
+						child.place();
+				}
+			}
+			return;
+		}
+		boolean changed = frame_changed || size_changed;
+		if (!on_layout_pending) { // a toolkit's resize: the frame before is the current one
+			old_left = left;
+			old_top = top;
+			old_right = left + oldWidth;
+			old_bottom = top + oldHeight;
+		}
+		on_layout_pending = false;
+		frame_changed = false;
+		layoutRequired = false;
+		if (size_changed)
 			onSizeChanged(width, height, oldWidth, oldHeight);
 		bottom = top + height;
 		right = left + width;
@@ -2414,7 +2455,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			for (View child : ((ViewGroup)this).children)
 				child.layouted = false;
 		}
-		onLayout(changed, 0, 0, width, height);
+		onLayout(changed, left, top, right, bottom);
 		// ReactViewGroup has onLayout implemented as no-op, so we need to walk children ourself in such cases
 		if (this instanceof ViewGroup) {
 			for (View child : ((ViewGroup)this).children) {
@@ -2424,7 +2465,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		}
 		if (on_layout_change_listeners != null) {
 			for (OnLayoutChangeListener on_layout_change_listener : on_layout_change_listeners)
-				on_layout_change_listener.onLayoutChange(this, left, top, right, bottom, left, top, left + oldWidth, top + oldHeight);
+				on_layout_change_listener.onLayoutChange(this, left, top, right, bottom, old_left, old_top, old_right, old_bottom);
 		}
 		oldWidth = width;
 		oldHeight = height;
@@ -2452,18 +2493,23 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		return bottom;
 	}
 
-	// a move: no layout of the children, and a draw to show it, as AOSP's
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// a move without layout(): no onLayout, and a draw to show it
 	public void offsetTopAndBottom(int offset) {
 		if (offset == 0)
 			return;
-		layout(left, top + offset, right, bottom + offset);
+		top += offset;
+		bottom += offset;
+		place();
 		invalidate();
 	}
 
 	public void offsetLeftAndRight(int offset) {
 		if (offset == 0)
 			return;
-		layout(left + offset, top, right + offset, bottom);
+		left += offset;
+		right += offset;
+		place();
 		invalidate();
 	}
 
@@ -2861,6 +2907,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		onAttachedToWindow();
 		if (onAttachStateChangeListener != null)
 			onAttachStateChangeListener.onViewAttachedToWindow(this);
+		int windowVisibility = getWindowVisibility(); // AOSP's
+		if (windowVisibility != GONE)
+			onWindowVisibilityChanged(windowVisibility);
 	}
 
 	// isAttachedToWindow stays true in onDetachedFromWindow, as on Android
@@ -2911,7 +2960,18 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public boolean isShown() { return true; }
 
-	public int getWindowVisibility() { return VISIBLE; }
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public int getWindowVisibility() {
+		if (!attachedToWindow)
+			return GONE;
+		return attachedWindow == null || attachedWindow.atlVisible() ? VISIBLE : GONE;
+	}
+
+	public void dispatchWindowVisibilityChanged(int visibility) {
+		onWindowVisibilityChanged(visibility);
+	}
+
+	protected void onWindowVisibilityChanged(int visibility) {}
 
 	public float getAlpha() { return alpha; }
 

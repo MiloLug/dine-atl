@@ -7,7 +7,10 @@
 # --headless: no display, and the headless backend's "dialog:" lines are checked too, then
 # ContentActivity's Dialog with a content view through the cli host's -c: the view-tree dump with
 # the dialog's window over the activity (dialog-content.viewtree; --update rewrites it), a tap on
-# its button, then a second dialog canceled by a touch outside it.
+# its button, then a second dialog canceled by a touch outside it; then StackActivity's
+# non-touch-modal dialog: a drag in it scrolls it, a tap outside it reaches the activity, it hides
+# while another activity covers its own, a hide during a gesture ends it with a CANCEL, and it goes
+# (WindowLeaked) when its activity finishes.
 # Usage: run-dialog.sh [--headless [--update]] <build dir> <dialog.apk>
 set -euo pipefail
 
@@ -66,13 +69,12 @@ for line in "keep no kept" "keep onClick -1" "keep done"; do
 done
 grep -q "keep onClick -2" "$log" && fail "the alert's own \"No\" listener ran"
 if ((headless)); then
-  grep -q '^dialog: show title="Keep test" message="Keep it open?" positive="Yes" negative="No" neutral="Later" cancelable$' "$log" \
+  # shown from onCreate, it shows once its activity does: with onShow's changes
+  grep -q '^dialog: show title="Keep test" message="Keep it open?" positive="Yes" (disabled) negative="No" cancelable$' "$log" \
     || fail "no keep alert line"
-  buttons='dialog: button positive="Yes" disabled
-dialog: button neutral hidden
-dialog: button positive="Yes"
+  buttons='dialog: button positive="Yes"
 dialog: button positive="Sure"'
-  [[ $(grep '^dialog: button ' "$log") == "$buttons" ]] || fail "the button lines aren't the onShow and \"No\" changes"
+  [[ $(grep '^dialog: button ' "$log") == "$buttons" ]] || fail "the button lines aren't the \"No\" changes"
   [[ $(grep -c '^dialog: close$' "$log") == 1 ]] || fail "not one \"dialog: close\" line"
 fi
 [[ $rc == 0 ]] || fail "exit status $rc"
@@ -125,6 +127,57 @@ if ((headless)); then
   for line in 'content canceled' 'content dismissed'; do
     wait_for "$line"
   done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+
+  # StackActivity's non-touch-modal dialog: a drag in it scrolls its list, a tap outside reaches the
+  # activity; the activity over it hides it until Back; its finishing activity takes it along
+  log="$work/stack.log"
+  mkdir -p "$work/data-stack"
+  coproc ATL {
+    cd "$build"
+    exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-stack" timeout 60 \
+      ./android-translation-layer -c "$apk" -l dev/dine/dialog/StackActivity -X -Xint 2>&1
+  }
+  pid=$ATL_PID
+  : >"$log"
+  # the dump's "window dialog" line, or none
+  dialog_line() {
+    echo dump >&"${ATL[1]}"
+    REPLY=
+    while IFS= read -r -t 30 line <&"${ATL[0]}"; do
+      printf '%s\n' "$line" >>"$log"
+      [[ $line == "viewtree: window dialog "* ]] && REPLY=$line
+      [[ $line == "viewtree: end" ]] && return 0
+    done
+    fail "no view-tree dump"
+  }
+  wait_for 'stack resumed'
+  dialog_line
+  [[ $REPLY =~ ^viewtree:\ window\ dialog\ ([0-9]+),([0-9]+)\  ]] || fail "no dialog over StackActivity"
+  dx=$((BASH_REMATCH[1] + 20)) dy=${BASH_REMATCH[2]}
+  printf 'touch down 0 %d %d\n' "$dx" $((dy + 100)) >&"${ATL[1]}"
+  for step in 80 60 40 20; do
+    printf 'touch move 0 %d %d\n' "$dx" $((dy + step)) >&"${ATL[1]}"
+  done
+  printf 'touch up 0 %d %d\n' "$dx" $((dy + 20)) >&"${ATL[1]}"
+  wait_for 'stack scrolled'
+  echo "tap under" >&"${ATL[1]}"
+  wait_for 'stack under click'
+  echo "tap next" >&"${ATL[1]}"
+  wait_for 'stack cover resumed'
+  dialog_line
+  [[ -z $REPLY ]] || fail "the dialog shows over CoverActivity: $REPLY"
+  echo back >&"${ATL[1]}"
+  wait_for 'stack resumed'
+  dialog_line
+  [[ -n $REPLY ]] || fail "the dialog didn't come back with StackActivity"
+  echo "tap hider" >&"${ATL[1]}"
+  for line in 'stack hider down' 'stack hider cancel' 'stack shown again'; do
+    wait_for "$line"
+  done
+  echo "tap finish" >&"${ATL[1]}"
+  wait_for 'has leaked window'
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 fi

@@ -12,7 +12,7 @@
 
 /* Alerts as UIAlertControllers over the topmost presented view controller; items make an action
  * sheet. The ui calls queue on the Android main thread with the views' changes, taps hop back through
- * loop_main_post. A Dialog with a content view shows nothing yet. */
+ * loop_main_post. Windows over the activity (a Dialog's content view) show nothing yet. */
 
 /* A dialog's UIKit side; UIKit's thread only once shown. The blocks hold it, so a tap on an alert
  * still dismissing after ui_dialog_free reads a NULL ref, not freed memory. The alert is built from
@@ -46,14 +46,14 @@ static ATLDialog *get_dialog(struct ui_window *window)
 	return (__bridge ATLDialog *)window->dialog->dialog;
 }
 
-struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref)
 {
 	@autoreleasepool {
 		ATLDialog *dialog = [ATLDialog new];
 		dialog->app = app;
 		dialog->ref = dialog_ref;
 		struct ui_window *window = calloc(1, sizeof(*window));
-		records_dialog_init(window, app, dialog_ref, decor);
+		window->app = app;
 		window->dialog = calloc(1, sizeof(*window->dialog));
 		window->dialog->dialog = (void *)CFBridgingRetain(dialog);
 		return window;
@@ -207,12 +207,14 @@ static NSString *string(const char *chars)
 	return chars ? [NSString stringWithUTF8String:chars] : nil;
 }
 
+// an undrawn window must not take touches: records keeps them out until M6b3 draws them
+bool records_shows_roots(void)
+{
+	return false;
+}
+
 void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 {
-	if (!alert) { // an undrawn dialog must not take touches: shown from M6b3
-		log_line("show content view (not drawn yet)");
-		return;
-	}
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
 		NSString *title = string(alert->title);

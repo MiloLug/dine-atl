@@ -18,7 +18,7 @@ enum shader_kind {
 	SHADER_RADIAL, // center x0, y0, radius
 	SHADER_SWEEP,  // center x0, y0, clockwise from the right
 	SHADER_BITMAP, // bitmap at 0, 0 in its pixels, tile x and tile_y
-	SHADER_COMPOSE, // dst, then src over it in PorterDuff mode `mode`, each in this one's space
+	SHADER_COMPOSE, // dst, then src over it in blend mode `mode`, each in this one's space
 };
 
 enum shader_tile { // Shader.TileMode.nativeInt

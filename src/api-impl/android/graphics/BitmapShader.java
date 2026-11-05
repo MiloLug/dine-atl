@@ -13,10 +13,12 @@ public class BitmapShader extends Shader {
 		this.tileY = tileY.nativeInt;
 	}
 
-	// the pixels as they are when a paint first takes it; later ones too, as they change in place
+	// the bitmap's pixels as they are at each draw
 	@Override
 	long createNativeInstance(long nativeMatrix) {
-		return nativeCreate(nativeMatrix, bitmap.getTexture(), tileX, tileY);
+		if (bitmap.isRecycled()) // Android 10 aborts the process here
+			throw new RuntimeException("Canvas: trying to use a recycled bitmap " + bitmap);
+		return nativeCreate(nativeMatrix, bitmap.getNativeInstance(), tileX, tileY);
 	}
 
 	private static native long nativeCreate(long matrix, long bitmap, int tileX, int tileY);

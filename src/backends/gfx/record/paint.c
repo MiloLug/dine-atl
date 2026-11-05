@@ -16,7 +16,13 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->stroke_width = 1;
 	paint->text_size = 12;
 	paint->filter = GFX_NO_COLOR_FILTER;
+	paint->blend = GFX_BLEND_SRC_OVER;
 	return paint;
+}
+
+void gfx_paint_set_blend(struct gfx_paint *paint, enum gfx_blend blend)
+{
+	paint->blend = blend;
 }
 
 void record_paint_copy(struct gfx_paint *dst, const struct gfx_paint *src)

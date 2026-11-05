@@ -14,6 +14,7 @@
 #include "../shared/app.h"
 #include "../shared/host_linux.h"
 #include "../shared/startup.h"
+#include "../backends/host/gtk/host_gtk.h"
 #include "../backends/ui/gtk/gtk_ui.h"
 #include "../slots/ui.h"
 
@@ -290,7 +291,7 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	window = gtk_application_window_new(app);
 	GtkWidget *stack = gtk_stack_new();
 	gtk_stack_set_transition_type(GTK_STACK(stack), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
-	gtk_window_set_child(GTK_WINDOW(window), stack);
+	window_attach_stack(GTK_WINDOW(window), stack);
 
 	const char *disable_decoration_env = getenv("ATL_DISABLE_WINDOW_DECORATIONS");
 	gboolean decorated;
@@ -644,6 +645,7 @@ int main(int argc, char **argv)
 	g_application_set_option_context_summary(G_APPLICATION(app), "a translation layer for running android applications natively on Linux");
 
 	g_signal_connect(app, "activate", G_CALLBACK(activate), callback_data);
+	host_gtk_init(G_APPLICATION(app));
 	g_signal_connect(app, "open", G_CALLBACK(open), callback_data);
 	g_action_map_add_action_entries(G_ACTION_MAP(app), action_entries, action_entries_count, &host_app);
 	status = g_application_run(G_APPLICATION(app), argc, argv);

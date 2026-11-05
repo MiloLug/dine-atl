@@ -4,5 +4,6 @@
 	<application android:label="framework basics">
 		<activity android:name=".WindowActivity"/>
 		<activity android:name=".PermissionActivity"/>
+		<activity android:name=".BareActivity" android:theme="@android:style/Theme.Material.NoActionBar"/>
 	</application>
 </manifest>

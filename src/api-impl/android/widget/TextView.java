@@ -7,11 +7,10 @@ package android.widget;
 
 import java.util.ArrayList;
 
-import android.text.style.MetricAffectingSpan;
-
-import android.text.style.CharacterStyle;
-
+import android.text.SpanWatcher;
+import android.text.Spannable;
 import android.text.Spanned;
+import android.text.style.CharacterStyle;
 
 import android.annotation.UnsupportedAppUsage;
 import android.content.Context;
@@ -46,6 +45,7 @@ import android.view.Gravity;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import java.util.Locale;
@@ -53,6 +53,10 @@ import java.util.Locale;
 public class TextView extends View {
 	private ColorStateList colors = new ColorStateList(new int[][] {new int[0]}, new int[1]);
 	private CharSequence text = "";
+	private BufferType buffer_type = BufferType.NORMAL; // AOSP's mBufferType
+	static final int CHANGE_WATCHER_PRIORITY = 100;
+	private ArrayList<TextWatcher> listeners;
+	private ChangeWatcher changeWatcher;
 	private TextPaint paint = new TextPaint();
 	private boolean include_padding = false;
 	private int break_strategy = 0 /*BREAK_STRATEGY_SIMPLE*/;
@@ -90,9 +94,6 @@ public class TextView extends View {
 
 		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.TextView, defStyleAttr, 0);
 		try {
-			if (a.hasValue(com.android.internal.R.styleable.TextView_text)) {
-				setText(a.getText(com.android.internal.R.styleable.TextView_text));
-			}
 			if (a.hasValue(com.android.internal.R.styleable.TextView_hint)) {
 				setHint(a.getText(com.android.internal.R.styleable.TextView_hint));
 			}
@@ -106,8 +107,12 @@ public class TextView extends View {
 				if (aa.hasValue(com.android.internal.R.styleable.TextAppearance_textSize)) {
 					applyTextSize(aa.getDimensionPixelSize(com.android.internal.R.styleable.TextAppearance_textSize, 10));
 				}
+				if (aa.hasValue(com.android.internal.R.styleable.TextAppearance_textColorLink))
+					link_colors = aa.getColorStateList(com.android.internal.R.styleable.TextAppearance_textColorLink);
 				aa.recycle();
 			}
+			if (a.hasValue(com.android.internal.R.styleable.TextView_textColorLink))
+				link_colors = a.getColorStateList(com.android.internal.R.styleable.TextView_textColorLink);
 			if (a.hasValue(com.android.internal.R.styleable.TextView_textColor)) {
 				setTextColor(a.getColorStateList(com.android.internal.R.styleable.TextView_textColor));
 			}
@@ -148,8 +153,24 @@ public class TextView extends View {
 			e.printStackTrace();
 		}
 
+		if (link_colors == null) // TextAppearance's ?textColorLink, without a textViewStyle
+			link_colors = themeColor(context, android.R.attr.textColorLink);
+		// AOSP sets the text last, its runs with the colours above
+		BufferType[] types = {BufferType.NORMAL, BufferType.SPANNABLE, BufferType.EDITABLE};
+		int type = a.getInt(com.android.internal.R.styleable.TextView_bufferType, 0);
+		if (a.hasValue(com.android.internal.R.styleable.TextView_text) || type != 0)
+			setText(a.getText(com.android.internal.R.styleable.TextView_text), types[type >= 0 && type < types.length ? type : 0]);
 		a.recycle();
 		haveCustomMeasure = false;
+	}
+
+	private static ColorStateList themeColor(Context context, int attr) {
+		TypedArray a = context.obtainStyledAttributes(new int[] {attr});
+		try {
+			return a.getColorStateList(0);
+		} finally {
+			a.recycle();
+		}
 	}
 
 	@Override
@@ -160,17 +181,159 @@ public class TextView extends View {
 	}
 
 	public void setText(CharSequence text) {
-		setText(text, BufferType.NORMAL);
+		setText(text, buffer_type);
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: the buffer types and the ChangeWatcher */
 	public void setText(CharSequence text, BufferType type) {
-		this.text = text == null ? "" : text;
+		if (text == null)
+			text = "";
+		text = atlFiltered(text);
+		CharSequence old = this.text;
+		int oldlen = old.length();
+		sendBeforeTextChanged(old, 0, oldlen, text.length());
+		boolean notify = listeners != null && !listeners.isEmpty();
+		if (type == BufferType.EDITABLE || notify) {
+			Editable t = Editable.Factory.getInstance().newEditable(text);
+			atlEditableCreated(t);
+			text = t;
+			type = BufferType.EDITABLE;
+		} else if (type == BufferType.SPANNABLE) {
+			text = Spannable.Factory.getInstance().newSpannable(text);
+		} else {
+			text = TextUtils.stringOrSpannedString(text);
+		}
+		if (old instanceof Spannable && changeWatcher != null)
+			((Spannable)old).removeSpan(changeWatcher);
+		buffer_type = type;
+		this.text = text;
+		if (text instanceof Spannable) {
+			Spannable sp = (Spannable)text;
+			for (ChangeWatcher watcher : sp.getSpans(0, sp.length(), ChangeWatcher.class))
+				sp.removeSpan(watcher);
+			if (changeWatcher == null)
+				changeWatcher = new ChangeWatcher();
+			sp.setSpan(changeWatcher, 0, text.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE | (CHANGE_WATCHER_PRIORITY << Spanned.SPAN_PRIORITY_SHIFT));
+		}
+		atlTextReplaced(text);
 		sendText();
 		if (!isLayoutRequested())
 			requestLayout();
+		sendOnTextChanged(text, 0, oldlen, text.length());
+		if (text instanceof Editable)
+			sendAfterTextChanged((Editable)text);
+		atlTextChanged();
 	}
 
-	// slots/ui.h's UI_RUN_* bits
+	// EditText's hooks: its InputFilters, its Editable's filters and selection, its toolkit state
+	CharSequence atlFiltered(CharSequence text) {
+		return text;
+	}
+
+	void atlEditableCreated(Editable editable) {}
+
+	void atlTextReplaced(CharSequence text) {}
+
+	void atlTextChanged() {}
+
+	void atlSpanChanged(Object what) {}
+
+	public void addTextChangedListener(TextWatcher watcher) {
+		if (listeners == null)
+			listeners = new ArrayList<TextWatcher>();
+		listeners.add(watcher);
+	}
+
+	public void removeTextChangedListener(TextWatcher watcher) {
+		if (listeners != null) {
+			int i = listeners.indexOf(watcher);
+			if (i >= 0)
+				listeners.remove(i);
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void sendBeforeTextChanged(CharSequence text, int start, int before, int after) {
+		if (listeners != null) {
+			final ArrayList<TextWatcher> list = listeners;
+			final int count = list.size();
+			for (int i = 0; i < count; i++) {
+				list.get(i).beforeTextChanged(text, start, before, after);
+			}
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void sendOnTextChanged(CharSequence text, int start, int before, int after) {
+		if (listeners != null) {
+			final ArrayList<TextWatcher> list = listeners;
+			final int count = list.size();
+			for (int i = 0; i < count; i++) {
+				list.get(i).onTextChanged(text, start, before, after);
+			}
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private void sendAfterTextChanged(Editable text) {
+		if (listeners != null) {
+			final ArrayList<TextWatcher> list = listeners;
+			final int count = list.size();
+			for (int i = 0; i < count; i++) {
+				list.get(i).afterTextChanged(text);
+			}
+		}
+	}
+
+	// a change to the view's own Spannable: AOSP's layout reads spans live, so the next frame shows it
+	void runsChanged() {
+		sendText();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: checkForResize without a Layout; an
+	 * EditText's toolkit field sizes itself */
+	void checkForResize() {
+		ViewGroup.LayoutParams params = getLayoutParams();
+		if ((params == null || params.width == ViewGroup.LayoutParams.WRAP_CONTENT || params.height == ViewGroup.LayoutParams.WRAP_CONTENT) && !isLayoutRequested())
+			requestLayout();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	private class ChangeWatcher implements TextWatcher, SpanWatcher {
+		public void beforeTextChanged(CharSequence buffer, int start, int before, int after) {
+			sendBeforeTextChanged(buffer, start, before, after);
+		}
+
+		public void onTextChanged(CharSequence buffer, int start, int before, int after) {
+			sendOnTextChanged(buffer, start, before, after);
+		}
+
+		public void afterTextChanged(Editable buffer) {
+			sendAfterTextChanged(buffer);
+			runsChanged();
+			checkForResize();
+			atlTextChanged();
+		}
+
+		public void onSpanChanged(Spannable buf, Object what, int s, int e, int st, int en) {
+			if (what instanceof CharacterStyle)
+				runsChanged();
+			if (what instanceof android.text.style.MetricAffectingSpan)
+				checkForResize();
+			atlSpanChanged(what);
+		}
+
+		public void onSpanAdded(Spannable buf, Object what, int s, int e) {
+			onSpanChanged(buf, what, -1, s, -1, e);
+		}
+
+		public void onSpanRemoved(Spannable buf, Object what, int s, int e) {
+			onSpanChanged(buf, what, s, -1, e, -1);
+		}
+	}
+
+	// slots/ui.h's UI_RUN_* bits (asserted in android_widget_TextView.c), and a run's packing
+	private static final int RUN_INTS = 7, RUN_FLOATS = 3;
 	private static final int RUN_COLOR = 1 << 0;
 	private static final int RUN_BACKGROUND = 1 << 1;
 	private static final int RUN_SIZE = 1 << 2;
@@ -182,7 +345,7 @@ public class TextView extends View {
 	private static final int RUN_SCALE_X = 1 << 8;
 
 	private int current_text_color = 0xff000000;
-	private int link_text_color;
+	private ColorStateList link_colors;
 
 	// runs are absolute and set where they differ from the view's size, color and typeface
 	private void resendStyled() {
@@ -190,8 +353,9 @@ public class TextView extends View {
 			sendText();
 	}
 
-	// the shown text and, for a Spanned, its CharacterStyles as runs (native_setText's layout)
-	private void sendText() {
+	// the shown text and, for a Spanned, its CharacterStyles as runs (native_setText's layout); an
+	// EditText's toolkit text is its Editable's (EditText.sync)
+	void sendText() {
 		String shown = shown();
 		if (!(text instanceof Spanned) || shown.length() != text.length()) {
 			native_setText(shown, null, null);
@@ -201,7 +365,7 @@ public class TextView extends View {
 		TextPaint base = new TextPaint();
 		base.set(paint);
 		base.setColor(current_text_color);
-		base.linkColor = link_text_color != 0 ? link_text_color : 0xff2196f3;
+		base.linkColor = link_colors != null ? link_colors.getColorForState(getDrawableState(), 0) : 0;
 		base.density = getResources().getDisplayMetrics().density;
 		ArrayList<int[]> ints = new ArrayList<>();
 		ArrayList<float[]> floats = new ArrayList<>();
@@ -213,11 +377,8 @@ public class TextView extends View {
 				continue;
 			TextPaint tp = new TextPaint();
 			tp.set(base);
-			for (CharacterStyle style : styles) {
-				if (style instanceof MetricAffectingSpan)
-					((MetricAffectingSpan)style).updateMeasureState(tp);
+			for (CharacterStyle style : styles) // TextLine's draw state: each span once
 				style.updateDrawState(tp);
-			}
 			int set = 0;
 			if (tp.getColor() != base.getColor())
 				set |= RUN_COLOR;
@@ -250,11 +411,11 @@ public class TextView extends View {
 			native_setText(shown, null, null);
 			return;
 		}
-		int[] run_ints = new int[ints.size() * 7];
-		float[] run_floats = new float[floats.size() * 3];
+		int[] run_ints = new int[ints.size() * RUN_INTS];
+		float[] run_floats = new float[floats.size() * RUN_FLOATS];
 		for (int i = 0; i < ints.size(); i++) {
-			System.arraycopy(ints.get(i), 0, run_ints, i * 7, 7);
-			System.arraycopy(floats.get(i), 0, run_floats, i * 3, 3);
+			System.arraycopy(ints.get(i), 0, run_ints, i * RUN_INTS, RUN_INTS);
+			System.arraycopy(floats.get(i), 0, run_floats, i * RUN_FLOATS, RUN_FLOATS);
 		}
 		native_setText(shown, run_ints, run_floats);
 	}
@@ -267,8 +428,11 @@ public class TextView extends View {
 		append(text, 0, text.length());
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public void append(CharSequence text, int start, int end) {
-		setText(SpannableStringBuilder.valueOf(this.text).append(text, start, end));
+		if (!(this.text instanceof Editable))
+			setText(this.text, BufferType.EDITABLE);
+		((Editable)this.text).append(text, start, end);
 	}
 
 
@@ -333,8 +497,6 @@ public class TextView extends View {
 		return paint;
 	}
 
-	public void addTextChangedListener(TextWatcher watcher) {}
-	public void removeTextChangedListener(TextWatcher watcher) {}
 	public void setOnEditorActionListener(TextView.OnEditorActionListener l) {
 		editorActionListener = l;
 		inputContentType = true;
@@ -395,7 +557,14 @@ public class TextView extends View {
 
 	public void setHintTextColor(ColorStateList colorStateList) {}
 	public void setHintTextColor(int i) {}
-	public void setLinkTextColor(ColorStateList colorStateList) {}
+	public void setLinkTextColor(ColorStateList colors) {
+		link_colors = colors;
+		sendText();
+	}
+
+	public final ColorStateList getLinkTextColors() {
+		return link_colors;
+	}
 
 	public void setSingleLine() {
 		setSingleLine(true);
@@ -687,8 +856,7 @@ public class TextView extends View {
 	public void nullLayouts() {}
 
 	public void setLinkTextColor(int color) {
-		link_text_color = color;
-		sendText();
+		setLinkTextColor(ColorStateList.valueOf(color));
 	}
 
 	public void setCustomSelectionActionModeCallback(ActionMode.Callback actionModeCallback) {}

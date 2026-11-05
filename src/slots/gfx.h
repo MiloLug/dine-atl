@@ -55,8 +55,21 @@ enum gfx_font_family {
 void gfx_paint_set_typeface(struct gfx_paint *paint, enum gfx_font_family family, int style);
 /* src/shared/shader.h's, NULL for none; the paint and what copies it hold a ref */
 void gfx_paint_set_shader(struct gfx_paint *paint, struct gfx_shader *shader);
-/* A ColorFilter: a PorterDuff mode (nativeInt) with its color, or a ColorMatrix's 4x5 array over
- * unpremultiplied 0-255 channels (R' = m[0] R + m[1] G + m[2] B + m[3] A + m[4], then G', B', A'). */
+/* SkBlendMode's numbers, as android.graphics.BlendMode and PorterDuff.Mode's nativeInt have them;
+ * a paint's mode composites what it draws onto the canvas's own content or its innermost layer. */
+enum gfx_blend {
+	GFX_BLEND_CLEAR, GFX_BLEND_SRC, GFX_BLEND_DST, GFX_BLEND_SRC_OVER, GFX_BLEND_DST_OVER,
+	GFX_BLEND_SRC_IN, GFX_BLEND_DST_IN, GFX_BLEND_SRC_OUT, GFX_BLEND_DST_OUT, GFX_BLEND_SRC_ATOP,
+	GFX_BLEND_DST_ATOP, GFX_BLEND_XOR, GFX_BLEND_PLUS, GFX_BLEND_MODULATE, GFX_BLEND_SCREEN,
+	GFX_BLEND_OVERLAY, GFX_BLEND_DARKEN, GFX_BLEND_LIGHTEN, GFX_BLEND_COLOR_DODGE, GFX_BLEND_COLOR_BURN,
+	GFX_BLEND_HARD_LIGHT, GFX_BLEND_SOFT_LIGHT, GFX_BLEND_DIFFERENCE, GFX_BLEND_EXCLUSION,
+	GFX_BLEND_MULTIPLY, GFX_BLEND_HUE, GFX_BLEND_SATURATION, GFX_BLEND_COLOR, GFX_BLEND_LUMINOSITY,
+	GFX_BLEND_COUNT
+};
+void gfx_paint_set_blend(struct gfx_paint *paint, enum gfx_blend blend);
+/* A ColorFilter: a blend mode with its color (the color over what the paint draws), or a
+ * ColorMatrix's 4x5 array over unpremultiplied 0-255 channels (R' = m[0] R + m[1] G + m[2] B +
+ * m[3] A + m[4], then G', B', A'). */
 struct gfx_color_filter {
 	int mode; // -1: none, or the matrix
 	uint32_t color;
@@ -91,22 +104,26 @@ enum gfx_bitmap_config {
 	GFX_BITMAP_HARDWARE = 7,
 };
 
-/* A Bitmap's pixels. Java's Bitmap holds a ref and display lists their own; refs drop on any
- * thread. gsk: a holder of a GdkTexture (gsk/bitmap.h). */
-struct gfx_bitmap *gfx_bitmap_new(int width, int height, enum gfx_bitmap_config config); // transparent
-struct gfx_bitmap *gfx_bitmap_decode(const void *data, size_t size); // NULL: an image it can't read
+/* A Bitmap's pixels: src/shared/bitmap.h's, the same on every backend. Java's Bitmap holds a ref
+ * and display lists their own; refs drop on any thread. The pixels change in place: lists and
+ * drawables that hold the bitmap draw the new ones from their next replay. Pixels in and out are
+ * Color's ARGB ints, not premultiplied, rows stride ints apart (negative: bottom up). */
+struct gfx_bitmap *gfx_bitmap_new(int width, int height, enum gfx_bitmap_config config); // transparent; RGB_565 opaque black
+struct gfx_bitmap *gfx_bitmap_decode(const void *data, size_t size); // ARGB_8888; NULL: an image it can't read
+struct gfx_bitmap *gfx_bitmap_copy(const struct gfx_bitmap *bitmap, enum gfx_bitmap_config config); // rounded to config
 int gfx_bitmap_get_width(const struct gfx_bitmap *bitmap);
 int gfx_bitmap_get_height(const struct gfx_bitmap *bitmap);
 void gfx_bitmap_ref(struct gfx_bitmap *bitmap);
 void gfx_bitmap_unref(struct gfx_bitmap *bitmap);
-/* A bitmap's pixels change in place, on the thread that draws: lists and drawables that hold it
- * draw the new ones from their next replay. Pixels in and out are Color's ARGB ints, not
- * premultiplied, rows stride ints apart (negative: bottom up). */
-void gfx_bitmap_render(struct gfx_bitmap *bitmap, struct gfx_canvas *canvas); // draws the recording over the pixels; frees it
 void gfx_bitmap_erase(struct gfx_bitmap *bitmap, uint32_t argb);
 void gfx_bitmap_read(const struct gfx_bitmap *bitmap, int x, int y, int width, int height, uint32_t *argb, int stride);
 void gfx_bitmap_write(struct gfx_bitmap *bitmap, int x, int y, int width, int height, const uint32_t *argb, int stride);
 void *gfx_bitmap_encode_png(const struct gfx_bitmap *bitmap, size_t *size); // malloc'd, NULL: failed
+/* The backend's part: images in and out as premultiplied ARGB words (malloc'd; NULL: unreadable or
+ * failed), and freeing a bitmap's display image (struct gfx_bitmap's image). */
+uint32_t *gfx_image_decode(const void *data, size_t size, int *width, int *height);
+void *gfx_image_encode_png(const uint32_t *words, int width, int height, size_t *size);
+void gfx_bitmap_image_free(void *image);
 /* BitmapDrawable's: the bitmap scaled to the size it's drawn at */
 struct gfx_drawable *gfx_bitmap_drawable_new(struct gfx_bitmap *bitmap);
 struct gfx_ninepatch; // src/shared/ninepatch.h
@@ -120,11 +137,14 @@ void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct g
  * and matrix as they were (coregraphics: uikit's layers replay it). Transforms apply before the
  * current matrix, as Canvas's do. */
 struct gfx_canvas *gfx_canvas_new(void); // an empty recording
+/* A Canvas(Bitmap)'s, on any one thread at a time: each call draws into the bitmap's pixels at
+ * once, under the canvas's own matrix, clip, saves and layers, as Skia's raster canvas does. */
+struct gfx_canvas *gfx_canvas_new_bitmap(struct gfx_bitmap *bitmap);
 void gfx_canvas_free(struct gfx_canvas *canvas);
 void gfx_canvas_save(struct gfx_canvas *canvas);
-/* A save whose restore composites what was drawn since at alpha, with PorterDuff mode blend (-1:
- * SRC_OVER); bounds (under the current matrix) clip it, NULL: none. */
-void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, int blend);
+/* A save whose restore composites what was drawn since at alpha with blend; bounds (under the
+ * current matrix) clip it, NULL: none. */
+void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, enum gfx_blend blend);
 void gfx_canvas_restore(struct gfx_canvas *canvas);
 void gfx_canvas_translate(struct gfx_canvas *canvas, float dx, float dy);
 void gfx_canvas_rotate(struct gfx_canvas *canvas, float degrees);
@@ -169,6 +189,9 @@ size_t gfx_text_break_lines(const struct gfx_paint *paint, const uint16_t *text,
 #ifdef ATL_TEST_HOOKS
 /* For the records ui backends' dump: a "displaylist:" line per op. gsk prints nothing. */
 void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out);
+/* A view's recording (gfx_canvas_new), freed, drawn into target as the window would show it (gsk:
+ * the display's renderer, on the main thread); false: no backend renderer to ask. */
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target);
 #endif
 
 #endif

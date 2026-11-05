@@ -6,7 +6,6 @@
 package android.view;
 
 import android.app.Activity;
-import android.app.Dialog;
 import android.atl.ATLLoadedApp;
 import android.content.Context;
 import android.graphics.Rect;
@@ -42,13 +41,13 @@ public final class ATLInput {
 		return callback != null ? callback.dispatchTouchEvent(event) : root.dispatchTouchEvent(event);
 	}
 
-	// the app's window gives keys to its top drawn dialog, as Android gives that window the focus
+	// the app's window gives keys to its topmost shown focusable window, as Android gives it the focus
 	static boolean key(View root, KeyEvent event) {
 		Window window = root.decor_window;
 		if (window != null && window.getCallback() instanceof Activity) {
-			Dialog dialog = Dialog.atlTopDrawn(app(root));
-			if (dialog != null)
-				window = dialog.getWindow();
+			Window top = Window.atlKeyWindow(root.getContext());
+			if (top != null)
+				window = top;
 		}
 		View decor = window != null ? window.atlDecor() : root;
 

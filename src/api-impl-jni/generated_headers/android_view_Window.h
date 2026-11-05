@@ -11,13 +11,83 @@ extern "C" {
 #define android_view_Window_FEATURE_OPTIONS_PANEL 0L
 #undef android_view_Window_FEATURE_NO_TITLE
 #define android_view_Window_FEATURE_NO_TITLE 1L
+#undef android_view_Window_FEATURE_PROGRESS
+#define android_view_Window_FEATURE_PROGRESS 2L
+#undef android_view_Window_FEATURE_LEFT_ICON
+#define android_view_Window_FEATURE_LEFT_ICON 3L
+#undef android_view_Window_FEATURE_RIGHT_ICON
+#define android_view_Window_FEATURE_RIGHT_ICON 4L
+#undef android_view_Window_FEATURE_INDETERMINATE_PROGRESS
+#define android_view_Window_FEATURE_INDETERMINATE_PROGRESS 5L
+#undef android_view_Window_FEATURE_CONTEXT_MENU
+#define android_view_Window_FEATURE_CONTEXT_MENU 6L
+#undef android_view_Window_FEATURE_CUSTOM_TITLE
+#define android_view_Window_FEATURE_CUSTOM_TITLE 7L
+#undef android_view_Window_FEATURE_ACTION_BAR
+#define android_view_Window_FEATURE_ACTION_BAR 8L
+#undef android_view_Window_FEATURE_ACTION_BAR_OVERLAY
+#define android_view_Window_FEATURE_ACTION_BAR_OVERLAY 9L
+#undef android_view_Window_FEATURE_ACTION_MODE_OVERLAY
+#define android_view_Window_FEATURE_ACTION_MODE_OVERLAY 10L
+#undef android_view_Window_FEATURE_SWIPE_TO_DISMISS
+#define android_view_Window_FEATURE_SWIPE_TO_DISMISS 11L
+#undef android_view_Window_FEATURE_CONTENT_TRANSITIONS
+#define android_view_Window_FEATURE_CONTENT_TRANSITIONS 12L
+#undef android_view_Window_FEATURE_ACTIVITY_TRANSITIONS
+#define android_view_Window_FEATURE_ACTIVITY_TRANSITIONS 13L
+#undef android_view_Window_FEATURE_MAX
+#define android_view_Window_FEATURE_MAX 13L
+#undef android_view_Window_DEFAULT_FEATURES
+#define android_view_Window_DEFAULT_FEATURES 65L
+#undef android_view_Window_CUSTOM_TITLE_COMPATIBLE_FEATURES
+#define android_view_Window_CUSTOM_TITLE_COMPATIBLE_FEATURES 13505L
+/*
+ * Class:     android_view_Window
+ * Method:    nativeAddSubwindow
+ * Signature: (JLjava/lang/Object;)J
+ */
+JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow
+  (JNIEnv *, jobject, jlong, jobject);
+
+/*
+ * Class:     android_view_Window
+ * Method:    nativeShowSubwindow
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeShowSubwindow
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     android_view_Window
+ * Method:    nativeHideSubwindow
+ * Signature: (JZ)Z
+ */
+JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeHideSubwindow
+  (JNIEnv *, jobject, jlong, jboolean);
+
+/*
+ * Class:     android_view_Window
+ * Method:    nativeFreeSubwindow
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_nativeFreeSubwindow
+  (JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     android_view_Window
+ * Method:    nativeKeyWindow
+ * Signature: (Landroid/content/Context;)Landroid/view/Window;
+ */
+JNIEXPORT jobject JNICALL Java_android_view_Window_nativeKeyWindow
+  (JNIEnv *, jclass, jobject);
+
 /*
  * Class:     android_view_Window
  * Method:    set_title
- * Signature: (JLjava/lang/String;)V
+ * Signature: (Ljava/lang/String;)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1title
-  (JNIEnv *, jobject, jlong, jstring);
+  (JNIEnv *, jobject, jstring);
 
 /*
  * Class:     android_view_Window
@@ -30,10 +100,10 @@ JNIEXPORT void JNICALL Java_android_view_Window_take_1input_1queue
 /*
  * Class:     android_view_Window
  * Method:    set_layout
- * Signature: (JIIIIIII)V
+ * Signature: (JIIIIIIIIF)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1layout
-  (JNIEnv *, jobject, jlong, jint, jint, jint, jint, jint, jint, jint);
+  (JNIEnv *, jobject, jlong, jint, jint, jint, jint, jint, jint, jint, jint, jfloat);
 
 /*
  * Class:     android_view_Window

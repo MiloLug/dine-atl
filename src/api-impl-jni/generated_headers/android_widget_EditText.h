@@ -221,10 +221,16 @@ extern "C" {
 #define android_widget_EditText_ALIGN_CENTER 1L
 #undef android_widget_EditText_ALIGN_END
 #define android_widget_EditText_ALIGN_END 2L
+#undef android_widget_EditText_CHANGE_WATCHER_PRIORITY
+#define android_widget_EditText_CHANGE_WATCHER_PRIORITY 100L
 #undef android_widget_EditText_LINES
 #define android_widget_EditText_LINES 1L
 #undef android_widget_EditText_PIXELS
 #define android_widget_EditText_PIXELS 2L
+#undef android_widget_EditText_RUN_INTS
+#define android_widget_EditText_RUN_INTS 7L
+#undef android_widget_EditText_RUN_FLOATS
+#define android_widget_EditText_RUN_FLOATS 3L
 #undef android_widget_EditText_RUN_COLOR
 #define android_widget_EditText_RUN_COLOR 1L
 #undef android_widget_EditText_RUN_BACKGROUND
@@ -243,8 +249,6 @@ extern "C" {
 #define android_widget_EditText_RUN_BASELINE 128L
 #undef android_widget_EditText_RUN_SCALE_X
 #define android_widget_EditText_RUN_SCALE_X 256L
-#undef android_widget_EditText_CHANGE_WATCHER_PRIORITY
-#define android_widget_EditText_CHANGE_WATCHER_PRIORITY 100L
 #undef android_widget_EditText_KEYBOARD_TEXT
 #define android_widget_EditText_KEYBOARD_TEXT 0L
 #undef android_widget_EditText_KEYBOARD_NUMBER

@@ -1,9 +1,17 @@
 package dev.dine.widgets;
 
 import android.app.Activity;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.Html;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.TextPaint;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
+import android.text.style.SuperscriptSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
@@ -88,7 +96,9 @@ public class ControlsActivity extends Activity {
 
 		// Html's spans as the toolkit's text runs, upper-cased with them
 		TextView marked = new TextView(this);
+		long parse = SystemClock.uptimeMillis(); // the first parse builds TagSoup's schema
 		marked.setText(Html.fromHtml("<b>bold</b> &amp; caps"));
+		Log.i(TAG, "controls html parsed in " + (SystemClock.uptimeMillis() - parse) + " ms");
 		marked.setAllCaps(true);
 		column.addView(marked);
 
@@ -98,6 +108,25 @@ public class ControlsActivity extends Activity {
 		square.setBounds(0, 0, dp(24), dp(24));
 		icon.setCompoundDrawables(square, null, null, null);
 		column.addView(icon);
+
+		// each span changes the run once, as AOSP's TextLine draws it
+		TextView sized = new TextView(this);
+		sized.setTextSize(TypedValue.COMPLEX_UNIT_PX, 20);
+		SpannableString spans = new SpannableString("twice up");
+		spans.setSpan(new RelativeSizeSpan(2f), 0, 5, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+		spans.setSpan(new SuperscriptSpan(), 6, 8, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+		sized.setText(spans);
+		column.addView(sized);
+		TextPaint up = new TextPaint();
+		up.set(sized.getPaint());
+		new SuperscriptSpan().updateDrawState(up);
+		Log.i(TAG, "controls superscript shift " + up.baselineShift);
+
+		// a span set on the view's own text after setText
+		TextView later = new TextView(this);
+		later.setText("later", TextView.BufferType.SPANNABLE);
+		((Spannable)later.getText()).setSpan(new StyleSpan(Typeface.BOLD), 0, 5, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+		column.addView(later);
 
 		setContentView(column);
 	}

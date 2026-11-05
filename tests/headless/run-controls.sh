@@ -2,7 +2,8 @@
 # Drives the widgets APK's ControlsActivity (widgets/, built by the superproject's
 # tests/harness/apk.py) through the cli host's -c touch and key lines in the headless build; controls
 # are found by their text in the view-tree dump, the ImageButton by its class. All caps upper-case
-# the shown text ("push" as "PUSH"), and Html's bold stays a text run over "BOLD". A tap clicks a
+# the shown text ("push" as "PUSH"), and Html's bold stays a text run over "BOLD"; a size span and a
+# superscript change their runs once, and a span set after setText is a run. A tap clicks a
 # Button, the disabled "locked" takes no click, a CheckBox and a Switch toggle, a RadioButton checks
 # and unchecks the group's other one but never itself, a ToggleButton shows its on text, the
 # ImageButton clicks, Tab then Enter clicks the focused first button, ESC is Back on the task root.
@@ -27,7 +28,7 @@ pid=$ATL_PID
 fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
 
 # the dump's frames are relative to the parent: each depth's origin, window px
-declare -A x y w h
+declare -A x y w h runs
 origin_x=() origin_y=()
 dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
 while :; do
@@ -35,7 +36,9 @@ while :; do
   printf '%s\n' "$line" >>"$work/log"
   [[ $line == "viewtree: end" ]] && break
   [[ $line == "textruns: 0-4 bold;" ]] && bold_run=1
-  [[ $line =~ $dump_re ]] || continue
+  [[ $line =~ controls\ superscript\ shift\ (-?[0-9]+) ]] && up_shift=${BASH_REMATCH[1]}
+  [[ $line == textruns:* && -n ${name:-} ]] && runs[$name]=$line
+  [[ $line =~ $dump_re ]] || { name=; continue; }
   depth=$((${#BASH_REMATCH[1]} / 2))
   left=${BASH_REMATCH[3]} top=${BASH_REMATCH[4]}
   if ((depth > 0)); then
@@ -52,6 +55,9 @@ for control in PUSH locked check red green switch "lamp off" image "BOLD & CAPS"
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
 [[ -n ${bold_run:-} ]] || fail "no bold text run over \"BOLD\""
+[[ -n ${up_shift:-} ]] || fail "no superscript shift logged"
+[[ ${runs["twice up"]:-} == "textruns: 0-5 40px; 6-8 shift $up_shift;" ]] || fail "twice up runs: ${runs["twice up"]:-none}"
+[[ ${runs[later]:-} == "textruns: 0-5 bold;" ]] || fail "later runs: ${runs[later]:-none}"
 
 # the next checked line into REPLY, without the log prefix
 next() {

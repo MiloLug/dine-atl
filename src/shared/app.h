@@ -31,6 +31,8 @@ struct atl_app {
 	bool task_front; // in the back, no activity is focused; the stack and the window stay
 	bool keep_screen_on;
 	float screen_brightness; // the last sent: negative is the screen's own
+	struct atl_subwindow *subwindows; // windows.c's
+	jobject token_shown;              // windows.c's: the activity whose windows show, the backlog's ref
 
 	// insets.c
 	pthread_mutex_t insets_lock;
@@ -57,5 +59,13 @@ struct atl_app *atl_app_of(JNIEnv *env, jobject context);
 struct atl_app *atl_app_of_window(JNIEnv *env, jobject window);
 /* The calling thread's app, NULL for a thread of no app. */
 struct atl_app *atl_app_current(void);
+
+/* windows.c: an activity's windows show (from its start) or hide (from its pause), its own and
+ * those it owns; windows_update after the task moved; an activity's close takes its windows. */
+void windows_token_visible(JNIEnv *env, struct atl_app *app, jobject activity, bool visible);
+void windows_update(JNIEnv *env, struct atl_app *app);
+void windows_owner_closed(JNIEnv *env, struct atl_app *app, jobject activity);
+/* android_view_Window.c: no window shows (task in the back, no activity): the host's defaults */
+void atl_window_state_reset(struct atl_app *app);
 
 #endif

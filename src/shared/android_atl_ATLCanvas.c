@@ -125,3 +125,11 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawArc(JNIEnv *env, j
 	if (canvas)
 		gfx_canvas_draw_arc(_PTR(canvas), left, top, right, bottom, start, sweep, use_center, _PTR(paint));
 }
+
+// paintable 0: the Drawable has no native one (the records backends make none for a Drawable
+// without its own draw())
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawDrawable(JNIEnv *env, jclass class, jlong canvas, jlong paintable, jint width, jint height)
+{
+	if (canvas && paintable)
+		gfx_canvas_draw_drawable(_PTR(canvas), _PTR(paintable), width, height);
+}

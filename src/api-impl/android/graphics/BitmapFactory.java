@@ -601,10 +601,10 @@ public class BitmapFactory {
 			return null;
 		}
 		byte[] bytes = encoded.toByteArray();
-		final long texture = nativeDecodeByteArray(bytes, 0, bytes.length);
-		if (texture == 0)
+		final long native_bitmap = nativeDecodeByteArray(bytes, 0, bytes.length);
+		if (native_bitmap == 0)
 			return null;
-		Bitmap decoded = new Bitmap(texture);
+		Bitmap decoded = new Bitmap(native_bitmap);
 		decoded.setNinePatchChunk(nativeNinePatchChunk(bytes, 0, bytes.length));
 		if (outPadding != null)
 			NinePatch.getPadding(decoded.getNinePatchChunk(), outPadding);

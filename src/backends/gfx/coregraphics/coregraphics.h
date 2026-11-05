@@ -3,6 +3,7 @@
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
+#include <stdbool.h>
 
 #include "src/slots/gfx.h"
 
@@ -13,7 +14,23 @@ struct gfx_canvas *cg_list_ref(struct gfx_canvas *list);
 void cg_list_draw(const struct gfx_canvas *list, CGContextRef context, CGFloat scale);
 
 struct gfx_bitmap;
-CGImageRef cg_bitmap_copy_image(const struct gfx_bitmap *bitmap); // retained, NULL: blank
+/* The bitmap's pixels as an image (retained; NULL: blank) and their generation. live: an image over
+ * its words, for a draw on a thread that may draw into them; else the copy last published, the
+ * only kind UIKit's thread takes. */
+CGImageRef cg_bitmap_image(const struct gfx_bitmap *bitmap, bool live, unsigned *generation);
+// On the Android thread that drew them: the copy UIKit's replays draw, made if the pixels changed.
+void cg_bitmap_publish(struct gfx_bitmap *bitmap);
+// every bitmap a list draws (its bitmap ops and bitmap shaders), published
+void cg_list_publish(const struct gfx_canvas *list);
+
+// CG's blend mode for a gfx one, and whether it is Skia's; the others a painter blends per pixel
+CGBlendMode cg_blend(enum gfx_blend mode);
+bool cg_blend_exact(enum gfx_blend mode);
+CGColorSpaceRef cg_srgb(void); // shared, never released
+/* One op of a list into a context, as cg_list_draw draws it; for painter.c. live: cg_bitmap_image's. */
+struct op;
+void cg_draw(CGContextRef context, const struct op *op, CGFloat scale, bool live);
+void cg_clip(CGContextRef context, const struct op *op); // OP_CLIP's or OP_CLIP_PATH's, in the current gstate
 
 /* The font of gfx's text and uikit's labels; size in points. Any thread; the caller releases it. */
 CTFontRef cg_font(CGFloat size, enum gfx_font_family family, int style);

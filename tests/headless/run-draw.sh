@@ -35,8 +35,12 @@ fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 grep -q "widgets draw done" "$log" || fail "no \"widgets draw done\" (exit status $rc)"
 grep -q "UnsatisfiedLinkError" "$log" && fail "a native is missing"
 grep -q "widgets bitmap pixel ffff0000 0$" "$log" || fail "no red pixel read back from a Canvas(Bitmap)"
+grep -q "widgets blend ok$" "$log" || fail "blend modes read back wrong: $(grep -o 'widgets blend.*' "$log")"
+grep -q "widgets pixels ok$" "$log" || fail "bitmap pixels read back wrong: $(grep -o 'widgets pixels [a-z].*' "$log")"
+grep -q "widgets layers ok$" "$log" || fail "layer blends read back wrong: $(grep -o 'widgets layers [a-z].*' "$log")"
 grep -qE "Gtk-CRITICAL|Gsk-CRITICAL|gtk_snapshot_(push|pop)" "$log" && fail "unbalanced snapshot pushes or a GTK critical"
 if ((headless)); then
+  grep -q '^displaylist:.*text "picture"' "$log" || fail "the Picture's text isn't replayed as text"
   grep -oE '^displaylist:.*|widgets draw .*' "$log" >"$work/displaylist" || true
   if ((update)); then
     cp "$work/displaylist" "$expected"

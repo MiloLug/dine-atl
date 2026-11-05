@@ -75,12 +75,12 @@ send front # nothing while in front
 send home # A shows its list in onStop
 expect "nav: A onPause" "nav: A onStop" "host: task back host"
 list='dialog: show title="Nav list" items="Close","Odd ��😀��" cancelable'
-send front
-expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
+send front # an activity's windows show once it's resumed, and hide once it's paused
+expect "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "$list" "host: task front host"
 send home
-expect "dialog: close" "nav: A onPause" "nav: A onStop" "host: task back host"
+expect "nav: A onPause" "dialog: close" "nav: A onStop" "host: task back host"
 send front
-expect "$list" "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "host: task front host"
+expect "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "$list" "host: task front host"
 send back # the shown list takes it: cancel, then the close
 expect "nav: list canceled" "dialog: close"
 

@@ -37,7 +37,7 @@ bool input_pointers_up(void)
 	return gesture.touch.count == 0;
 }
 
-// the root view a native shows: the app window's shown activity, a dialog's or a popover's content
+// the root view a native shows: the app window's shown activity, a popover's or a window's content
 static WrapperWidget *root_wrapper(GtkNative *native)
 {
 	GtkWidget *child = NULL;
@@ -45,10 +45,43 @@ static WrapperWidget *root_wrapper(GtkNative *native)
 		child = gtk_popover_get_child(GTK_POPOVER(native));
 	} else if (GTK_IS_WINDOW(native)) {
 		child = gtk_window_get_child(GTK_WINDOW(native));
+		if (GTK_IS_OVERLAY(child))
+			child = gtk_overlay_get_child(GTK_OVERLAY(child));
 		if (GTK_IS_STACK(child))
 			child = gtk_stack_get_visible_child(GTK_STACK(child));
 	}
 	return child && WRAPPER_IS_WIDGET(child) ? WRAPPER_WIDGET(child) : NULL;
+}
+
+// the root a view is in: an activity's, a window's over it, or a popover's
+static WrapperWidget *view_root(GtkWidget *view)
+{
+	for (GtkWidget *widget = view; widget; widget = gtk_widget_get_parent(widget)) {
+		GtkWidget *parent = gtk_widget_get_parent(widget);
+		if (WRAPPER_IS_WIDGET(widget) && (GTK_IS_STACK(parent) || GTK_IS_OVERLAY(parent) || GTK_IS_NATIVE(parent)))
+			return WRAPPER_WIDGET(widget);
+	}
+	return NULL;
+}
+
+// the root the DOWN at x, y (the native's) goes to; NULL: none, or the header bar's
+static WrapperWidget *down_root(GtkNative *native, double x, double y)
+{
+	GtkWidget *content = GTK_IS_WINDOW(native) ? gtk_window_get_child(GTK_WINDOW(native)) : NULL;
+	if (content && GTK_IS_OVERLAY(content)) { // the app window: its content, then the windows over the activity
+		graphene_point_t point;
+		if (!gtk_widget_compute_point(GTK_WIDGET(native), content, &GRAPHENE_POINT_INIT(x, y), &point)
+		    || point.x < 0 || point.y < 0 || point.x >= gtk_widget_get_width(content) || point.y >= gtk_widget_get_height(content))
+			return NULL;
+		GtkWidget *root = window_touch_root(GTK_WINDOW(native), point.x, point.y);
+		return root && WRAPPER_IS_WIDGET(root) ? WRAPPER_WIDGET(root) : NULL;
+	}
+	WrapperWidget *root = root_wrapper(native);
+	graphene_point_t point;
+	if (!root || !gtk_widget_compute_point(GTK_WIDGET(native), GTK_WIDGET(root), &GRAPHENE_POINT_INIT(x, y), &point)
+	    || point.x < 0 || point.y < 0 || point.x >= gtk_widget_get_width(GTK_WIDGET(root)) || point.y >= gtk_widget_get_height(GTK_WIDGET(root)))
+		return NULL;
+	return root;
 }
 
 // the event's position in the native's widget, px
@@ -128,15 +161,13 @@ static void cancel_gesture(void)
 static gboolean pointer_down(GdkEvent *event, GtkNative *native, GdkEventSequence *sequence)
 {
 	if (!gesture.touch.count) {
-		WrapperWidget *root = native ? root_wrapper(native) : NULL;
-		if (!root)
+		if (!native)
 			return FALSE;
 		double x, y;
 		native_point(event, native, &x, &y);
-		graphene_point_t point;
-		if (!gtk_widget_compute_point(GTK_WIDGET(native), GTK_WIDGET(root), &GRAPHENE_POINT_INIT(x, y), &point)
-		    || point.x < 0 || point.y < 0 || point.x >= gtk_widget_get_width(GTK_WIDGET(root)) || point.y >= gtk_widget_get_height(GTK_WIDGET(root)))
-			return FALSE; // the header bar's
+		WrapperWidget *root = down_root(native, x, y);
+		if (!root)
+			return FALSE;
 		gesture.root = g_object_ref(root);
 		gesture.native = native;
 		gesture.native_input = picks_native_input(native, x, y);
@@ -162,10 +193,15 @@ static gboolean pointer_down(GdkEvent *event, GtkNative *native, GdkEventSequenc
 	return gesture.claimed;
 }
 
+void input_root_removed(GtkWidget *root)
+{
+	if (gesture.touch.count && GTK_WIDGET(gesture.root) == root)
+		cancel_gesture();
+}
+
 bool input_tap(GtkWidget *view)
 {
-	GtkNative *native = gtk_widget_get_native(view);
-	WrapperWidget *root = native ? root_wrapper(native) : NULL;
+	WrapperWidget *root = view_root(view);
 	if (!root || gesture.touch.count)
 		return false;
 	// wrappers laid out from Java get allocated 0x0 and keep their size in real_width and real_height

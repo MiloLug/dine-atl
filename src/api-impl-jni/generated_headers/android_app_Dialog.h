@@ -12,10 +12,10 @@ extern "C" {
 /*
  * Class:     android_app_Dialog
  * Method:    nativeInit
- * Signature: (J)J
+ * Signature: ()J
  */
 JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit
-  (JNIEnv *, jobject, jlong);
+  (JNIEnv *, jobject);
 
 /*
  * Class:     android_app_Dialog
@@ -24,14 +24,6 @@ JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit
  */
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle
   (JNIEnv *, jobject, jlong, jstring);
-
-/*
- * Class:     android_app_Dialog
- * Method:    nativeShow
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_app_Dialog_nativeShow
-  (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     android_app_Dialog
@@ -56,14 +48,6 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeDestroy
  */
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside
   (JNIEnv *, jobject, jlong, jboolean);
-
-/*
- * Class:     android_app_Dialog
- * Method:    nativeTaskFront
- * Signature: ()Z
- */
-JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront
-  (JNIEnv *, jobject);
 
 #ifdef __cplusplus
 }

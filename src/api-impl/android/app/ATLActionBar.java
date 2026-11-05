@@ -8,6 +8,7 @@ package android.app;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.SpinnerAdapter;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 class ATLActionBar extends ActionBar {
 	private final Activity activity;
 	private CharSequence title;
+	private boolean title_set; // ToolbarWidgetWrapper's mTitleSet
 	private CharSequence subtitle;
 	private Drawable icon;
 	private Drawable logo;
@@ -48,7 +50,8 @@ class ATLActionBar extends ActionBar {
 		logo = a.getDrawable(com.android.internal.R.styleable.ActionBar_logo);
 		navigation_mode = a.getInt(com.android.internal.R.styleable.ActionBar_navigationMode, NAVIGATION_MODE_STANDARD);
 		a.recycle();
-		if (title == null)
+		title_set = !TextUtils.isEmpty(title);
+		if (!title_set)
 			title = activity.getTitle();
 	}
 
@@ -148,6 +151,7 @@ class ATLActionBar extends ActionBar {
 	@Override
 	public void setTitle(CharSequence title) {
 		this.title = title;
+		title_set = true;
 	}
 
 	@Override
@@ -155,9 +159,12 @@ class ATLActionBar extends ActionBar {
 		setTitle(activity.getText(resId));
 	}
 
+	/* Copyright (C) 2014 The Android Open Source Project: ToolbarWidgetWrapper's */
+	// the app's own title outranks the window's
 	@Override
 	public void setWindowTitle(CharSequence title) {
-		this.title = title;
+		if (!title_set)
+			this.title = title;
 	}
 
 	@Override

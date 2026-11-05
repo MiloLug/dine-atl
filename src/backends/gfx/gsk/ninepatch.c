@@ -18,34 +18,47 @@ struct _NinePatchPaintable {
 };
 G_DECLARE_FINAL_TYPE(NinePatchPaintable, ninepatch_paintable, NINEPATCH, PAINTABLE, GObject)
 
-static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *snapshot, double width, double height)
+struct slices_draw {
+	GdkTexture *texture;
+	const struct ninepatch_slice *slices;
+	size_t n;
+};
+
+static void draw_slices(GtkSnapshot *snapshot, const struct gsk_draw *gsk_draw, enum gsk_part part)
 {
-	NinePatchPaintable *ninepatch = NINEPATCH_PAINTABLE(paintable);
-	const struct AndroidPaint *filter = (const struct AndroidPaint *)ninepatch->filter;
-	GdkTexture *texture = gsk_bitmap_ref_texture(ninepatch->bitmap);
-	int texture_width = gdk_texture_get_width(texture), texture_height = gdk_texture_get_height(texture);
-	struct ninepatch_slice *slices;
-	size_t n = ninepatch_slices(ninepatch->ninepatch, texture_width, texture_height, width, height, &slices);
-	if (filter->use_color_filter)
-		gtk_snapshot_push_color_matrix(snapshot, &filter->color_matrix, &filter->color_offset);
-	for (size_t i = 0; i < n; i++) {
-		const struct gfx_rect *src = &slices[i].src, *dst = &slices[i].dst;
+	const struct slices_draw *draw = gsk_draw->data;
+	if (part == GSK_COVERAGE) {
+		gtk_snapshot_append_color(snapshot, &(GdkRGBA){1, 1, 1, 1}, gsk_draw->bounds);
+		return;
+	}
+	int texture_width = gdk_texture_get_width(draw->texture), texture_height = gdk_texture_get_height(draw->texture);
+	for (size_t i = 0; i < draw->n; i++) {
+		const struct gfx_rect *src = &draw->slices[i].src, *dst = &draw->slices[i].dst;
 		graphene_rect_t bounds = GRAPHENE_RECT_INIT(dst->left, dst->top, dst->right - dst->left, dst->bottom - dst->top);
-		uint32_t color = slices[i].color;
+		uint32_t color = draw->slices[i].color;
 		if (color != NINEPATCH_NO_COLOR) {
 			gtk_snapshot_append_color(snapshot, &(GdkRGBA){(color >> 16 & 0xFF) / 255.f, (color >> 8 & 0xFF) / 255.f, (color & 0xFF) / 255.f, (color >> 24 & 0xFF) / 255.f}, &bounds);
 			continue;
 		}
 		float xscale = bounds.size.width / (src->right - src->left), yscale = bounds.size.height / (src->bottom - src->top);
 		gtk_snapshot_push_clip(snapshot, &bounds);
-		gtk_snapshot_append_texture(snapshot, texture,
+		gtk_snapshot_append_texture(snapshot, draw->texture,
 		                            &GRAPHENE_RECT_INIT(dst->left - src->left * xscale, dst->top - src->top * yscale, texture_width * xscale, texture_height * yscale));
 		gtk_snapshot_pop(snapshot);
 	}
-	if (filter->use_color_filter)
-		gtk_snapshot_pop(snapshot);
+}
+
+static void ninepatch_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *snapshot, double width, double height)
+{
+	NinePatchPaintable *ninepatch = NINEPATCH_PAINTABLE(paintable);
+	const struct AndroidPaint *filter = (const struct AndroidPaint *)ninepatch->filter;
+	struct slices_draw draw = {gsk_bitmap_texture(ninepatch->bitmap)};
+	struct ninepatch_slice *slices;
+	draw.n = ninepatch_slices(ninepatch->ninepatch, gdk_texture_get_width(draw.texture), gdk_texture_get_height(draw.texture), width, height, &slices);
+	draw.slices = slices;
+	gsk_filtered(GTK_SNAPSHOT(snapshot), filter, &(struct gsk_draw){draw_slices, &draw, filter, &GRAPHENE_RECT_INIT(0, 0, width, height)}, GSK_CONTENT);
 	free(slices);
-	g_object_unref(texture);
+	g_object_unref(draw.texture);
 }
 
 static void ninepatch_paintable_init(NinePatchPaintable *ninepatch)

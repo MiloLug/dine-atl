@@ -120,8 +120,9 @@ public class LifecycleCallbacksTest extends android.test.InstrumentationTestCase
 					started.finish();
 				}
 			});
-			assertTrue("no post-paused " + calls, done.await(10, TimeUnit.SECONDS));
-			synchronized (calls) {
+			boolean posted = done.await(10, TimeUnit.SECONDS);
+			synchronized (calls) { // the main thread may still add
+				assertTrue("no post-paused " + calls, posted);
 				assertEquals("[app pre-paused, second pre-paused, first pre-paused, second paused, first paused, app paused, second post-paused, first post-paused, app post-paused]", calls.toString());
 			}
 		} finally {

@@ -6,7 +6,6 @@
 #include "util.h"
 
 void atl_ensure_widget_snapshotability(GtkWidget *widget);
-void atl_safe_gtk_label_set_text(GtkLabel *label, const char *str);
 void atl_safe_gtk_widget_set_visible(GtkWidget *widget, gboolean visible);
 void atl_safe_gtk_widget_queue_allocate(GtkWidget *widget);
 void atl_safe_gtk_widget_queue_resize(GtkWidget *widget);

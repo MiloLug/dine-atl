@@ -56,20 +56,22 @@ static void activity_close(JNIEnv *env, struct atl_app *app, jobject activity)
 	set_decor_attached(env, activity, false);
 	ui_window_remove_activity(app->window, get_decor_view(env, activity));
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onDestroy);
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performDestroy);
 	exit_on_exception(env);
+	windows_owner_closed(env, app, activity); // after onDestroy, as AOSP's closeAll: it may dismiss them
 }
 
-static void activity_unfocus(JNIEnv *env, jobject activity)
+static void activity_unfocus(JNIEnv *env, struct atl_app *app, jobject activity)
 {
 	if (!_GET_BOOL_FIELD(activity, "paused")) {
-		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onPause);
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.performPause);
 		exit_on_exception(env);
 	}
+	windows_token_visible(env, app, activity, false); // AOSP: hidden once paused, before onStop
 
 	if (!_GET_BOOL_FIELD(activity, "stopped")) {
 		_SET_BOOL_FIELD(activity, "stopped", true);
-		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStop);
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.performStop);
 		exit_on_exception(env);
 	}
 
@@ -90,7 +92,7 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 			return;
 	}
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onStart);
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performStart);
 	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
@@ -103,15 +105,16 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 	exit_on_exception(env);
 	(*env)->DeleteLocalRef(env, window);
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onResume);
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performResume);
 	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onPostResume);
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performPostResume);
 	exit_on_exception(env);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
+	windows_token_visible(env, app, activity, true); // AOSP's makeVisible, after the resume
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, true);
 	exit_on_exception(env);
@@ -132,7 +135,7 @@ static void activity_update_current(JNIEnv *env, struct atl_app *app)
 
 	if (app->activity_current != activity_new) {
 		if (app->activity_current)
-			activity_unfocus(env, app->activity_current);
+			activity_unfocus(env, app, app->activity_current);
 		app->activity_current = NULL;
 
 		if (activity_new)
@@ -145,6 +148,9 @@ static void activity_update_current(JNIEnv *env, struct atl_app *app)
 
 	if (app->activity_current != NULL)
 		ui_window_set_back_enabled(app->window, back_has_target(env, app));
+	else
+		atl_window_state_reset(app);
+	windows_update(env, app);
 }
 
 void activity_window_ready(struct atl_app *app)
@@ -157,11 +163,6 @@ void activity_window_ready(struct atl_app *app)
 	}
 
 	atl_test_window_ready(app->window);
-}
-
-bool activity_task_front(struct atl_app *app)
-{
-	return app->task_front;
 }
 
 jobject activity_shown_window(JNIEnv *env, struct atl_app *app)
@@ -186,9 +187,6 @@ static void task_move(struct atl_app *app, bool front, bool by_host)
 	app->task_front = front;
 	JNIEnv *env = get_jni_env();
 	(*env)->PushLocalFrame(env, 16);
-	// before the lifecycle: shows from onStop wait for the front, shows from onResume go on top
-	(*env)->CallStaticVoidMethod(env, handle_cache.dialog.class, handle_cache.dialog.atlTaskMoved, app->record, front);
-	exit_on_exception(env);
 	activity_update_current(env, app);
 	(*env)->PopLocalFrame(env, NULL);
 	host_task_moved(app, front, by_host);
@@ -273,9 +271,9 @@ static void close_window_if_empty(void *data)
 void activity_start(JNIEnv *env, struct atl_app *app, jobject activity_object)
 {
 	if (app->activity_current)
-		activity_unfocus(env, app->activity_current);
+		activity_unfocus(env, app, app->activity_current);
 	app->activity_current = NULL;
-	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.onCreate, NULL);
+	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.performCreate, NULL);
 	exit_on_exception(env);
 
 	if (_GET_BOOL_FIELD(activity_object, "finishing")) { // finish() was called before the activity was created

@@ -4,6 +4,8 @@
 #include "src/slots/gfx.h"
 #include "src/slots/ui.h"
 
+#include "src/shared/windows.h"
+
 #include "records.h"
 
 // textruns: <start>-<end> and what each run sets
@@ -53,10 +55,10 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 {
 	if (window->shown)
 		dump_view(out, window->shown, 0);
-	for (size_t i = 0; i < window->n_overlays; i++) {
-		const struct ui_window *overlay = window->overlays[i];
-		fprintf(out, "viewtree: window dialog %d,%d %dx%d\n", overlay->left, overlay->top, overlay->width, overlay->height);
-		dump_view(out, overlay->content, 1);
+	for (size_t i = 0; i < window->n_roots; i++) {
+		const struct atl_window_frame *frame = windows_frame(window->roots[i].window);
+		fprintf(out, "viewtree: window dialog %d,%d %dx%d\n", frame->left, frame->top, frame->width, frame->height);
+		dump_view(out, window->roots[i].view, 1);
 	}
 	fprintf(out, "viewtree: end\n");
 	fflush(out);

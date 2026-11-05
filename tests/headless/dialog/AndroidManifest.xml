@@ -10,5 +10,7 @@
 		</activity>
 		<activity android:name=".KeepActivity"/>
 		<activity android:name=".ContentActivity"/>
+		<activity android:name=".StackActivity"/>
+		<activity android:name=".CoverActivity"/>
 	</application>
 </manifest>

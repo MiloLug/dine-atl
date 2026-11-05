@@ -1,9 +1,11 @@
 #include <GLES3/gl3.h>
 #include <jni.h>
+#include <stdlib.h>
 
 #include "../api-impl-jni/defines.h"
 #include "generated_headers/android_opengl_GLUtils.h"
 #include "../libandroid/bitmap.h"
+#include "../shared/bitmap.h"
 
 int get_internal_format(int32_t bitmapformat)
 {
@@ -56,6 +58,7 @@ int get_pixel_format_from_internal_format(uint32_t internalformat)
 	}
 }
 
+// the pixels in the config's NDK layout, as AndroidBitmap_lockPixels gives them
 JNIEXPORT jint JNICALL Java_android_opengl_GLUtils_native_1texImage2D(
     JNIEnv *env, jclass this, jint target, jint level, jint internalformat,
     jobject bitmap, jint type, jint border)
@@ -72,7 +75,11 @@ JNIEXPORT jint JNICALL Java_android_opengl_GLUtils_native_1texImage2D(
 	GLsizei width = bitmap_info.width;
 	GLsizei height = bitmap_info.height;
 	GLenum format = get_pixel_format_from_internal_format(internalformat);
+	struct gfx_bitmap *native = _PTR((*env)->CallLongMethod(env, bitmap, _METHOD_OF(bitmap, "getNativeInstance", "()J")));
+	uint8_t *pixels = malloc((size_t)bitmap_info.stride * height);
+	bitmap_pack(native, pixels, bitmap_info.stride);
 	glTexImage2D(target, level, internalformat, width, height, border, format,
-	             type, _PTR(_GET_LONG_FIELD(bitmap, "bytes")));
+	             type, pixels);
+	free(pixels);
 	return 0;
 }

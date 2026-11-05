@@ -1,3 +1,5 @@
+#include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,6 +21,13 @@ struct gfx_canvas *gfx_canvas_new(void)
 	return canvas;
 }
 
+struct gfx_canvas *gfx_canvas_new_bitmap(struct gfx_bitmap *bitmap)
+{
+	struct gfx_canvas *canvas = gfx_canvas_new();
+	canvas->painter = painter_new(bitmap);
+	return canvas;
+}
+
 struct gfx_canvas *record_canvas_ref(struct gfx_canvas *canvas)
 {
 	atomic_fetch_add(&canvas->refs, 1);
@@ -29,19 +38,23 @@ void gfx_canvas_free(struct gfx_canvas *canvas)
 {
 	if (atomic_fetch_sub(&canvas->refs, 1) != 1)
 		return;
+	if (canvas->painter)
+		painter_free(canvas->painter);
 	for (size_t i = 0; i < canvas->n_ops; i++) {
 		if (canvas->ops[i].bitmap)
 			gfx_bitmap_unref(canvas->ops[i].bitmap);
 		free(canvas->ops[i].text);
 		path_unref(canvas->ops[i].path);
 		shader_unref(canvas->ops[i].paint.shader);
+		if (canvas->ops[i].cache)
+			record_op_cache_free(canvas->ops[i].cache);
 	}
 	free(canvas->saved);
 	free(canvas->ops);
 	free(canvas);
 }
 
-void gfx_canvas_save(struct gfx_canvas *canvas)
+static void push_state(struct gfx_canvas *canvas)
 {
 	if (canvas->n_saved == canvas->saved_size) {
 		canvas->saved_size = canvas->saved_size ? canvas->saved_size * 2 : 4;
@@ -52,32 +65,98 @@ void gfx_canvas_save(struct gfx_canvas *canvas)
 	canvas->state.layer = false;
 }
 
-static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args);
+void gfx_canvas_save(struct gfx_canvas *canvas)
+{
+	push_state(canvas);
+	if (canvas->painter)
+		painter_save(canvas->painter);
+}
+
+// an op under the current matrix; its paint, path, bitmap and text are the caller's
+static struct op make_op(const struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args)
+{
+	struct op op;
+	memset(&op, 0, sizeof(op));
+	op.matrix = canvas->state.matrix;
+	if (paint)
+		op.paint = *paint;
+	op.kind = kind;
+	memcpy(op.args, args, n_args * sizeof(*args));
+	return op;
+}
+
+static void append(struct gfx_canvas *canvas, const struct op *op)
+{
+	if (canvas->n_ops == canvas->ops_size) {
+		canvas->ops_size = canvas->ops_size ? canvas->ops_size * 2 : 8;
+		canvas->ops = realloc(canvas->ops, canvas->ops_size * sizeof(*canvas->ops));
+	}
+	canvas->ops[canvas->n_ops++] = *op;
+}
+
+// a draw or a clip: drawn at once on a Canvas(Bitmap), else kept with refs of its own
+static void submit(struct gfx_canvas *canvas, struct op *op)
+{
+	bool clip = op->kind == OP_CLIP || op->kind == OP_CLIP_PATH;
+	if (canvas->painter) {
+		if (clip)
+			painter_clip(canvas->painter, op);
+		else
+			painter_draw(canvas->painter, op);
+		return;
+	}
+	shader_ref(op->paint.shader);
+	if (op->bitmap)
+		gfx_bitmap_ref(op->bitmap);
+	if (op->path)
+		path_ref(op->path);
+	if (op->text) {
+		uint16_t *text = malloc((op->text_len ? op->text_len : 1) * sizeof(*text));
+		memcpy(text, op->text, op->text_len * sizeof(*text));
+		op->text = text;
+	}
+	append(canvas, op);
+	if (clip)
+		canvas->state.clips++;
+}
 
 void gfx_canvas_restore(struct gfx_canvas *canvas)
 {
 	if (!canvas->n_saved)
 		return;
-	if (canvas->state.clips)
-		add(canvas, OP_UNCLIP, NULL, (float[]){canvas->state.clips}, 1);
-	if (canvas->state.layer)
-		add(canvas, OP_UNLAYER, NULL, (float[]){0}, 0);
+	if (canvas->painter) {
+		painter_restore(canvas->painter);
+	} else {
+		if (canvas->state.clips) {
+			struct op unclip = make_op(canvas, OP_UNCLIP, NULL, (float[]){canvas->state.clips}, 1);
+			append(canvas, &unclip);
+		}
+		if (canvas->state.layer) {
+			struct op unlayer = make_op(canvas, OP_UNLAYER, NULL, NULL, 0);
+			append(canvas, &unlayer);
+		}
+	}
 	canvas->state = canvas->saved[--canvas->n_saved];
 }
 
-void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, int blend)
+void gfx_canvas_save_layer(struct gfx_canvas *canvas, const struct gfx_rect *bounds, uint8_t alpha, enum gfx_blend blend)
 {
-	gfx_canvas_save(canvas);
+	push_state(canvas);
 	const struct gfx_rect none = {0};
 	const struct gfx_rect *b = bounds ? bounds : &none;
-	add(canvas, OP_LAYER, NULL, (float[]){b->left, b->top, b->right, b->bottom, bounds != NULL, alpha, blend}, 7);
-	canvas->state.layer = true;
+	struct op layer = make_op(canvas, OP_LAYER, NULL, (float[]){b->left, b->top, b->right, b->bottom, bounds != NULL, alpha, blend}, 7);
+	if (canvas->painter) {
+		painter_save_layer(canvas->painter, &layer);
+	} else {
+		append(canvas, &layer);
+		canvas->state.layer = true;
+	}
 }
 
 void gfx_canvas_clip_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, enum gfx_clip_op op)
 {
-	add(canvas, OP_CLIP, NULL, (float[]){left, top, right, bottom, op}, 5);
-	canvas->state.clips++;
+	struct op clip = make_op(canvas, OP_CLIP, NULL, (float[]){left, top, right, bottom, op}, 5);
+	submit(canvas, &clip);
 }
 
 // row-vector form: `m` applies first, then the current matrix
@@ -109,35 +188,22 @@ void gfx_canvas_concat(struct gfx_canvas *canvas, const graphene_matrix_t *matri
 	pre_concat(canvas, matrix);
 }
 
-static struct op *add(struct gfx_canvas *canvas, enum op_kind kind, const struct gfx_paint *paint, const float *args, size_t n_args)
-{
-	if (canvas->n_ops == canvas->ops_size) {
-		canvas->ops_size = canvas->ops_size ? canvas->ops_size * 2 : 8;
-		canvas->ops = realloc(canvas->ops, canvas->ops_size * sizeof(*canvas->ops));
-	}
-	struct op *op = &canvas->ops[canvas->n_ops++];
-	memset(op, 0, sizeof(*op));
-	op->matrix = canvas->state.matrix;
-	if (paint)
-		record_paint_copy(&op->paint, paint);
-	op->kind = kind;
-	memcpy(op->args, args, n_args * sizeof(*args));
-	return op;
-}
-
 void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, const struct gfx_paint *paint)
 {
-	add(canvas, OP_RECT, paint, (float[]){left, top, right, bottom}, 4);
+	struct op op = make_op(canvas, OP_RECT, paint, (float[]){left, top, right, bottom}, 4);
+	submit(canvas, &op);
 }
 
 void gfx_canvas_draw_round_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float rx, float ry, const struct gfx_paint *paint)
 {
-	add(canvas, OP_ROUND_RECT, paint, (float[]){left, top, right, bottom, rx, ry}, 6);
+	struct op op = make_op(canvas, OP_ROUND_RECT, paint, (float[]){left, top, right, bottom, rx, ry}, 6);
+	submit(canvas, &op);
 }
 
 void gfx_canvas_draw_line(struct gfx_canvas *canvas, float x0, float y0, float x1, float y1, const struct gfx_paint *paint)
 {
-	add(canvas, OP_LINE, paint, (float[]){x0, y0, x1, y1}, 4);
+	struct op op = make_op(canvas, OP_LINE, paint, (float[]){x0, y0, x1, y1}, 4);
+	submit(canvas, &op);
 }
 
 void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, const struct gfx_paint *paint)
@@ -145,32 +211,63 @@ void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap
 	struct gfx_rect all = {0, 0, gfx_bitmap_get_width(bitmap), gfx_bitmap_get_height(bitmap)};
 	if (!src)
 		src = &all;
-	gfx_bitmap_ref(bitmap);
-	add(canvas, OP_BITMAP, paint, (float[]){src->left, src->top, src->right, src->bottom, dst->left, dst->top, dst->right, dst->bottom}, 8)->bitmap = bitmap;
+	struct op op = make_op(canvas, OP_BITMAP, paint, (float[]){src->left, src->top, src->right, src->bottom, dst->left, dst->top, dst->right, dst->bottom}, 8);
+	op.bitmap = bitmap;
+	submit(canvas, &op);
 }
 
 void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_t len, float x, float y, const struct gfx_paint *paint)
 {
-	struct op *op = add(canvas, OP_TEXT, paint, (float[]){x, y}, 2);
-	op->text = malloc((len ? len : 1) * sizeof(*text));
-	memcpy(op->text, text, len * sizeof(*text));
-	op->text_len = len;
+	struct op op = make_op(canvas, OP_TEXT, paint, (float[]){x, y}, 2);
+	op.text = (uint16_t *)text;
+	op.text_len = len;
+	submit(canvas, &op);
 }
 
 void gfx_canvas_draw_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, const struct gfx_paint *paint)
 {
-	add(canvas, OP_PATH, paint, (float[]){even_odd}, 1)->path = path_ref(path);
+	struct op op = make_op(canvas, OP_PATH, paint, (float[]){even_odd}, 1);
+	op.path = path;
+	submit(canvas, &op);
 }
 
 void gfx_canvas_clip_path(struct gfx_canvas *canvas, struct gfx_path *path, bool even_odd, enum gfx_clip_op op)
 {
-	add(canvas, OP_CLIP_PATH, NULL, (float[]){even_odd, op}, 2)->path = path_ref(path);
-	canvas->state.clips++;
+	struct op clip = make_op(canvas, OP_CLIP_PATH, NULL, (float[]){even_odd, op}, 2);
+	clip.path = path;
+	submit(canvas, &clip);
 }
 
 void gfx_canvas_draw_arc(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float start, float sweep, bool use_center, const struct gfx_paint *paint)
 {
-	add(canvas, OP_ARC, paint, (float[]){left, top, right, bottom, start, sweep, use_center}, 7);
+	struct op op = make_op(canvas, OP_ARC, paint, (float[]){left, top, right, bottom, start, sweep, use_center}, 7);
+	submit(canvas, &op);
+}
+
+bool record_op_bounds(const struct op *op, struct gfx_rect *bounds)
+{
+	const float *a = op->args;
+	float pad = op->kind == OP_LINE || op->paint.style != GFX_PAINT_FILL ? op->paint.stroke_width * 2 + 1 : 0; // joins and caps
+	switch (op->kind) {
+	case OP_RECT:
+	case OP_ROUND_RECT:
+	case OP_ARC:
+		*bounds = (struct gfx_rect){fminf(a[0], a[2]), fminf(a[1], a[3]), fmaxf(a[0], a[2]), fmaxf(a[1], a[3])};
+		break;
+	case OP_LINE:
+		*bounds = (struct gfx_rect){fminf(a[0], a[2]), fminf(a[1], a[3]), fmaxf(a[0], a[2]), fmaxf(a[1], a[3])};
+		break;
+	case OP_BITMAP:
+		*bounds = (struct gfx_rect){fminf(a[4], a[6]), fminf(a[5], a[7]), fmaxf(a[4], a[6]), fmaxf(a[5], a[7])};
+		break;
+	case OP_PATH:
+		path_bounds(op->path, bounds);
+		break;
+	default:
+		return false;
+	}
+	bounds->left -= pad, bounds->top -= pad, bounds->right += pad, bounds->bottom += pad;
+	return true;
 }
 
 // a Java-drawn one recorded itself in its draw(); a container draws its child
@@ -180,7 +277,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		struct ninepatch_slice *slices;
 		size_t n = ninepatch_slices(drawable->ninepatch, gfx_bitmap_get_width(drawable->bitmap), gfx_bitmap_get_height(drawable->bitmap), width, height, &slices);
 		for (size_t i = 0; i < n; i++) {
-			struct gfx_paint paint = {.color = slices[i].color, .filter = drawable->filter};
+			struct gfx_paint paint = {.color = slices[i].color, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER};
 			if (slices[i].color == NINEPATCH_NO_COLOR) {
 				paint.color = 0xff000000;
 				gfx_canvas_draw_bitmap(canvas, drawable->bitmap, &slices[i].src, &slices[i].dst, &paint);
@@ -190,7 +287,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		}
 		free(slices);
 	} else if (drawable->bitmap) {
-		struct gfx_paint opaque = {.color = 0xff000000, .filter = drawable->filter};
+		struct gfx_paint opaque = {.color = 0xff000000, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER};
 		gfx_canvas_draw_bitmap(canvas, drawable->bitmap, NULL, &(struct gfx_rect){0, 0, width, height}, &opaque);
 	} else if (!drawable->drawable_ref && drawable->selected) {
 		gfx_canvas_draw_drawable(canvas, drawable->selected, width, height);
@@ -198,6 +295,13 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 }
 
 #ifdef ATL_TEST_HOOKS
+// a list is only dumped, never drawn
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target)
+{
+	gfx_canvas_free(canvas);
+	return false;
+}
+
 static const char *const style_names[] = {"fill", "stroke", "fill_and_stroke"};
 static const char *const family_names[] = {"", " serif", " mono"};
 
@@ -267,7 +371,7 @@ static void print_shader(FILE *out, const struct gfx_shader *shader)
 	print_matrix(out, &shader->matrix);
 }
 
-// filter <PorterDuff mode> #color | filter matrix [20 numbers]
+// filter <blend mode> #color | filter matrix [20 numbers]
 static void print_filter(FILE *out, const struct gfx_color_filter *filter)
 {
 	if (filter->has_matrix) {
@@ -288,6 +392,8 @@ static void print_paint(FILE *out, const struct gfx_paint *paint)
 		fprintf(out, " cap %d join %d", paint->stroke_cap, paint->stroke_join);
 	}
 	print_filter(out, &paint->filter);
+	if (paint->blend != GFX_BLEND_SRC_OVER)
+		fprintf(out, " blend %d", paint->blend);
 	if (paint->shader)
 		print_shader(out, paint->shader);
 }
@@ -396,7 +502,7 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 				print_numbers(out, op->args + 2, 2, ",");
 			}
 			fprintf(out, " alpha %d", (int)op->args[5]);
-			if (op->args[6] != -1)
+			if (op->args[6] != GFX_BLEND_SRC_OVER)
 				fprintf(out, " mode %d", (int)op->args[6]);
 			break;
 		case OP_UNLAYER:
@@ -413,6 +519,8 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			print_numbers(out, op->args + 6, 2, ",");
 			fprintf(out, " #%08x", op->paint.color);
 			print_filter(out, &op->paint.filter);
+			if (op->paint.blend != GFX_BLEND_SRC_OVER)
+				fprintf(out, " blend %d", op->paint.blend);
 			break;
 		case OP_PATH:
 		case OP_CLIP_PATH:

@@ -4,7 +4,6 @@ import android.annotation.NonNull;
 import android.app.Activity;
 import android.app.Application;
 import android.app.ContextImpl;
-import android.app.Dialog;
 import android.app.Service;
 import android.app.job.JobInfo;
 import android.app.job.JobService;
@@ -31,7 +30,6 @@ import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,7 +68,6 @@ public final class ATLLoadedApp {
 	public final Map<Integer, JobInfo> pending_jobs = new HashMap<>();
 	public final IdentityHashMap<Class<? extends JobService>, JobService> job_services = new IdentityHashMap<>();
 	public final HashMap<String, Constructor<? extends View>> view_constructors = new HashMap<>(); // by class name
-	public final Set<Dialog> shown_dialogs = new LinkedHashSet<>(); // in show order
 	public final InputMethodManager input_method = new InputMethodManager();
 	public final Set<LocationListener> location_listeners = new HashSet<>();
 	public int mpris_notification_id = -1;
@@ -289,9 +286,9 @@ public final class ATLLoadedApp {
 		Resources r = this.createDefaultResources();
 		activity.atl_attach_base_context(new ContextImpl(r, this, processApp, theme_res));
 		if (label_res != 0) {
-			activity.setTitle(r.getText(label_res));
+			activity.atlAttachTitle(r.getText(label_res));
 		} else if (pkg.applicationInfo.labelRes != 0) {
-			activity.setTitle(r.getText(pkg.applicationInfo.labelRes));
+			activity.atlAttachTitle(r.getText(pkg.applicationInfo.labelRes));
 		}
 		return activity;
 	}

@@ -1203,7 +1203,7 @@ public class VectorDrawable extends Drawable {
 
 		final int tintMode = a.getInt(R.styleable.VectorDrawable_tintMode, -1);
 		if (tintMode != -1) {
-			state.mTintMode = Mode.values()[tintMode];
+			state.mTintMode = Drawable.parseTintMode(tintMode, Mode.SRC_IN);
 		}
 
 		final ColorStateList tint = a.getColorStateList(R.styleable.VectorDrawable_tint);

@@ -53,12 +53,40 @@ public class ActionBarTest extends android.test.InstrumentationTestCase {
 		assertEquals(ActionBar.DISPLAY_HOME_AS_UP | ActionBar.DISPLAY_SHOW_TITLE, got[3]);
 		assertEquals("bar title", got[4].toString());
 		assertEquals("bar subtitle", got[5].toString());
-		assertEquals("window title", got[6].toString());
+		// the app's own title outranks the window's (ToolbarWidgetWrapper.setWindowTitle)
+		assertEquals("bar title", got[6].toString());
 		assertEquals(false, got[7]);
 		assertEquals(true, got[8]);
 		assertEquals(0, got[9]);
 		assertNotNull(got[10]);
 		assertEquals(ActionBar.NAVIGATION_MODE_STANDARD, got[11]);
+	}
+
+	public void testWindowTitleUntilTheAppSetsOne() {
+		final WindowActivity activity = start();
+		final Object[] got = new Object[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				ActionBar bar = activity.getActionBar();
+				activity.setTitle("window title");
+				got[0] = bar.getTitle();
+			}
+		});
+		assertEquals("window title", got[0].toString());
+	}
+
+	public void testNoBarWithoutTheFeature() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), BareActivity.class);
+		final BareActivity activity = (BareActivity)getInstrumentation().startActivitySync(intent);
+		final Object[] got = new Object[2];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				got[0] = activity.getActionBar();
+				got[1] = activity.getWindow().hasFeature(android.view.Window.FEATURE_NO_TITLE);
+			}
+		});
+		assertNull(got[0]);
+		assertEquals(true, got[1]);
 	}
 
 	public void testTabsCallTheirListeners() {

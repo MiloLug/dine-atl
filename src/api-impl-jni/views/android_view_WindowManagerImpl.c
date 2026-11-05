@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 
 #include "../defines.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 #include "../generated_headers/android_view_WindowManagerImpl.h"
 #include "gdk/gdk.h"
 #include "glib-object.h"
@@ -22,7 +23,7 @@ JNIEXPORT void JNICALL Java_android_view_WindowManagerImpl_native_1addView(JNIEn
 	printf("::: x=%d, y=%d, width=%d, height=%d\n", x, y, width, height);
 	gtk_popover_set_autohide(popover, FALSE);
 	gtk_popover_set_pointing_to(popover, &(GdkRectangle){.x = x, .y = y});
-	GtkStack *stack = GTK_STACK(gtk_window_get_child(window));
+	GtkStack *stack = window_stack((struct ui_window *)window);
 	GtkWidget *decor_view = gtk_stack_get_visible_child(stack);
 	gtk_widget_insert_before(GTK_WIDGET(popover), decor_view, NULL);
 	gtk_popover_present(popover);

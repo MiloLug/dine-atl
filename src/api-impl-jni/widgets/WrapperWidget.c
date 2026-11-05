@@ -3,6 +3,7 @@
 #include "../defines.h"
 #include "../gtk_util.h"
 #include "src/shared/view.h"
+#include "src/slots/gfx.h"
 
 #include "../generated_headers/android_view_View.h"
 
@@ -190,11 +191,16 @@ static void wrapper_widget_snapshot(GtkWidget *widget, GdkSnapshot *snapshot)
 	}
 	if (wrapper->draw_method) {
 		JNIEnv *env = get_jni_env();
+		// a layer by default: blend modes reach the view's own drawing, not what's below (as on iOS)
+		gtk_snapshot_push_isolation(snapshot, GSK_ISOLATION_BACKGROUND);
+		gfx_canvas_save((struct gfx_canvas *)snapshot); // its transforms end with its draw
 		(*env)->SetLongField(env, wrapper->canvas, canvas_handle_field, _INTPTR(snapshot));
 		// a widget keeps one canvas: each draw starts its Java state again, as the snapshot does
 		(*env)->CallVoidMethod(env, wrapper->canvas, canvas_reset_method, wrapper->real_width ?: gtk_widget_get_width(widget), wrapper->real_height ?: gtk_widget_get_height(widget));
 		(*env)->CallVoidMethod(env, wrapper->jobj, wrapper->draw_method, wrapper->canvas);
 		exit_on_exception(env);
+		gfx_canvas_restore((struct gfx_canvas *)snapshot);
+		gtk_snapshot_pop(snapshot);
 	} else {
 		GtkWidget *widget = &wrapper->parent_instance;
 		GtkWidget *child = gtk_widget_get_first_child(widget);

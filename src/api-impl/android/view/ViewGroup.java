@@ -295,6 +295,14 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		}
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
+	@Override
+	public void dispatchWindowVisibilityChanged(int visibility) {
+		super.dispatchWindowVisibilityChanged(visibility);
+		for (View child : new ArrayList<View>(children))
+			child.dispatchWindowVisibilityChanged(visibility);
+	}
+
 	@Override
 	public void dispatchDetachedFromWindow() {
 		if (!attachedToWindow)

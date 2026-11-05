@@ -14,14 +14,14 @@
 
 _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RESULT_CANCEL is the slot's cancel");
 
-JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit(JNIEnv *env, jobject this, jlong decor_view)
+JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit(JNIEnv *env, jobject this)
 {
 	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
 	struct atl_app *app = atl_app_of(env, context);
 	(*env)->DeleteLocalRef(env, context);
 	if (!app) // a Context of a package no host runs: the app whose main thread makes the dialog
 		app = atl_app_current();
-	return _INTPTR(ui_dialog_new(app, (struct atl_ref *)_WEAK_REF(this), _PTR(decor_view)));
+	return _INTPTR(ui_dialog_new(app, (struct atl_ref *)_WEAK_REF(this)));
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle(JNIEnv *env, jobject this, jlong ptr, jstring title_jstr)
@@ -29,11 +29,6 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetTitle(JNIEnv *env, jobje
 	char *title = jstring_to_utf8(env, title_jstr);
 	ui_window_set_title(_PTR(ptr), title);
 	free(title);
-}
-
-JNIEXPORT void JNICALL Java_android_app_Dialog_nativeShow(JNIEnv *env, jobject this, jlong ptr)
-{
-	ui_dialog_show(_PTR(ptr), NULL);
 }
 
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeClose(JNIEnv *env, jobject this, jlong ptr)
@@ -60,14 +55,6 @@ JNIEXPORT void JNICALL Java_android_app_Dialog_nativeDestroy(JNIEnv *env, jobjec
 JNIEXPORT void JNICALL Java_android_app_Dialog_nativeSetCanceledOnTouchOutside(JNIEnv *env, jobject this, jlong ptr, jboolean cancel)
 {
 	ui_dialog_set_cancel_on_touch_outside(_PTR(ptr), cancel);
-}
-
-JNIEXPORT jboolean JNICALL Java_android_app_Dialog_nativeTaskFront(JNIEnv *env, jobject this)
-{
-	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
-	struct atl_app *app = atl_app_of(env, context);
-	(*env)->DeleteLocalRef(env, context);
-	return activity_task_front(app);
 }
 
 // array elements as strings, NULL for a NULL array; free with free_array

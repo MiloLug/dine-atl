@@ -9,7 +9,7 @@
 
 #include "../records/records.h"
 
-/* Dialogs print what they show as "dialog: " lines; alerts take ATL_DIALOG_ANSWERS. */
+/* Alerts print what they show as "dialog: " lines and take ATL_DIALOG_ANSWERS. */
 
 static const char *const button_names[] = {"positive", "negative", "neutral"};
 
@@ -20,10 +20,10 @@ struct ui_dialog_state {
 	struct ui_alert alert; // the shown one, as ui_dialog_set_button changed it; owns its strings
 };
 
-struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref, struct ui_view *decor)
+struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref)
 {
 	struct ui_window *window = calloc(1, sizeof(*window));
-	records_dialog_init(window, app, dialog_ref, decor);
+	window->app = app;
 	window->dialog = calloc(1, sizeof(*window->dialog));
 	window->dialog->ref = dialog_ref;
 	return window;
@@ -91,12 +91,6 @@ static void print_labels(const char *name, const char *const *labels, int count)
 
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 {
-	if (!alert) {
-		printf("dialog: show content view\n");
-		fflush(stdout);
-		records_overlay_show(dialog);
-		return;
-	}
 	printf("dialog: show");
 	if (alert->title)
 		printf(" title=\"%s\"", alert->title);
@@ -137,7 +131,6 @@ void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label
 
 void ui_dialog_close(struct ui_window *dialog)
 {
-	records_overlay_hide(dialog);
 	dialog->dialog->shown = false;
 	printf("dialog: close\n");
 	fflush(stdout);
@@ -145,7 +138,6 @@ void ui_dialog_close(struct ui_window *dialog)
 
 void ui_dialog_free(struct ui_window *dialog)
 {
-	records_overlay_hide(dialog);
 	records_observations_orphan(dialog);
 	atl_ref_free(dialog->dialog->ref);
 	alert_clear(&dialog->dialog->alert);
@@ -154,3 +146,8 @@ void ui_dialog_free(struct ui_window *dialog)
 }
 
 void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel) {}
+
+bool records_shows_roots(void)
+{
+	return true;
+}

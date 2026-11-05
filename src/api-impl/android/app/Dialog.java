@@ -7,9 +7,9 @@ package android.app;
 
 import android.R;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.content.res.TypedArray;
-import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,28 +25,27 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowManager.LayoutParams;
+import android.view.WindowManager;
 
 public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterface {
 	// atlDialogResult's cancel, UI_DIALOG_CANCEL in the ui slot
 	static final int RESULT_CANCEL = Integer.MIN_VALUE;
 
+	// an alert's ui-slot dialog (atlNativeAlert), else 0
 	protected long nativePtr;
 
-	protected native long nativeInit(long decor_view);
+	protected native long nativeInit();
 	private native void nativeSetTitle(long ptr, String title);
-	private native void nativeShow(long ptr);
 	private native void nativeClose(long ptr);
 	private native void nativeDestroy(long ptr);
 	private native void nativeSetCanceledOnTouchOutside(long ptr, boolean cancel);
-	private native boolean nativeTaskFront();
 
 	private Context context;
 	private Window window;
 	CharSequence title;
 	boolean cancelable = true;
 	private boolean showing;
-	private boolean hidden; // by hide(): still showing to Java, the toolkit closed it
+	private boolean hidden; // by hide(): still showing to Java, its window hidden
 	private boolean canceled;
 	private OnDismissListener onDismissListener;
 	private OnShowListener onShowListener;
@@ -63,14 +62,22 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		this.context = themeResId != 0 ? new ContextThemeWrapper(context, themeResId) : context;
 		window = new Window(this.context, this);
 		window.setGravity(Gravity.CENTER);
-		nativePtr = nativeInit(window.getDecorView().widget);
-
-		window.set_native_window(nativePtr);
+		window.getDecorView();
+		if (atlNativeAlert())
+			nativePtr = nativeInit();
+		window.atlAddSubwindow(ownerActivity(context), !atlNativeAlert());
 	}
 
-	// records' layout placed the window (records/ui.c lay_out_overlay)
-	void atlWindowFrame(int left, int top, int width, int height) {
-		window.atlSetFrame(left, top);
+	// the window's token: the Activity under the context's wrappers (AOSP's WindowManager of the context)
+	private static Activity ownerActivity(Context context) {
+		while (!(context instanceof Activity) && context instanceof ContextWrapper)
+			context = ((ContextWrapper)context).getBaseContext();
+		return context instanceof Activity ? (Activity)context : null;
+	}
+
+	// AlertDialog: the ui slot shows the alert itself, not the decor view
+	protected boolean atlNativeAlert() {
+		return false;
 	}
 
 	public Dialog(Context context) {
@@ -80,15 +87,17 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	@Override
 	protected void finalize() throws Throwable {
 		try {
-			if (nativePtr != 0) // 0: the constructor threw first
-				nativeDestroy(nativePtr);
+			if (nativePtr != 0)
+				destroyNative();
+			if (window != null) // null: the constructor threw first
+				window.atlFreeSubwindow();
 		} finally {
 			super.finalize();
 		}
 	}
 
 	public final boolean requestWindowFeature(int featureId) {
-		return false;
+		return getWindow().requestFeature(featureId);
 	}
 
 	public Context getContext() {
@@ -110,7 +119,8 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 
 	public void setTitle(CharSequence title) {
 		this.title = title;
-		nativeSetTitle(nativePtr, String.valueOf(title));
+		if (nativePtr != 0)
+			nativeSetTitle(nativePtr, String.valueOf(title));
 	}
 
 	public void setTitle(int titleId) {
@@ -135,6 +145,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		return window.findViewById(id);
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: show, dismiss and hide */
 	public void show() {
 		System.out.println("showing the Dialog " + this);
 		Runnable action = new Runnable() {
@@ -143,48 +154,24 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 				if (showing) {
 					if (hidden) {
 						hidden = false;
-						if (nativeTaskFront())
-							showNative();
+						window.getDecorView().setVisibility(View.VISIBLE);
+						window.atlShowSubwindow();
 					}
 					return;
 				}
 				onCreate(null);
-				// Read the size of the main window. Floating dialogs should be smaller as specified in the windowMinWidth* attributes.
-				// Non-floating are typically constructed with MATCH_PARENT layout params and thus get the exact size of the main window.
-				// Most non-floating dialogs are technically dialogs, but are expected to behave more like full size activities.
-				Rect displayFrame = new Rect();
-				getWindow().getDecorView().getWindowVisibleDisplayFrame(displayFrame);
-
 				TypedArray a = context.obtainStyledAttributes(R.styleable.Window);
-				if (a.hasValue(R.styleable.Window_windowCloseOnTouchOutside)) {
-					nativeSetCanceledOnTouchOutside(nativePtr, a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, true));
-					if (a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, false))
-						window.setCloseOnTouchOutsideIfNotSet(true);
-				}
-				float windowWidthFraction = 1;
-				if (a.getBoolean(R.styleable.Window_windowIsFloating, false)) {
-					if (displayFrame.width() > displayFrame.height())
-						windowWidthFraction = a.getFraction(R.styleable.Window_windowMinWidthMajor, 1, 1, 1);
-					else
-						windowWidthFraction = a.getFraction(R.styleable.Window_windowMinWidthMinor, 1, 1, 1);
-				}
+				if (a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, false))
+					window.setCloseOnTouchOutsideIfNotSet(true);
 				a.recycle();
 
-				LayoutParams lp = getWindow().getAttributes();
-				int widthMeasureSpec = View.MeasureSpec.makeMeasureSpec(lp.width >= 0 ? lp.width : (int)(displayFrame.width() * windowWidthFraction),
-				                                                        lp.width == LayoutParams.WRAP_CONTENT ? View.MeasureSpec.AT_MOST : View.MeasureSpec.EXACTLY);
-
-				int heightMeasureSpec = View.MeasureSpec.makeMeasureSpec(lp.height >= 0 ? lp.height : (int)(displayFrame.height()),
-				                                                         lp.height == LayoutParams.WRAP_CONTENT ? View.MeasureSpec.AT_MOST : View.MeasureSpec.EXACTLY);
-
-				getWindow().getDecorView().internalSetDefaultMeasureSpec(widthMeasureSpec, heightMeasureSpec);
-
-				showing = true;
 				canceled = false;
-				context.atl_process_app().shown_dialogs.add(Dialog.this);
 				getWindow().getDecorView().dispatchAttachedToWindow();
-				if (nativeTaskFront()) // else atlTaskMoved shows it
-					showNative();
+				if (!window.atlShowSubwindow()) {
+					getWindow().getDecorView().dispatchDetachedFromWindow();
+					throw new WindowManager.BadTokenException("Unable to add window -- token null is not valid; is your activity running?");
+				}
+				showing = true;
 				if (onShowListener != null)
 					onShowListener.onShow(Dialog.this);
 			}
@@ -196,35 +183,30 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		}
 	}
 
-	void showNative() {
-		nativeShow(nativePtr);
+	protected void showNative() {}
+
+	protected void closeNative() {
+		nativeClose(nativePtr);
 	}
 
-	// from activity.c: dialogs leave and come back with the app's task
-	static void atlTaskMoved(android.atl.ATLLoadedApp app, boolean front) {
-		for (Dialog dialog : app.shown_dialogs) {
-			if (!dialog.showing || dialog.hidden)
-				continue;
-			if (front)
-				dialog.showNative();
-			else
-				dialog.nativeClose(dialog.nativePtr);
-		}
+	// from finalize: any thread
+	protected void destroyNative() {
+		nativeDestroy(nativePtr);
+	}
+
+	/** @hide windows.c shows or hides the window: with its token, or its own show and dismiss */
+	public void atlWindowVisible(boolean visible) {
+		if (nativePtr == 0)
+			return;
+		if (visible)
+			showNative();
+		else
+			closeNative();
 	}
 
 	// on screen; results from the ui backend count only then
 	boolean drawn() {
-		return showing && !hidden && nativeTaskFront();
-	}
-
-	// ATLInput: keys for the app's window go to the dialog shown last, while it's drawn
-	public static Dialog atlTopDrawn(android.atl.ATLLoadedApp app) {
-		Dialog top = null;
-		for (Dialog dialog : app.shown_dialogs) {
-			if (dialog.drawn())
-				top = dialog;
-		}
-		return top;
+		return showing && !hidden && window.atlVisible();
 	}
 
 	// from the ui backend: a button, an item or RESULT_CANCEL; returns whether it is still drawn
@@ -242,6 +224,8 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		System.out.println("dismissing the Dialog " + Dialog.this);
 		if (!showing)
 			return;
+		if (!window.atlRemoveSubwindow())
+			throw new IllegalArgumentException("View=" + window.getDecorView() + " not attached to window manager");
 		showing = false;
 		hidden = false;
 		// HACK: dismissing the Dialog takes some time in AOSP, as the request goes back and forth between the application
@@ -251,11 +235,8 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
-				if (!showing) { // not shown again meanwhile
-					nativeClose(nativePtr); // even in the back: atlTaskMoved skips dismissed dialogs
-					context.atl_process_app().shown_dialogs.remove(Dialog.this);
+				if (!showing) // not shown again meanwhile
 					getWindow().getDecorView().dispatchDetachedFromWindow();
-				}
 				if (onDismissListener != null)
 					onDismissListener.onDismiss(Dialog.this);
 			}
@@ -270,7 +251,8 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		if (cancel)
 			cancelable = true;
 		window.setCloseOnTouchOutside(cancel);
-		nativeSetCanceledOnTouchOutside(nativePtr, cancel);
+		if (nativePtr != 0)
+			nativeSetCanceledOnTouchOutside(nativePtr, cancel);
 	}
 
 	public class Builder {
@@ -315,8 +297,10 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	public void hide() {
 		System.out.println("hiding the Dialog " + this);
 		hidden = showing;
-		if (nativeTaskFront())
-			nativeClose(nativePtr);
+		if (showing) {
+			window.getDecorView().setVisibility(View.INVISIBLE);
+			window.atlHideSubwindow();
+		}
 	}
 
 	@Override

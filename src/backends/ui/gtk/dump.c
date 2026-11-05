@@ -39,6 +39,16 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 	GtkWidget *root = gtk_stack_get_visible_child(window_stack(window));
 	if (root)
 		dump_view(out, root, root, 0);
+	GtkWidget *overlay = gtk_widget_get_parent(GTK_WIDGET(window_stack(window)));
+	for (GtkWidget *child = gtk_widget_get_first_child(overlay); child; child = gtk_widget_get_next_sibling(child)) {
+		if (!g_object_get_data(G_OBJECT(child), "atl-subwindow"))
+			continue;
+		graphene_rect_t bounds;
+		if (!gtk_widget_compute_bounds(child, overlay, &bounds))
+			continue;
+		fprintf(out, "viewtree: window dialog %.0f,%.0f %.0fx%.0f\n", bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height);
+		dump_view(out, child, child, 1);
+	}
 	fprintf(out, "viewtree: end\n");
 	fflush(out);
 }

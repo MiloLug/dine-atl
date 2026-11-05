@@ -9,6 +9,7 @@
 #include "../defines.h"
 #include "../util.h"
 #include "../generated_headers/android_atl_ATLKeyboardDialog.h"
+#include "src/backends/ui/gtk/gtk_ui.h"
 #include "src/shared/app.h"
 #include "src/slots/ui.h"
 
@@ -153,15 +154,18 @@ static int connect_osk_dbus_iface(GtkWidget *dialog)
 	return 0;
 }
 
-JNIEXPORT jlong JNICALL Java_android_atl_ATLKeyboardDialog_nativeInit(JNIEnv *env, jobject this, jlong decor_view_ptr)
+JNIEXPORT jlong JNICALL Java_android_atl_ATLKeyboardDialog_nativeInit(JNIEnv *env, jobject this)
 {
-	jobject context = _GET_OBJ_FIELD(this, "context", "Landroid/content/Context;");
-	struct atl_app *app = atl_app_of(env, context);
-	(*env)->DeleteLocalRef(env, context);
-	GtkWidget *dialog = GTK_WIDGET(ui_dialog_new(app, (struct atl_ref *)_WEAK_REF(this), _PTR(decor_view_ptr)));
-	GtkWindow *window = GTK_WINDOW(dialog);
+	jobject java_window = _GET_OBJ_FIELD(this, "window", "Landroid/view/Window;");
+	jobject decor = _GET_OBJ_FIELD(java_window, "decorView", "Landroid/view/ViewGroup;");
+	GtkWidget *decor_widget = _PTR(_GET_LONG_FIELD(decor, "widget"));
+	(*env)->DeleteLocalRef(env, decor);
+	(*env)->DeleteLocalRef(env, java_window);
 
-	gtk_window_set_transient_for(window, NULL);
+	GtkWidget *dialog = gtk_window_new();
+	GtkWindow *window = GTK_WINDOW(dialog);
+	gtk_window_set_child(window, gtk_widget_get_parent(decor_widget)); // the decor's wrapper
+	input_attach_window(window);
 
 	gtk_layer_init_for_window(window);
 	gtk_layer_auto_exclusive_zone_enable(window);
@@ -175,4 +179,14 @@ JNIEXPORT jlong JNICALL Java_android_atl_ATLKeyboardDialog_nativeInit(JNIEnv *en
 	connect_osk_dbus_iface(dialog);
 
 	return _INTPTR(dialog);
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLKeyboardDialog_nativePresent(JNIEnv *env, jobject this, jlong window)
+{
+	gtk_window_present(GTK_WINDOW(_PTR(window)));
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLKeyboardDialog_nativeHide(JNIEnv *env, jobject this, jlong window)
+{
+	gtk_widget_set_visible(GTK_WIDGET(_PTR(window)), FALSE);
 }

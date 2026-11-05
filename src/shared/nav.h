@@ -55,9 +55,6 @@ struct atl_embedded_listener {
 	void (*exited)(void *context, struct atl_app *app, int status);
 	/* the shown activity's window keeps the screen on (FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn) or stops */
 	void (*keep_screen_on)(void *context, struct atl_app *app, bool on);
-	/* the shown activity's window brightness (LayoutParams.screenBrightness): 0 to 1, or negative
-	 * for the screen's own */
-	void (*screen_brightness)(void *context, struct atl_app *app, float brightness);
 	/* the shown activity's exclusion changed; valid during the call */
 	void (*exclusion_changed)(void *context, struct atl_app *app, const struct atl_gesture_exclusion *exclusion);
 };

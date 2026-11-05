@@ -8,12 +8,14 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Region;
 import android.os.IBinder;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.CorrectionInfo;
@@ -101,10 +103,14 @@ public class InputMethodService extends AbstractInputMethodService {
 	public InputMethodService() {}
 
 	public void launch_keyboard(boolean is_layershell) {
-		if (is_layershell)
+		if (is_layershell) {
 			kb_dialog = new ATLKeyboardDialog(this);
-		else
+		} else { // as AOSP's SoftInputWindow, in the app's window
 			kb_dialog = new Dialog(this);
+			kb_dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_INPUT_METHOD);
+			kb_dialog.getWindow().setGravity(Gravity.BOTTOM);
+			kb_dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+		}
 
 		View decorview = kb_dialog.getWindow().getDecorView();
 		decorview.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));

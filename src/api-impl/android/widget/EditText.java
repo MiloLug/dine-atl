@@ -11,11 +11,9 @@ import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.text.Selection;
-import android.text.SpanWatcher;
 import android.text.Spannable;
 import android.text.Spanned;
 import android.text.SpannedString;
-import android.text.TextWatcher;
 import android.text.method.DialerKeyListener;
 import android.text.method.DigitsKeyListener;
 import android.text.method.KeyListener;
@@ -26,21 +24,17 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
-import java.util.ArrayList;
 
 /* The Editable is the truth: the toolkit's field applies the user's edits and reports them
  * (atlEdited), Java answers with a snapshot when its state differs. Fields have no initializers:
  * TextView's constructor calls setText and setHint before they would run. */
 public class EditText extends TextView {
-	private static final int CHANGE_WATCHER_PRIORITY = 100;
 	private static final Spanned EMPTY_SPANNED = new SpannedString("");
 
 	// ui_keyboard and ui_return_key
 	private static final int KEYBOARD_TEXT = 0, KEYBOARD_NUMBER = 1, KEYBOARD_DECIMAL = 2, KEYBOARD_PHONE = 3, KEYBOARD_EMAIL = 4, KEYBOARD_URL = 5;
 	private static final int RETURN_DEFAULT = 0, RETURN_DONE = 1, RETURN_GO = 2, RETURN_SEARCH = 3, RETURN_NEXT = 4, RETURN_SEND = 5;
 
-	private ArrayList<TextWatcher> listeners;
-	private ChangeWatcher changeWatcher;
 	private InputFilter[] filters;
 	private KeyListener keyListener;
 	private int inputType;
@@ -144,39 +138,51 @@ public class EditText extends TextView {
 	/* Copyright (C) 2006 The Android Open Source Project */
 	@Override
 	public void setText(CharSequence text, BufferType type) {
-		if (text == null)
-			text = "";
+		super.setText(text, BufferType.EDITABLE);
+	}
+
+	@Override
+	CharSequence atlFiltered(CharSequence text) {
 		InputFilter[] filters = getFilters();
 		for (int i = 0; i < filters.length; i++) {
 			CharSequence out = filters[i].filter(text, 0, text.length(), EMPTY_SPANNED, 0, 0);
 			if (out != null)
 				text = out;
 		}
+		return text;
+	}
 
-		CharSequence old = super.getText();
-		int oldlen = old.length();
-		sendBeforeTextChanged(old, 0, oldlen, text.length());
+	@Override
+	void atlEditableCreated(Editable editable) {
+		editable.setFilters(editableFilters());
+	}
 
-		Editable t = Editable.Factory.getInstance().newEditable(text);
-		t.setFilters(editableFilters());
-		// ATL: the old Editable stops reporting, so an app's stale reference doesn't drive this view
-		if (old instanceof Spannable && changeWatcher != null)
-			((Spannable)old).removeSpan(changeWatcher);
-		super.setText(t, BufferType.EDITABLE);
+	// ArrowKeyMovementMethod.initialize
+	@Override
+	void atlTextReplaced(CharSequence text) {
+		Selection.setSelection((Spannable)text, 0);
+	}
 
-		final ChangeWatcher[] watchers = t.getSpans(0, t.length(), ChangeWatcher.class);
-		for (int i = 0; i < watchers.length; i++)
-			t.removeSpan(watchers[i]);
-		if (changeWatcher == null)
-			changeWatcher = new ChangeWatcher();
-		t.setSpan(changeWatcher, 0, t.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE | (CHANGE_WATCHER_PRIORITY << Spanned.SPAN_PRIORITY_SHIFT));
-		// ArrowKeyMovementMethod.initialize
-		Selection.setSelection(t, 0);
-
-		sendOnTextChanged(t, 0, oldlen, t.length());
-		sendAfterTextChanged(t);
+	@Override
+	void atlTextChanged() {
 		changed();
 	}
+
+	@Override
+	void atlSpanChanged(Object what) {
+		if (what == Selection.SELECTION_START || what == Selection.SELECTION_END)
+			changed();
+	}
+
+	// the toolkit's field gets the Editable's text from sync, without runs
+	@Override
+	void sendText() {}
+
+	@Override
+	void runsChanged() {}
+
+	@Override
+	void checkForResize() {}
 
 	public void setSelection(int start, int stop) {
 		Selection.setSelection(getText(), start, stop);
@@ -197,83 +203,6 @@ public class EditText extends TextView {
 	@Override
 	public void append(CharSequence text, int start, int end) {
 		getText().append(text, start, end);
-	}
-
-	@Override
-	public void addTextChangedListener(TextWatcher watcher) {
-		if (listeners == null)
-			listeners = new ArrayList<TextWatcher>();
-		listeners.add(watcher);
-	}
-
-	@Override
-	public void removeTextChangedListener(TextWatcher watcher) {
-		if (listeners != null) {
-			int i = listeners.indexOf(watcher);
-			if (i >= 0)
-				listeners.remove(i);
-		}
-	}
-
-	/* Copyright (C) 2006 The Android Open Source Project */
-	private void sendBeforeTextChanged(CharSequence text, int start, int before, int after) {
-		if (listeners != null) {
-			final ArrayList<TextWatcher> list = listeners;
-			final int count = list.size();
-			for (int i = 0; i < count; i++) {
-				list.get(i).beforeTextChanged(text, start, before, after);
-			}
-		}
-	}
-
-	/* Copyright (C) 2006 The Android Open Source Project */
-	private void sendOnTextChanged(CharSequence text, int start, int before, int after) {
-		if (listeners != null) {
-			final ArrayList<TextWatcher> list = listeners;
-			final int count = list.size();
-			for (int i = 0; i < count; i++) {
-				list.get(i).onTextChanged(text, start, before, after);
-			}
-		}
-	}
-
-	/* Copyright (C) 2006 The Android Open Source Project */
-	private void sendAfterTextChanged(Editable text) {
-		if (listeners != null) {
-			final ArrayList<TextWatcher> list = listeners;
-			final int count = list.size();
-			for (int i = 0; i < count; i++) {
-				list.get(i).afterTextChanged(text);
-			}
-		}
-	}
-
-	private class ChangeWatcher implements TextWatcher, SpanWatcher {
-		public void beforeTextChanged(CharSequence buffer, int start, int before, int after) {
-			sendBeforeTextChanged(buffer, start, before, after);
-		}
-
-		public void onTextChanged(CharSequence buffer, int start, int before, int after) {
-			sendOnTextChanged(buffer, start, before, after);
-		}
-
-		public void afterTextChanged(Editable buffer) {
-			sendAfterTextChanged(buffer);
-			changed();
-		}
-
-		public void onSpanChanged(Spannable buf, Object what, int s, int e, int st, int en) {
-			if (what == Selection.SELECTION_START || what == Selection.SELECTION_END)
-				changed();
-		}
-
-		public void onSpanAdded(Spannable buf, Object what, int s, int e) {
-			onSpanChanged(buf, what, -1, s, -1, e);
-		}
-
-		public void onSpanRemoved(Spannable buf, Object what, int s, int e) {
-			onSpanChanged(buf, what, s, -1, e, -1);
-		}
 	}
 
 	@Override

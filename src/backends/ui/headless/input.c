@@ -4,6 +4,7 @@
 
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
+#include "src/shared/windows.h"
 #include "src/slots/loop.h"
 
 #include "../records/records.h"
@@ -109,7 +110,14 @@ static void pointer_down(const struct posted_touch *posted)
 	}
 	touch.down_time = atl_uptime_ms();
 	struct ui_window *window = touch_window = posted->window;
-	scroll = window->shown ? scroll_at(window->shown, posted->x, posted->y) : NULL;
+	// the root the DOWN goes to, as records_touch picks it
+	const struct ui_root *root = windows_touch_target(window->roots, window->n_roots, posted->x, posted->y);
+	if (root) {
+		const struct atl_window_frame *frame = windows_frame(root->window);
+		scroll = scroll_at(root->view, posted->x - frame->left, posted->y - frame->top);
+	} else {
+		scroll = window->shown ? scroll_at(window->shown, posted->x, posted->y) : NULL;
+	}
 	panning = false;
 	start_x = posted->x;
 	start_y = posted->y;
@@ -209,9 +217,9 @@ static void on_tap(void *data)
 	struct ui_window *window = tap->window;
 	float x, y;
 	bool found = false;
-	for (size_t i = window->n_overlays; i-- > 0 && !found;) {
-		const struct ui_window *overlay = window->overlays[i];
-		found = find_text(overlay->content, tap->label, overlay->left, overlay->top, &x, &y);
+	for (size_t i = window->n_roots; i-- > 0 && !found;) {
+		const struct atl_window_frame *frame = windows_frame(window->roots[i].window);
+		found = find_text(window->roots[i].view, tap->label, frame->left, frame->top, &x, &y);
 	}
 	if (!found && window->shown)
 		found = find_text(window->shown, tap->label, 0, 0, &x, &y);

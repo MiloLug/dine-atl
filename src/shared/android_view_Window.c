@@ -10,10 +10,14 @@
 #include "app.h"
 #include "startup.h"
 
-JNIEXPORT void JNICALL Java_android_view_Window_set_1title(JNIEnv *env, jobject this, jlong window, jstring title_jstr)
+// the shown activity's window decides, as for the frame: one toolkit window shows every activity
+JNIEXPORT void JNICALL Java_android_view_Window_set_1title(JNIEnv *env, jobject this, jstring title_jstr)
 {
+	struct atl_app *app = atl_app_of_window(env, this);
+	if (!activity_window_shown(env, app, this))
+		return;
 	char *title = jstring_to_utf8(env, title_jstr);
-	ui_window_set_title(_PTR(window), title);
+	ui_window_set_title(app->window, title);
 	free(title);
 }
 
@@ -32,6 +36,18 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on(JNIEnv *en
 	host_keep_screen_on(app, keep);
 }
 
+void atl_window_state_reset(struct atl_app *app)
+{
+	if (app->keep_screen_on) {
+		app->keep_screen_on = false;
+		host_keep_screen_on(app, false);
+	}
+	if (app->screen_brightness >= 0) {
+		app->screen_brightness = -1;
+		host_screen_brightness(app, -1);
+	}
+}
+
 JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness(JNIEnv *env, jobject this, jfloat brightness)
 {
 	struct atl_app *app = atl_app_of_window(env, this);
@@ -43,10 +59,6 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness(JNIEnv *
 	host_screen_brightness(app, brightness);
 }
 
-JNIEXPORT void JNICALL Java_android_view_Window_set_1layout(JNIEnv *env, jobject this, jlong window, jint flags, jint gravity, jint x, jint y, jint width, jint height, jint min_width)
-{
-	ui_window_set_layout(_PTR(window), &(struct ui_window_layout){flags, gravity, x, y, width, height, min_width});
-}
 
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame(JNIEnv *env, jobject this, jboolean has_color, jint color, jboolean light, jboolean fullscreen)
 {

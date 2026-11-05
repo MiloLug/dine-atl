@@ -6,6 +6,7 @@
 package android.app;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.content.DialogInterface;
 import android.util.TypedValue;
 import android.view.View;
@@ -13,6 +14,7 @@ import android.widget.Button;
 import android.widget.TextView;
 
 public class AlertDialog extends Dialog implements DialogInterface {
+	private View view; // setView's, installed at show
 
 	private CharSequence message;
 	private CharSequence[] items;
@@ -132,8 +134,16 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		dismiss();
 	}
 
+	/* Copyright (C) 2008 The Android Open Source Project: AlertController installs it in onCreate */
 	public void setView(View view) {
-		setContentView(view);
+		this.view = view;
+	}
+
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		if (view != null)
+			setContentView(view);
 	}
 
 	void setItems(CharSequence[] items, OnClickListener listener) {
@@ -142,7 +152,12 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	}
 
 	@Override
-	void showNative() {
+	protected boolean atlNativeAlert() {
+		return true;
+	}
+
+	@Override
+	protected void showNative() {
 		String[] labels = new String[buttons.length];
 		boolean[] disabled = new boolean[buttons.length];
 		for (int i = 0; i < buttons.length; i++) {

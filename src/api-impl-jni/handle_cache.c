@@ -7,16 +7,16 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.activity.class = _REF((*env)->FindClass(env, "android/app/Activity"));
 	exit_on_exception(env);
 	// the atlPerform* calls run the app's lifecycle methods between the lifecycle callbacks
-	handle_cache.activity.onCreate = _METHOD(handle_cache.activity.class, "atlPerformCreate", "(Landroid/os/Bundle;)V");
+	handle_cache.activity.performCreate = _METHOD(handle_cache.activity.class, "atlPerformCreate", "(Landroid/os/Bundle;)V");
 	handle_cache.activity.onPostCreate = _METHOD(handle_cache.activity.class, "onPostCreate", "(Landroid/os/Bundle;)V");
-	handle_cache.activity.onStart = _METHOD(handle_cache.activity.class, "atlPerformStart", "()V");
+	handle_cache.activity.performStart = _METHOD(handle_cache.activity.class, "atlPerformStart", "()V");
 	handle_cache.activity.onWindowFocusChanged = _METHOD(handle_cache.activity.class, "onWindowFocusChanged", "(Z)V");
-	handle_cache.activity.onResume = _METHOD(handle_cache.activity.class, "atlPerformResume", "()V");
-	handle_cache.activity.onPostResume = _METHOD(handle_cache.activity.class, "atlPerformPostResume", "()V");
-	handle_cache.activity.onDestroy = _METHOD(handle_cache.activity.class, "atlPerformDestroy", "()V");
-	handle_cache.activity.onStop = _METHOD(handle_cache.activity.class, "atlPerformStop", "()V");
+	handle_cache.activity.performResume = _METHOD(handle_cache.activity.class, "atlPerformResume", "()V");
+	handle_cache.activity.performPostResume = _METHOD(handle_cache.activity.class, "atlPerformPostResume", "()V");
+	handle_cache.activity.performDestroy = _METHOD(handle_cache.activity.class, "atlPerformDestroy", "()V");
+	handle_cache.activity.performStop = _METHOD(handle_cache.activity.class, "atlPerformStop", "()V");
 	handle_cache.activity.onRestart = _METHOD(handle_cache.activity.class, "onRestart", "()V");
-	handle_cache.activity.onPause = _METHOD(handle_cache.activity.class, "atlPerformPause", "()V");
+	handle_cache.activity.performPause = _METHOD(handle_cache.activity.class, "atlPerformPause", "()V");
 	handle_cache.activity.onBackPressed = _METHOD(handle_cache.activity.class, "onBackPressed", "()V");
 	handle_cache.activity.onNewIntent = _METHOD(handle_cache.activity.class, "onNewIntent", "(Landroid/content/Intent;)V");
 
@@ -97,12 +97,13 @@ void set_up_handle_cache(JNIEnv *env)
 
 	handle_cache.dialog.class = _REF((*env)->FindClass(env, "android/app/Dialog"));
 	handle_cache.dialog.atlDialogResult = _METHOD(handle_cache.dialog.class, "atlDialogResult", "(I)Z");
-	handle_cache.dialog.atlTaskMoved = _STATIC_METHOD(handle_cache.dialog.class, "atlTaskMoved", "(Landroid/atl/ATLLoadedApp;Z)V");
-	handle_cache.dialog.atlWindowFrame = _METHOD(handle_cache.dialog.class, "atlWindowFrame", "(IIII)V");
 
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));
 	handle_cache.window.updateFrame = _METHOD(handle_cache.window.class, "updateFrame", "()V");
 	handle_cache.window.dispatchInsets = _METHOD(handle_cache.window.class, "dispatchInsets", "()V");
+	handle_cache.window.atlSetFrame = _METHOD(handle_cache.window.class, "atlSetFrame", "(II)V");
+	handle_cache.window.atlSetVisible = _METHOD(handle_cache.window.class, "atlSetVisible", "(Z)V");
+	handle_cache.window.atlLeaked = _METHOD(handle_cache.window.class, "atlLeaked", "(Ljava/lang/Object;)V");
 
 	handle_cache.asset_manager.class = _REF((*env)->FindClass(env, "android/content/res/AssetManager"));
 	handle_cache.asset_manager.extractFromAPK = _STATIC_METHOD(handle_cache.asset_manager.class, "extractFromAPK", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");

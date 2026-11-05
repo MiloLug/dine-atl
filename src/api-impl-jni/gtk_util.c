@@ -9,14 +9,6 @@
  * Update phase. */
 
 /* callbacks */
-static gboolean queue_set_text(GtkWidget *label, GdkFrameClock *frame_clock, gpointer str)
-{
-	gtk_label_set_text(GTK_LABEL(label), str);
-	/* we always call strdup so we always want to free */
-	free(str);
-	return G_SOURCE_REMOVE;
-}
-
 static gboolean queue_queue_allocate(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
 {
 	gtk_widget_queue_allocate(widget);
@@ -51,16 +43,6 @@ void atl_ensure_widget_snapshotability(GtkWidget *widget)
 		if (parent) {
 			atl_ensure_widget_snapshotability(parent);
 		}
-	}
-}
-
-void atl_safe_gtk_label_set_text(GtkLabel *label, const char *str)
-{
-	if (!snapshot_in_progress) {
-		gtk_label_set_text(label, str);
-	} else {
-		/* strdup since the string may not exist by the time the callback runs */
-		gtk_widget_add_tick_callback(GTK_WIDGET(label), queue_set_text, (gpointer)strdup(str), NULL);
 	}
 }
 

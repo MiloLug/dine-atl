@@ -2,13 +2,5 @@
   "dev.dine.framework.text.InputMethodTest#testShowAndHide": {
     "expect": "fail",
     "reason": "gtk shows no soft keyboard (ui_edit_set_keyboard returns false), so hideSoftInputFromWindow hides nothing"
-  },
-  "dev.dine.framework.windows.DialogTest#testWindowIsCentered": {
-    "expect": "fail",
-    "reason": "gtk shows a dialog as its own window, which the compositor places; Java gets no frame"
-  },
-  "dev.dine.framework.windows.DialogTest#testMinWidthTheme": {
-    "expect": "fail",
-    "reason": "gtk sizes a dialog's window from Dialog.show's spec, where windowMinWidth* is only an AT_MOST bound; records apply it as the least width"
   }
 }

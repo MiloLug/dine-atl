@@ -57,7 +57,7 @@ public class ImageView extends View {
 			hasTint = true;
 		}
 		if (a.hasValue(com.android.internal.R.styleable.ImageView_tintMode)) {
-			tintMode = PorterDuff.Mode.values()[a.getInt(com.android.internal.R.styleable.ImageView_tintMode, PorterDuff.Mode.SRC_IN.nativeInt)];
+			tintMode = Drawable.parseTintMode(a.getInt(com.android.internal.R.styleable.ImageView_tintMode, -1), PorterDuff.Mode.SRC_IN);
 			hasTintMode = true;
 		}
 		Drawable src = a.getDrawable(com.android.internal.R.styleable.ImageView_src);

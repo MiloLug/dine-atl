@@ -10,6 +10,15 @@ import android.os.IBinder;
 import android.text.TextUtils;
 
 public interface WindowManager {
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public static class BadTokenException extends RuntimeException {
+		public BadTokenException() {}
+
+		public BadTokenException(String name) {
+			super(name);
+		}
+	}
+
 	public android.view.Display getDefaultDisplay();
 
 	public void addView(View view, ViewGroup.LayoutParams params);

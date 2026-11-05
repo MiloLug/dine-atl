@@ -5,7 +5,6 @@ import android.content.res.Resources;
 import android.content.res.Resources.Theme;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.NinePatch;
 import android.graphics.PorterDuff;
@@ -47,17 +46,10 @@ public class NinePatchDrawable extends Drawable {
 		setState(state);
 	}
 
-	@Override
-	public void draw(Canvas canvas) {
-		if (state.bitmap != null)
-			state.bitmap.prepareToDraw();
-		super.draw(canvas);
-	}
-
 	private void setState(NinePatchState state) {
 		this.state = state;
-		if (state.bitmap != null && state.chunk != null) {
-			long drawable = nativeCreate(state.bitmap.getTexture(), state.chunk);
+		if (state.bitmap != null && state.chunk != null && !state.bitmap.isRecycled()) {
+			long drawable = nativeCreate(state.bitmap.getNativeInstance(), state.chunk);
 			if (drawable == 0)
 				throw new RuntimeException("not a nine-patch chunk");
 			adoptPaintable(drawable);

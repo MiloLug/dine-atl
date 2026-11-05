@@ -59,6 +59,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	private boolean stopped = false; // set by native code: onStop ran, onRestart is due
 	private CharSequence title = null;
 	private ActionBar action_bar;
+	private boolean title_ready; // AOSP's mTitleReady: from onPostCreate
 	private boolean has_permissions_request;
 	List<Fragment> fragments = new ArrayList<>();
 	boolean destroyed = false;
@@ -148,7 +149,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public final boolean requestWindowFeature(int featureId) {
-		return false; // whatever feature it is, it's probably not supported
+		return getWindow().requestFeature(featureId);
 	}
 
 	public final void setVolumeControlStream(int streamType) {}
@@ -173,9 +174,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		void call(Application.ActivityLifecycleCallbacks callbacks);
 	}
 
-	/* AOSP's order: the application's callbacks always first to last; this activity's first to last
-	 * for create, start and resume, last to first for pause, stop and destroy; the application's
-	 * before them for the pre calls and create, start and resume, after them for the rest */
+	// the lifecycle callbacks in AOSP's order
 	private void dispatch(LifecycleCall call, boolean application_first, boolean reversed) {
 		Application application = getApplication();
 		Application.ActivityLifecycleCallbacks[] own;
@@ -244,15 +243,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		return;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: the title */
 	protected void onPostCreate(Bundle savedInstanceState) {
 		Slog.i(TAG, "- onPostCreate - yay!");
+		title_ready = true;
+		onTitleChanged(getTitle(), 0);
 		return;
 	}
 
 	protected void onStart() {
 		Slog.i(TAG, "- onStart - yay!");
 		dispatch(c -> c.onActivityStarted(this), true, false);
-		window.setTitle(title);
 
 		for (Fragment fragment : fragments) {
 			fragment.onStart();
@@ -566,10 +567,24 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		}
 	}
 
+	// attach's label: the app's onTitleChanged runs only from setTitle and onPostCreate
+	public void atlAttachTitle(CharSequence title) {
+		this.title = title;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public void setTitle(CharSequence title) {
 		this.title = title;
-		if (action_bar != null)
-			action_bar.setWindowTitle(title);
+		onTitleChanged(title, 0);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	protected void onTitleChanged(CharSequence title, int color) {
+		if (title_ready) {
+			window.setTitle(title);
+			if (action_bar != null)
+				action_bar.setWindowTitle(title);
+		}
 	}
 
 	public void setTitle(int titleId) {
@@ -827,8 +842,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		return false;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: initWindowDecorActionBar */
 	public ActionBar getActionBar() {
-		if (action_bar == null)
+		window.getDecorView(); // the theme's features
+		if (action_bar == null && window.hasFeature(Window.FEATURE_ACTION_BAR))
 			action_bar = new ATLActionBar(this);
 		return action_bar;
 	}

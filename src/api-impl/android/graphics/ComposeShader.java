@@ -13,6 +13,10 @@ public class ComposeShader extends Shader {
 		this(shaderA, shaderB, mode.nativeInt);
 	}
 
+	public ComposeShader(Shader shaderA, Shader shaderB, BlendMode blendMode) {
+		this(shaderA, shaderB, blendMode.getXfermode().porterDuffMode);
+	}
+
 	private ComposeShader(Shader shaderA, Shader shaderB, int mode) {
 		if (shaderA == null || shaderB == null)
 			throw new IllegalArgumentException("Shader parameters must not be null");

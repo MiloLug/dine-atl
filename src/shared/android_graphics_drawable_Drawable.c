@@ -3,6 +3,8 @@
 #include "src/api-impl-jni/util.h"
 #include "src/slots/gfx.h"
 
+#include "paint.h"
+
 JNIEXPORT jlong JNICALL Java_android_graphics_drawable_Drawable_native_1constructor(JNIEnv *env, jobject this)
 {
 	if (handle_cache.drawable.draw == _METHOD_OF(this, "draw", "(Landroid/graphics/Canvas;)V"))
@@ -20,7 +22,6 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref(JNI
 	gfx_drawable_unref(_PTR(paintable_ptr));
 }
 
-struct gfx_color_filter atl_color_filter(JNIEnv *env, jint mode, jint color, jfloatArray matrix); // android_graphics_Paint.c
 
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter(JNIEnv *env, jclass class, jlong paintable_ptr, jint mode, jint color, jfloatArray matrix)
 {
@@ -32,12 +33,4 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidat
 {
 	if (paintable_ptr)
 		gfx_drawable_invalidate(_PTR(paintable_ptr));
-}
-
-// paintable 0: the Drawable has no native one (the records backends make none for a Drawable
-// without its own draw())
-JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1draw(JNIEnv *env, jobject this, jlong paintable_ptr, jlong canvas_ptr, jint width, jint height)
-{
-	if (paintable_ptr && canvas_ptr)
-		gfx_canvas_draw_drawable(_PTR(canvas_ptr), _PTR(paintable_ptr), width, height);
 }

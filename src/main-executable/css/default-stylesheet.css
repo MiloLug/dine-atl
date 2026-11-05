@@ -16,3 +16,8 @@
 	background-color: rgba(0,0,0,0);
 	background-image: none;
 }
+
+/* the dark behind a window over the activity (FLAG_DIM_BEHIND); its opacity is the dim amount */
+.ATL-dim {
+	background-color: black;
+}

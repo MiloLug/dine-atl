@@ -1,13 +1,14 @@
 package android.atl;
 
 import android.graphics.*;
+import android.graphics.drawable.Drawable;
 import android.view.DisplayListCanvas;
 import android.view.RenderNode;
 import java.util.Stack;
 
 /**
- * A Canvas over a gfx-slot canvas: handle is a struct gfx_canvas (gsk: a GtkSnapshot; record: a
- * display list).
+ * A Canvas over a gfx-slot canvas: handle is a struct gfx_canvas (a view's: gsk a GtkSnapshot,
+ * record a display list; a Bitmap's: drawn into its pixels at once).
  */
 public class ATLCanvas extends DisplayListCanvas {
 	public long handle;
@@ -159,11 +160,12 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	@Override
 	public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
+		throwIfCannotDraw(bitmap);
 		long native_paint = nativePaint(paint);
 		if (src == null)
-			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.right, dst.bottom, 0, 0, -1, -1, native_paint);
+			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, 0, 0, -1, -1, native_paint);
 		else
-			native_drawBitmap(handle, bitmap.getTexture(), dst.left, dst.top, dst.right, dst.bottom, src.left, src.top, src.right, src.bottom, native_paint);
+			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, src.left, src.top, src.right, src.bottom, native_paint);
 	}
 
 	@Override
@@ -179,9 +181,6 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	@Override
 	public void drawRect(float left, float top, float right, float bottom, Paint paint) {
-		// TODO: implement xfermode using gtk_snapshot_push_composite in GTK >= 4.22
-		if (paint != null && paint.getXfermode() != null)
-			return;
 		native_drawRect(handle, left, top, right, bottom, nativePaint(paint));
 	}
 
@@ -226,6 +225,11 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_drawRenderNode(handle, node.getGskNode());
 	}
 
+	@Override
+	public void atlDrawDrawable(Drawable drawable, int width, int height) {
+		native_drawDrawable(handle, drawable.paintable, width, height);
+	}
+
 	// src_right -1: the whole bitmap
 	protected native void native_drawBitmap(long handle, long bitmap, int left, int top, int right, int bottom, int src_left, int src_top, int src_right, int src_bottom, long paint);
 	protected native void native_drawRect(long handle, float left, float top, float right, float bottom, long paint);
@@ -245,4 +249,5 @@ public class ATLCanvas extends DisplayListCanvas {
 	protected native void native_clipRect(long handle, float left, float top, float right, float bottom, boolean difference);
 	protected native void native_clipPath(long handle, long path, boolean even_odd, boolean difference);
 	protected native void native_drawRenderNode(long handle, long render_node);
+	protected native void native_drawDrawable(long handle, long paintable, int width, int height);
 }

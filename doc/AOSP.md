@@ -36,16 +36,18 @@ name another project.
 | `app/Application.java` | `core/java/android/app/Application.java` | `ActivityLifecycleCallbacks` with API 29's pre and post methods, `registerActivityLifecycleCallbacks`, `unregisterActivityLifecycleCallbacks`, `collectActivityLifecycleCallbacks` |
 | `app/ActionBar.java` | `core/java/android/app/ActionBar.java` | the API: constants, methods and their defaults, `Tab`, `TabListener`, `LayoutParams`, the listener interfaces; no documentation |
 | `app/ATLActionBar.java` | `core/java/com/android/internal/app/WindowDecorActionBar.java` | what tab and list navigation do: `addTab` selecting the first tab, `selectTab` and its listener calls, `removeTabAt`, `setNavigationMode` keeping the selected tab, `setSelectedNavigationItem`, `getSelectedNavigationIndex`, `getNavigationItemCount`, `setDisplayOptions` with a mask |
-| `graphics/Bitmap.java` | `graphics/java/android/graphics/Bitmap.java` | `checkRecycled`, `checkPixelAccess`, `checkPixelsAccess`; the checks of `getPixels`, `setPixels`, `getPixel`, `setPixel`, `eraseColor`, `copy` and `copyPixelsToBuffer`'s buffer size; `createBitmap(Bitmap)` returning an immutable source itself |
+| `graphics/Bitmap.java` | `graphics/java/android/graphics/Bitmap.java` | `checkRecycled`, `checkPixelAccess`, `checkPixelsAccess`; the checks of `getPixels`, `setPixels`, `getPixel`, `setPixel`, `eraseColor`, `copy` and `copyPixelsToBuffer`'s buffer size, `compress`'s recycled check; `createBitmap(Bitmap)` returning an immutable source itself |
 | `graphics/Canvas.java` | `graphics/java/android/graphics/Canvas.java` | the three `drawPicture` |
+| `graphics/Canvas.java` | `graphics/java/android/graphics/BaseCanvas.java` | `throwIfCannotDraw`'s recycled check |
+| `opengl/GLUtils.java` | `opengl/java/android/opengl/GLUtils.java` | `texImage2D`'s null and recycled checks |
 | `graphics/drawable/PictureDrawable.java` | `graphics/java/android/graphics/drawable/PictureDrawable.java` | `draw`, the intrinsic size, `getPicture`, `setPicture`, `getOpacity` |
 | `graphics/drawable/ScaleDrawable.java` | `graphics/java/android/graphics/drawable/ScaleDrawable.java` | the whole file without documentation, theme attributes and `getOpacity` |
 | `graphics/drawable/InsetDrawable.java` | `graphics/java/android/graphics/drawable/InsetDrawable.java` | the whole file without documentation, theme attributes, optical insets and density changes |
 | `graphics/drawable/RotateDrawable.java` | `graphics/java/android/graphics/drawable/RotateDrawable.java` | the whole file without documentation and theme attributes |
 | `graphics/drawable/AnimatedRotateDrawable.java` | `graphics/java/android/graphics/drawable/AnimatedRotateDrawable.java` | the whole file without documentation and theme attributes |
-| `graphics/drawable/Drawable.java` | `graphics/java/android/graphics/drawable/Drawable.java` | `setLevel`, `getLevel`, `onLevelChange`, `getAlpha` |
+| `graphics/drawable/Drawable.java` | `graphics/java/android/graphics/drawable/Drawable.java` | `setLevel`, `getLevel`, `onLevelChange`, `getAlpha`, `parseTintMode`, `parseBlendMode` |
 | `graphics/drawable/ColorDrawable.java` | `graphics/java/android/graphics/drawable/ColorDrawable.java` | `inflate`'s color |
-| `graphics/drawable/AdaptiveIconDrawable.java` | `graphics/java/android/graphics/drawable/AdaptiveIconDrawable.java` | an AOSP copy; `draw` as AOSP's again (the layers through a BitmapShader into the mask) |
+| `graphics/drawable/AdaptiveIconDrawable.java` | `graphics/java/android/graphics/drawable/AdaptiveIconDrawable.java` | an AOSP copy; `draw` and the layers' bounds (1.5 times the icon, in its own space) as AOSP's again |
 | `app/Dialog.java` | `core/java/android/app/Dialog.java` | `dispatchTouchEvent`, `dispatchKeyEvent`, `onKeyDown`, `onKeyUp`, `onBackPressed`; the constructor's `dialogTheme` wrapper and `Gravity.CENTER`; `onTouchEvent` |
 | `app/AlertDialog.java` | `core/java/android/app/AlertDialog.java` | `resolveDialogTheme` without the `THEME_*` constants |
 | `widget/ScrollView.java` | `core/java/android/widget/ScrollView.java` | `scrollTo` and `clamp`, scrolling a focused child or a rectangle into view (`computeScrollDeltaToGetChildRectOnScreen`) |
@@ -58,7 +60,8 @@ name another project.
 | `widget/CompoundButton.java` | `core/java/android/widget/CompoundButton.java` | `toggle`, `performClick`, `setChecked`, `onCreateDrawableState` |
 | `widget/RadioButton.java` | `core/java/android/widget/RadioButton.java` | `toggle` |
 | `text/Editable.java` | `core/java/android/text/Editable.java` | the whole file |
-| `text/Html.java` | `core/java/android/text/Html.java` | the whole file without documentation and the CSS `style` attribute's text-align, text-decoration and background; `ATLHtmlReader` (ATL's) parses in place of TagSoup's `Parser`, and a missing image is an empty `ColorDrawable` |
+| `text/Html.java` | `core/java/android/text/Html.java` | the whole file; a missing image is an empty `ColorDrawable` |
+| `src/api-impl/org/ccil/cowan/tagsoup/` | `external/tagsoup`: `src/org/ccil/cowan/tagsoup/` | the 12 files Html's parser needs, unchanged (TagSoup's own Apache 2.0 headers; its NOTICE is the license text alone) |
 | `text/style/` | `core/java/android/text/style/` | `CharacterStyle`, `MetricAffectingSpan`, `ForegroundColorSpan`, `BackgroundColorSpan`, `UnderlineSpan`, `StrikethroughSpan`, `RelativeSizeSpan`, `AbsoluteSizeSpan`, `ScaleXSpan`, `SuperscriptSpan`, `SubscriptSpan`, `LocaleSpan`, `StyleSpan`, `TypefaceSpan`, `TextAppearanceSpan`, `ClickableSpan`, `URLSpan`: their constructors, getters and `updateDrawState` / `updateMeasureState`, without parcelling; `AlignmentSpan`, `BulletSpan`, `QuoteSpan` without drawing |
 | `text/InputType.java` | `core/java/android/text/InputType.java` | the whole file |
 | `text/InputFilter.java` | `core/java/android/text/InputFilter.java` | the whole file; `AllCaps` upper-cases with `String.toUpperCase` (no ICU `CaseMap`) and keeps spans only when the length stays |

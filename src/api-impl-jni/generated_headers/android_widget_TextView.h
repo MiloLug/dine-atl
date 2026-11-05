@@ -221,10 +221,16 @@ extern "C" {
 #define android_widget_TextView_ALIGN_CENTER 1L
 #undef android_widget_TextView_ALIGN_END
 #define android_widget_TextView_ALIGN_END 2L
+#undef android_widget_TextView_CHANGE_WATCHER_PRIORITY
+#define android_widget_TextView_CHANGE_WATCHER_PRIORITY 100L
 #undef android_widget_TextView_LINES
 #define android_widget_TextView_LINES 1L
 #undef android_widget_TextView_PIXELS
 #define android_widget_TextView_PIXELS 2L
+#undef android_widget_TextView_RUN_INTS
+#define android_widget_TextView_RUN_INTS 7L
+#undef android_widget_TextView_RUN_FLOATS
+#define android_widget_TextView_RUN_FLOATS 3L
 #undef android_widget_TextView_RUN_COLOR
 #define android_widget_TextView_RUN_COLOR 1L
 #undef android_widget_TextView_RUN_BACKGROUND

@@ -173,8 +173,7 @@ static void walk(void)
 
 static bool moving(void)
 {
-	GtkWidget *child = gtk_window_get_child(GTK_WINDOW(window));
-	return GTK_IS_STACK(child) && gtk_stack_get_transition_running(GTK_STACK(child));
+	return gtk_stack_get_transition_running(window_stack((struct ui_window *)window));
 }
 
 // GTK keeps a real press on an EditText; a dialog's own buttons and rows are GTK's

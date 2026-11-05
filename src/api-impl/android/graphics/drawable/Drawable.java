@@ -51,7 +51,7 @@ public class Drawable {
 		this.paintable = paintable;
 	}
 
-	// for a paintable owned elsewhere, such as a Bitmap's texture
+	// for a paintable owned elsewhere, such as a BitmapDrawable's
 	protected void setPaintable(long paintable) {
 		if (paintable != 0)
 			native_ref(paintable);
@@ -104,13 +104,13 @@ public class Drawable {
 		return mBounds;
 	}
 
-	// a view's canvas or a Canvas(Bitmap)
+	// a view's canvas, a Canvas(Bitmap) or a Picture's
 	public void draw(Canvas canvas) {
-		if (canvas.atlHandle() == 0)
+		if (paintable == 0)
 			return;
 		if (mBounds.left != 0 || mBounds.top != 0)
 			canvas.translate(mBounds.left, mBounds.top);
-		native_draw(paintable, canvas.atlHandle(), mBounds.width(), mBounds.height());
+		canvas.atlDrawDrawable(this, mBounds.width(), mBounds.height());
 		if (mBounds.left != 0 || mBounds.top != 0)
 			canvas.translate(-mBounds.left, -mBounds.top);
 	}
@@ -212,8 +212,30 @@ public class Drawable {
 		setTintList(ColorStateList.valueOf(tint));
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: a tintMode attribute's enum value */
+	public static PorterDuff.Mode parseTintMode(int value, PorterDuff.Mode defaultMode) {
+		switch (value) {
+			case 3: return PorterDuff.Mode.SRC_OVER;
+			case 5: return PorterDuff.Mode.SRC_IN;
+			case 9: return PorterDuff.Mode.SRC_ATOP;
+			case 14: return PorterDuff.Mode.MULTIPLY;
+			case 15: return PorterDuff.Mode.SCREEN;
+			case 16: return PorterDuff.Mode.ADD;
+			default: return defaultMode;
+		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
 	public static BlendMode parseBlendMode(int value, BlendMode defaultMode) {
-		return defaultMode;
+		switch (value) {
+			case 3: return BlendMode.SRC_OVER;
+			case 5: return BlendMode.SRC_IN;
+			case 9: return BlendMode.SRC_ATOP;
+			case 14: return BlendMode.MODULATE; // PorterDuff's MULTIPLY is Skia's modulate (b/73224934)
+			case 15: return BlendMode.SCREEN;
+			case 16: return BlendMode.PLUS;
+			default: return defaultMode;
+		}
 	}
 
 	/* Copyright (C) 2006 The Android Open Source Project */
@@ -466,7 +488,6 @@ public class Drawable {
 
 	protected native long native_constructor();
 	protected native void native_invalidate(long paintable);
-	protected native void native_draw(long paintable, long canvas, int width, int height);
 	protected native void native_ref(long paintable);
 	protected native void native_unref(long paintable);
 	// mode -1: none

@@ -336,7 +336,13 @@ public class Paint {
 
 	public Xfermode setXfermode(Xfermode xfermode) {
 		this.xfermode = xfermode;
+		native_set_blend(paint, atlBlend());
 		return xfermode;
+	}
+
+	// its blend mode's number (SkBlendMode's)
+	int atlBlend() {
+		return xfermode instanceof PorterDuffXfermode ? ((PorterDuffXfermode)xfermode).porterDuffMode : PorterDuffXfermode.DEFAULT;
 	}
 
 	public Xfermode getXfermode() {
@@ -538,6 +544,7 @@ public class Paint {
 	private static native long native_clone(long paint);
 	private static native void native_recycle(long paint);
 	private static native void native_set_color(long paint, int color);
+	private static native void native_set_blend(long paint, int mode);
 	private static native int native_get_color(long paint);
 	private static native void native_set_alpha(long paint, int alpha);
 	private static native int native_get_alpha(long paint);

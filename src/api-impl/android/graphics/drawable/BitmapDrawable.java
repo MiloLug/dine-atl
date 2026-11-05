@@ -28,26 +28,23 @@ public class BitmapDrawable extends Drawable {
 	}
 
 	public BitmapDrawable(Resources res, Bitmap bitmap) {
-		this.bitmap = bitmap;
-		if (bitmap != null)
-			adoptPaintable(native_paintable(bitmap.getTexture()));
+		this(bitmap);
 	}
 
 	public BitmapDrawable(Bitmap bitmap) {
 		this.bitmap = bitmap;
-		if (bitmap != null)
-			adoptPaintable(native_paintable(bitmap.getTexture()));
+		if (bitmap != null && !bitmap.isRecycled()) // a recycled one throws when drawn, as Canvas.drawBitmap
+			adoptPaintable(native_paintable(bitmap.getNativeInstance()));
 	}
 
 	public Bitmap getBitmap() {
 		return bitmap;
 	}
 
-	// what a Canvas(Bitmap) recorded reaches the pixels first
 	@Override
 	public void draw(Canvas canvas) {
-		if (bitmap != null)
-			bitmap.prepareToDraw();
+		if (bitmap != null && bitmap.isRecycled())
+			throw new RuntimeException("Canvas: trying to use a recycled bitmap " + bitmap);
 		if (paint.getColorFilter() != filter.colorFilter) // set through getPaint()
 			setColorFilter(paint.getColorFilter());
 		int alpha = paint.getAlpha();
@@ -92,7 +89,7 @@ public class BitmapDrawable extends Drawable {
 		a.recycle();
 		if (bitmap == null)
 			throw new XmlPullParserException("<bitmap> needs a valid `src' attribute");
-		adoptPaintable(native_paintable(bitmap.getTexture()));
+		adoptPaintable(native_paintable(bitmap.getNativeInstance()));
 		filter.apply(this);
 	}
 

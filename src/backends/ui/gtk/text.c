@@ -44,7 +44,7 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 
 static void apply_min_lines(GtkLabel *label);
 
-// a UTF-16 index of the label's text as a byte index
+// a UTF-16 index of text as a byte index
 static int byte_index(const char *text, int utf16)
 {
 	const char *at = text;
@@ -60,6 +60,12 @@ static void add(PangoAttrList *attrs, PangoAttribute *attr, int start, int end)
 	pango_attr_list_insert(attrs, attr);
 }
 
+// a run with its range in the bytes of the text it came with
+struct byte_run {
+	int start, end;
+	struct ui_text_run run;
+};
+
 // tabular digits and the size ui_text_set_size set over the whole text, then the runs (scale x isn't drawn)
 static void apply_attributes(GtkLabel *label)
 {
@@ -69,10 +75,10 @@ static void apply_attributes(GtkLabel *label)
 	if (size)
 		pango_attr_list_insert(attrs, pango_attr_size_new(*size * PANGO_SCALE));
 	GArray *runs = g_object_get_data(G_OBJECT(label), "atl-text-runs");
-	const char *text = gtk_label_get_text(label);
 	for (guint i = 0; runs && i < runs->len; i++) {
-		const struct ui_text_run *run = &g_array_index(runs, struct ui_text_run, i);
-		int start = byte_index(text, run->start), end = byte_index(text, run->end);
+		const struct byte_run *byte_run = &g_array_index(runs, struct byte_run, i);
+		const struct ui_text_run *run = &byte_run->run;
+		int start = byte_run->start, end = byte_run->end;
 		if (run->set & UI_RUN_COLOR) {
 			add(attrs, pango_attr_foreground_new(((run->color >> 16) & 0xff) * 257, ((run->color >> 8) & 0xff) * 257, (run->color & 0xff) * 257), start, end);
 			add(attrs, pango_attr_foreground_alpha_new((run->color >> 24) * 257), start, end);
@@ -101,19 +107,40 @@ static void apply_attributes(GtkLabel *label)
 	apply_min_lines(label);
 }
 
+extern int snapshot_in_progress;
+
+// the latest text and its runs at once
+static void set_styled(GtkLabel *label)
+{
+	gtk_label_set_text(label, g_object_get_data(G_OBJECT(label), "atl-text"));
+	apply_attributes(label);
+}
+
+static gboolean set_styled_later(GtkWidget *label, GdkFrameClock *clock, gpointer data)
+{
+	set_styled(GTK_LABEL(label));
+	return G_SOURCE_REMOVE;
+}
+
 void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_text_run *runs, size_t n_runs)
 {
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
 	if (!label)
 		return;
-	atl_safe_gtk_label_set_text(label, text);
 	GArray *copy = NULL;
 	if (n_runs) {
-		copy = g_array_sized_new(FALSE, FALSE, sizeof(*runs), n_runs);
-		g_array_append_vals(copy, runs, n_runs);
+		copy = g_array_sized_new(FALSE, FALSE, sizeof(struct byte_run), n_runs);
+		for (size_t i = 0; i < n_runs; i++) {
+			struct byte_run byte_run = {byte_index(text, runs[i].start), byte_index(text, runs[i].end), runs[i]};
+			g_array_append_val(copy, byte_run);
+		}
 	}
 	g_object_set_data_full(G_OBJECT(label), "atl-text-runs", copy, copy ? (GDestroyNotify)g_array_unref : NULL);
-	apply_attributes(label);
+	g_object_set_data_full(G_OBJECT(label), "atl-text", g_strdup(text), g_free);
+	if (snapshot_in_progress) // a change now drops the widget from this snapshot: the next frame's
+		gtk_widget_add_tick_callback(GTK_WIDGET(label), set_styled_later, NULL, NULL);
+	else
+		set_styled(label);
 }
 
 /* we kinda need per-widget css */

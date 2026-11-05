@@ -12,9 +12,25 @@ extern "C" {
 /*
  * Class:     android_atl_ATLKeyboardDialog
  * Method:    nativeInit
- * Signature: (J)J
+ * Signature: ()J
  */
 JNIEXPORT jlong JNICALL Java_android_atl_ATLKeyboardDialog_nativeInit
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     android_atl_ATLKeyboardDialog
+ * Method:    nativePresent
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLKeyboardDialog_nativePresent
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     android_atl_ATLKeyboardDialog
+ * Method:    nativeHide
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLKeyboardDialog_nativeHide
   (JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus

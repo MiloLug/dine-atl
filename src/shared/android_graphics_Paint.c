@@ -5,6 +5,7 @@
 #include "src/api-impl-jni/generated_headers/android_graphics_Paint.h"
 #include "src/slots/gfx.h"
 
+#include "paint.h"
 #include "text.h"
 
 JNIEXPORT jlong JNICALL Java_android_graphics_Paint_native_1create(JNIEnv *env, jclass clazz)
@@ -30,6 +31,11 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1shader(JNIEnv *e
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1color(JNIEnv *env, jclass clazz, jlong paint_ptr, jint color)
 {
 	gfx_paint_set_color(_PTR(paint_ptr), color);
+}
+
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1blend(JNIEnv *env, jclass clazz, jlong paint_ptr, jint mode)
+{
+	gfx_paint_set_blend(_PTR(paint_ptr), mode);
 }
 
 JNIEXPORT jint JNICALL Java_android_graphics_Paint_native_1get_1color(JNIEnv *env, jclass clazz, jlong paint_ptr)
@@ -102,7 +108,6 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1text_1align(JNIE
 	gfx_paint_set_text_align(_PTR(paint_ptr), align);
 }
 
-// matrix: a ColorMatrix's 20 floats, or NULL
 struct gfx_color_filter atl_color_filter(JNIEnv *env, jint mode, jint color, jfloatArray matrix)
 {
 	struct gfx_color_filter filter = {.mode = matrix ? -1 : mode, .color = color, .has_matrix = matrix != NULL};
