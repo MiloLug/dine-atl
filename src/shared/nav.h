@@ -29,10 +29,20 @@ struct atl_window_insets {
 	struct atl_edges system_gestures;    // the host's gesture strips
 	struct atl_edges mandatory_gestures; // the part apps can't exclude
 	struct atl_edges navigation_bars;    // also the system window insets apps read before API 30
+	struct atl_edges status_bars;        // where the window covers the status bar
+	struct atl_edges ime;                // the keyboard's overlap with the window
 };
 /* From any thread, also before the app starts: the shown activity gets them now, later ones when
  * shown. */
 void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *insets);
+/* The app's window size in dp, from any thread, also before the start (then the host's config or
+ * the screen): its windows lay out again. */
+void atl_nav_set_window_size(struct atl_app *app, float width, float height);
+/* The display's night mode for the app (Configuration.UI_MODE_NIGHT_YES, _NO or _UNDEFINED), from any
+ * thread, also before the start; the host calls it for each app it runs. The app's configuration
+ * and Resources take it; Application and the activities whose manifest's configChanges covers
+ * uiMode get onConfigurationChanged, the others keep theirs. */
+void atl_nav_set_night(struct atl_app *app, int night);
 
 /* The window's side edges where the app takes the gestures back (View.setSystemGestureExclusionRects):
  * dp in the window, within the system gesture strips, the bottom-most 200 dp per edge. */

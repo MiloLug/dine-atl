@@ -33,6 +33,30 @@ JNIEXPORT jlong JNICALL Java_android_atl_ATLTestHooks_nativeNewViewCanvas
 
 /*
  * Class:     android_atl_ATLTestHooks
+ * Method:    frame
+ * Signature: (Landroid/content/Context;)[Z
+ */
+JNIEXPORT jbooleanArray JNICALL Java_android_atl_ATLTestHooks_frame
+  (JNIEnv *, jclass, jobject);
+
+/*
+ * Class:     android_atl_ATLTestHooks
+ * Method:    frameBackground
+ * Signature: (Landroid/content/Context;)I
+ */
+JNIEXPORT jint JNICALL Java_android_atl_ATLTestHooks_frameBackground
+  (JNIEnv *, jclass, jobject);
+
+/*
+ * Class:     android_atl_ATLTestHooks
+ * Method:    setNight
+ * Signature: (Landroid/content/Context;I)V
+ */
+JNIEXPORT void JNICALL Java_android_atl_ATLTestHooks_setNight
+  (JNIEnv *, jclass, jobject, jint);
+
+/*
+ * Class:     android_atl_ATLTestHooks
  * Method:    nativeDrawViewCanvas
  * Signature: (JLandroid/graphics/Bitmap;)Z
  */

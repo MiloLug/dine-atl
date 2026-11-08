@@ -52,17 +52,22 @@ static void lay_out(struct ui_window *window)
 		return;
 	}
 
-	const struct atl_window_config *config = atl_screen_get();
+	int width, height;
 	if (root) {
-		root->left = root->top = 0;
-		root->right = config->width;
-		root->bottom = config->height;
-		atl_upcall_view_measure(root->ref, config->width | MEASURE_SPEC_EXACTLY, config->height | MEASURE_SPEC_EXACTLY);
-		atl_upcall_view_layout(root->ref, config->width, config->height);
+		windows_area(window->app, NULL, &width, &height);
+		int pan = windows_pan(window->app, NULL);
+		root->left = 0;
+		root->top = -pan;
+		root->right = width;
+		root->bottom = height - pan;
+		atl_upcall_view_measure(root->ref, width | MEASURE_SPEC_EXACTLY, height | MEASURE_SPEC_EXACTLY);
+		atl_upcall_view_layout(root->ref, width, height);
 	}
 	for (size_t i = 0; i < window->n_roots; i++) {
-		if (window->roots[i].view)
-			lay_out_root(&window->roots[i], config->width, config->height);
+		if (!window->roots[i].view)
+			continue;
+		windows_area(window->app, window->roots[i].window, &width, &height);
+		lay_out_root(&window->roots[i], width, height);
 	}
 	if (!root)
 		return;
@@ -252,8 +257,12 @@ void records_touch(struct ui_window *window, const struct atl_touch *touch)
 		window->touched = NULL;
 	const struct ui_root *root = target ? root_of(window, target) : NULL;
 	if (!root) {
-		if (window->shown)
-			atl_upcall_touch(window->shown->ref, touch);
+		if (!window->shown)
+			return;
+		struct atl_touch moved = *touch; // the root moved up by its pan
+		for (int i = 0; i < moved.count; i++)
+			moved.pointers[i].y -= window->shown->top;
+		atl_upcall_touch(window->shown->ref, &moved);
 		return;
 	}
 	const struct atl_window_frame *frame = windows_frame(root->window);
@@ -326,11 +335,9 @@ void ui_window_set_back_enabled(struct ui_window *window, bool enabled) {}
 
 void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
 {
-	struct ui_frame *current = &window->frame;
-	if (current->has_color == frame->has_color && current->fullscreen == frame->fullscreen
-	    && (!frame->has_color || (current->color == frame->color && current->light == frame->light)))
+	if (ui_frame_equal(&window->frame, frame))
 		return;
-	*current = *frame;
+	window->frame = *frame;
 	records_frame_changed(window);
 }
 
@@ -347,8 +354,7 @@ struct atl_app *ui_window_app(struct ui_window *window)
 
 void ui_window_get_size(struct ui_window *window, int *width, int *height)
 {
-	*width = atl_screen_get()->width;
-	*height = atl_screen_get()->height;
+	atl_app_window_size(window->app, width, height);
 }
 
 bool ui_window_is_multi_window(struct ui_window *window)

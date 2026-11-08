@@ -65,7 +65,8 @@ void records_frame_changed(struct ui_window *window)
 		printf("window: frame #%08x%s", frame->color, frame->light ? " light" : "");
 	else
 		printf("window: frame none");
-	printf("%s\n", frame->fullscreen ? " fullscreen" : "");
+	printf("%s%s%s%s\n", frame->fullscreen ? " fullscreen" : "", frame->cover_top ? " cover-top" : "",
+	       frame->hide_navigation ? " hide-navigation" : "", frame->immersive ? " immersive" : "");
 	fflush(stdout);
 }
 

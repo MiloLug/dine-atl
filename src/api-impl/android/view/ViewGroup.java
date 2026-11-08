@@ -304,6 +304,20 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	}
 
 	@Override
+	public void dispatchConfigurationChanged(android.content.res.Configuration newConfig) {
+		super.dispatchConfigurationChanged(newConfig);
+		for (View child : new ArrayList<View>(children))
+			child.dispatchConfigurationChanged(newConfig);
+	}
+
+	@Override
+	public void dispatchSystemUiVisibilityChanged(int visibility) {
+		super.dispatchSystemUiVisibilityChanged(visibility);
+		for (View child : new ArrayList<View>(children))
+			child.dispatchSystemUiVisibilityChanged(visibility);
+	}
+
+	@Override
 	public void dispatchDetachedFromWindow() {
 		if (!attachedToWindow)
 			return;

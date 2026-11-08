@@ -3,5 +3,7 @@
 	<uses-sdk android:minSdkVersion="27" android:targetSdkVersion="27"/>
 	<application android:label="framework windows">
 		<activity android:name=".PlainActivity"/>
+		<activity android:name=".ResizeModeActivity" android:windowSoftInputMode="adjustResize|stateHidden"/>
+		<activity android:name=".ConfigModeActivity" android:configChanges="uiMode"/>
 	</application>
 </manifest>

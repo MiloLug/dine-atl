@@ -2,6 +2,8 @@
 
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_atl_ATLTestHooks.h"
+#include "src/shared/app.h"
+#include "src/shared/nav.h"
 #include "src/shared/bitmap.h"
 #ifdef ATL_LIBANDROID
 #include "src/libandroid/bitmap.h"
@@ -64,4 +66,26 @@ JNIEXPORT jlong JNICALL Java_android_atl_ATLTestHooks_nativeNewViewCanvas(JNIEnv
 JNIEXPORT jboolean JNICALL Java_android_atl_ATLTestHooks_nativeDrawViewCanvas(JNIEnv *env, jclass class, jlong canvas, jobject target)
 {
 	return gfx_test_render_view(_PTR(canvas), bitmap_of(env, target));
+}
+
+JNIEXPORT jbooleanArray JNICALL Java_android_atl_ATLTestHooks_frame(JNIEnv *env, jclass class, jobject context)
+{
+	struct atl_app *app = atl_app_of(env, context);
+	if (!app || !app->frame_sent)
+		return NULL;
+	jboolean flags[] = {app->frame.fullscreen, app->frame.cover_top, app->frame.hide_navigation, app->frame.immersive};
+	jbooleanArray array = (*env)->NewBooleanArray(env, 4);
+	(*env)->SetBooleanArrayRegion(env, array, 0, 4, flags);
+	return array;
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLTestHooks_setNight(JNIEnv *env, jclass class, jobject context, jint night)
+{
+	atl_nav_set_night(atl_app_of(env, context), night);
+}
+
+JNIEXPORT jint JNICALL Java_android_atl_ATLTestHooks_frameBackground(JNIEnv *env, jclass class, jobject context)
+{
+	struct atl_app *app = atl_app_of(env, context);
+	return app && app->frame_sent ? (jint)app->frame.background : 0;
 }

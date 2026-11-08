@@ -18,12 +18,20 @@
 // AOSP's MIN_GESTURE_EXCLUSION_LIMIT_DP: per side edge, granted from the bottom-most rect up
 #define EXCLUSION_LIMIT_DP 200
 
-static struct atl_window_insets insets_get(struct atl_app *app)
+struct atl_window_insets atl_app_insets(struct atl_app *app)
 {
 	pthread_mutex_lock(&app->insets_lock);
 	struct atl_window_insets current = app->insets;
 	pthread_mutex_unlock(&app->insets_lock);
 	return current;
+}
+
+void atl_app_window_size(struct atl_app *app, int *width, int *height)
+{
+	pthread_mutex_lock(&app->insets_lock);
+	*width = app->window_width;
+	*height = app->window_height;
+	pthread_mutex_unlock(&app->insets_lock);
 }
 
 static float px_per_dp(void)
@@ -81,10 +89,11 @@ static int edge_spans(const int *rects, int n_rects, int left, int right, int to
 
 void atl_exclusion_update(struct atl_app *app)
 {
-	struct atl_window_insets current = insets_get(app);
+	struct atl_window_insets current = atl_app_insets(app);
 	const struct atl_edges *strip = &current.system_gestures;
 	float scale = px_per_dp();
-	int width = atl_screen_get()->width, height = atl_screen_get()->height;
+	int width, height;
+	atl_app_window_size(app, &width, &height);
 	int top = roundf(strip->top * scale), bottom = height - roundf(strip->bottom * scale);
 	struct atl_gesture_exclusion exclusion = {0};
 	int n_rects;
@@ -122,34 +131,52 @@ void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *new
 		loop_main_post(app->loop, insets_changed, app);
 }
 
+// the insets' dispatch requests the layout that takes the size
+void atl_nav_set_window_size(struct atl_app *app, float width, float height)
+{
+	float scale = px_per_dp();
+	pthread_mutex_lock(&app->insets_lock);
+	app->window_width = roundf(width * scale);
+	app->window_height = roundf(height * scale);
+	pthread_mutex_unlock(&app->insets_lock);
+	if (app->running)
+		loop_main_post(app->loop, insets_changed, app);
+}
+
 static int overlap(int inset, int distance)
 {
 	return inset > distance ? inset - distance : 0;
 }
 
-/* A window over the activities (clip) takes the part of each edge's inset that its frame, px in
- * the app's window, overlaps; before its first placement (width 0) none. */
-JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets(JNIEnv *env, jobject this, jboolean clip, jint left, jint top, jint width, jint height)
+/* A window takes the part of each edge's inset that its frame, px in the app's window, overlaps: a
+ * window over the activities its placed frame (none before its first placement, width 0), the
+ * activity's the room it lays out in (windows_area). */
+JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets(JNIEnv *env, jobject this, jlong subwindow, jint left, jint top, jint width, jint height)
 {
-	struct atl_window_insets current = insets_get(atl_app_of_window(env, this));
-	const struct atl_edges *edges[] = {&current.system_gestures, &current.mandatory_gestures, &current.navigation_bars};
+	struct atl_app *app = atl_app_of_window(env, this);
+	if (!subwindow) {
+		left = top = 0;
+		windows_area(app, NULL, &width, &height);
+	}
+	struct atl_window_insets current = atl_app_insets(app);
+	const struct atl_edges *edges[] = {&current.system_gestures, &current.mandatory_gestures, &current.navigation_bars, &current.status_bars, &current.ime};
+	enum { N_EDGES = sizeof(edges) / sizeof(*edges) };
 	float scale = px_per_dp();
-	int screen_width = atl_screen_get()->width, screen_height = atl_screen_get()->height;
-	jint px[12];
-	for (int i = 0; i < 3; i++) {
+	int screen_width, screen_height;
+	atl_app_window_size(app, &screen_width, &screen_height);
+	jint px[N_EDGES * 4];
+	for (int i = 0; i < N_EDGES; i++) {
 		px[i * 4 + 0] = roundf(edges[i]->left * scale);
 		px[i * 4 + 1] = roundf(edges[i]->top * scale);
 		px[i * 4 + 2] = roundf(edges[i]->right * scale);
 		px[i * 4 + 3] = roundf(edges[i]->bottom * scale);
-		if (!clip)
-			continue;
 		px[i * 4 + 0] = width ? overlap(px[i * 4 + 0], left) : 0;
 		px[i * 4 + 1] = width ? overlap(px[i * 4 + 1], top) : 0;
 		px[i * 4 + 2] = width ? overlap(px[i * 4 + 2], screen_width - left - width) : 0;
 		px[i * 4 + 3] = width ? overlap(px[i * 4 + 3], screen_height - top - height) : 0;
 	}
-	jintArray array = (*env)->NewIntArray(env, 12);
-	(*env)->SetIntArrayRegion(env, array, 0, 12, px);
+	jintArray array = (*env)->NewIntArray(env, N_EDGES * 4);
+	(*env)->SetIntArrayRegion(env, array, 0, N_EDGES * 4, px);
 	return array;
 }
 

@@ -9,5 +9,6 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".SecondActivity"/>
+		<activity android:name=".ImmersiveActivity"/>
 	</application>
 </manifest>

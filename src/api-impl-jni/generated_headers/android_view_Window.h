@@ -124,10 +124,10 @@ JNIEXPORT void JNICALL Java_android_view_Window_clear_1background
 /*
  * Class:     android_view_Window
  * Method:    set_frame
- * Signature: (JZIZZ)V
+ * Signature: (JZIZZZZZI)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame
-  (JNIEnv *, jobject, jlong, jboolean, jint, jboolean, jboolean);
+  (JNIEnv *, jobject, jlong, jboolean, jint, jboolean, jboolean, jboolean, jboolean, jboolean, jint);
 
 /*
  * Class:     android_view_Window
@@ -148,10 +148,18 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects
 /*
  * Class:     android_view_Window
  * Method:    get_insets
- * Signature: (ZIIII)[I
+ * Signature: (JIIII)[I
  */
 JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets
-  (JNIEnv *, jobject, jboolean, jint, jint, jint, jint);
+  (JNIEnv *, jobject, jlong, jint, jint, jint, jint);
+
+/*
+ * Class:     android_view_Window
+ * Method:    set_soft_input
+ * Signature: (JII)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_set_1soft_1input
+  (JNIEnv *, jobject, jlong, jint, jint);
 
 /*
  * Class:     android_view_Window

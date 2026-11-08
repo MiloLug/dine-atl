@@ -5,7 +5,7 @@ import android.content.ContextWrapper;
 import android.content.Intent;
 import android.os.IBinder;
 
-public abstract class Service extends ContextWrapper {
+public abstract class Service extends ContextWrapper implements android.content.ComponentCallbacks2 {
 
 	private int notification_id;
 
@@ -22,6 +22,12 @@ public abstract class Service extends ContextWrapper {
 	}
 
 	public abstract IBinder onBind(Intent intent);
+
+	public void onConfigurationChanged(android.content.res.Configuration newConfig) {}
+
+	public void onLowMemory() {}
+
+	public void onTrimMemory(int level) {}
 
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		System.out.println("Service.onStartCommand(" + intent + ", " + flags + ", " + startId + ") called");

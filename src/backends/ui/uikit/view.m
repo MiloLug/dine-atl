@@ -57,15 +57,19 @@
 @property(nonatomic) BOOL atlRoot;
 @end
 
+// touches on none of its subviews go through
+@interface ATLPassView : UIView
+@end
+
 /* The windows over the activities (ui_window_set_roots): the surface's top subview, holding an
- * ATLWindowContainer per window, the topmost last. Touches on none of their views go through. */
-@interface ATLOverlayContainer : UIView
+ * ATLWindowContainer per window, the topmost last. */
+@interface ATLOverlayContainer : ATLPassView
 @property(nonatomic, weak) UIView *keyRoot; // the root that last took the keys
 @end
 
 // a window over the activities: its dim and an alert's panel under its root, all at the surface's
 // coordinates
-@interface ATLWindowContainer : UIView
+@interface ATLWindowContainer : ATLPassView
 @property(nonatomic) UIView *dim;
 @property(nonatomic) UIView *panel;
 @end
@@ -157,7 +161,7 @@ FORWARD_TOUCHES
 }
 @end
 
-@implementation ATLOverlayContainer
+@implementation ATLPassView
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
 {
 	UIView *hit = [super hitTest:point withEvent:event];
@@ -165,12 +169,10 @@ FORWARD_TOUCHES
 }
 @end
 
+@implementation ATLOverlayContainer
+@end
+
 @implementation ATLWindowContainer
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
-{
-	UIView *hit = [super hitTest:point withEvent:event];
-	return hit == self ? nil : hit;
-}
 @end
 
 @implementation ATLOutsideWatch
@@ -1178,8 +1180,14 @@ void records_frame_changed(struct ui_window *window)
 	@autoreleasepool {
 		uikit_enqueue(window->app, ^{
 			id surface_view = (__bridge id)target;
+			((UIView *)surface_view).backgroundColor = frame.background ? color(frame.background) : nil;
 			if ([surface_view conformsToProtocol:@protocol(ATLSurface)])
-				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil light:frame.light fullscreen:frame.fullscreen];
+				[(id<ATLSurface>)surface_view atlFrameChanged:frame.has_color ? color(frame.color) : nil
+				                                         light:frame.light
+				                                    fullscreen:frame.fullscreen
+				                                      coverTop:frame.cover_top
+				                                hideNavigation:frame.hide_navigation
+				                                     immersive:frame.immersive];
 		});
 	}
 }
@@ -1441,8 +1449,7 @@ static void push_frames(struct ui_window *window)
 	CGFloat s = scale();
 	if (window->shown)
 		collect_frames(window->shown, s, &next);
-	NSMutableArray *panels = [NSMutableArray array]; // an alert, then its panel's frame and its root's
-	CGFloat screen_height = atl_screen_get()->height / s;
+	NSMutableArray *panels = [NSMutableArray array]; // an alert, its panel's frame, its root's, its room's height
 	for (size_t i = 0; i < window->n_roots; i++) {
 		if (!window->roots[i].view)
 			continue;
@@ -1455,6 +1462,9 @@ static void push_frames(struct ui_window *window)
 			[panels addObject:uikit_dialog_of(window->roots[i].chrome)];
 			[panels addObject:[NSValue valueWithCGRect:CGRectMake(panel->left / s, panel->top / s, panel->width / s, panel->height / s)]];
 			[panels addObject:[NSValue valueWithCGRect:root->rect]];
+			int area_width, area_height; // as lay_out gave windows_place
+			windows_area(window->app, window->roots[i].window, &area_width, &area_height);
+			[panels addObject:@(area_height / s)];
 		}
 	}
 	uikit_enqueue(window->app, ^{
@@ -1465,11 +1475,12 @@ static void push_frames(struct ui_window *window)
 				((UIScrollView *)framed).contentSize = frames[i].content;
 		}
 		free(frames);
-		for (NSUInteger i = 0; i < panels.count; i += 3) {
+		for (NSUInteger i = 0; i < panels.count; i += 4) {
 			ATLPanelView *panel = (ATLPanelView *)uikit_dialog_panel(panels[i]);
 			CGRect frame = [panels[i + 1] CGRectValue], root = [panels[i + 2] CGRectValue];
+			CGFloat room = [panels[i + 3] doubleValue];
 			CGFloat footer = [panel atlFooterHeightForWidth:frame.size.width];
-			panel.atlHeaderCap = panel_header_cap(screen_height - 2 * panel_margin, footer, panel.atlContent); // as ui_dialog_chrome
+			panel.atlHeaderCap = panel_header_cap(room - 2 * panel_margin, footer, panel.atlContent); // as ui_dialog_chrome
 			panel.frame = frame;
 			[panel setNeedsLayout];
 #ifdef ATL_TEST_HOOKS
@@ -2074,20 +2085,41 @@ static void replace_native(struct ui_view *view, UIView *replacement, bool enabl
 		state.javaFocus = false;
 }
 
-// the number and phone pads have no return key: a bar above them holds it
-static UIToolbar *return_bar(UIView *field, enum ui_return_key key)
+// the number and phone pads have no return key: a round button floats above the pad's corner
+static UIView *return_button(UIView *field, enum ui_return_key key)
 {
 	static NSString *const titles[] = {
-		[UI_RETURN_DEFAULT] = @"Return", [UI_RETURN_GO] = @"Go", [UI_RETURN_SEARCH] = @"Search",
-		[UI_RETURN_NEXT] = @"Next", [UI_RETURN_SEND] = @"Send",
+		[UI_RETURN_DEFAULT] = @"Return", [UI_RETURN_DONE] = @"Done", [UI_RETURN_GO] = @"Go",
+		[UI_RETURN_SEARCH] = @"Search", [UI_RETURN_NEXT] = @"Next", [UI_RETURN_SEND] = @"Send",
 	};
-	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
-	UIBarButtonItem *item = key == UI_RETURN_DONE
-	                            ? [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:field action:@selector(atlReturn)]
-	                            : [[UIBarButtonItem alloc] initWithTitle:titles[key] style:UIBarButtonItemStyleDone target:field action:@selector(atlReturn)];
-	bar.items = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil], item];
-	[bar sizeToFit];
-	return bar;
+	static NSString *const symbols[] = {
+		[UI_RETURN_DEFAULT] = @"return", [UI_RETURN_DONE] = @"checkmark", [UI_RETURN_GO] = @"arrow.right",
+		[UI_RETURN_SEARCH] = @"magnifyingglass", [UI_RETURN_NEXT] = @"arrow.down", [UI_RETURN_SEND] = @"arrow.up",
+	};
+	const CGFloat size = 44, gap = 8;
+	UIButtonConfiguration *config;
+	if (@available(iOS 26.0, *))
+		config = [UIButtonConfiguration glassButtonConfiguration];
+	else
+		config = [UIButtonConfiguration grayButtonConfiguration];
+	config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+	config.image = [UIImage systemImageNamed:symbols[key]];
+	config.preferredSymbolConfigurationForImage = [UIImageSymbolConfiguration configurationWithTextStyle:UIFontTextStyleBody scale:UIImageSymbolScaleLarge];
+	UIButton *button = [UIButton buttonWithConfiguration:config primaryAction:nil];
+	[button addTarget:field action:@selector(atlReturn) forControlEvents:UIControlEventPrimaryActionTriggered];
+	button.accessibilityLabel = titles[key];
+	button.translatesAutoresizingMaskIntoConstraints = NO;
+
+	UIView *holder = [[ATLPassView alloc] initWithFrame:CGRectMake(0, 0, 320, size + 2 * gap)];
+	holder.backgroundColor = UIColor.clearColor;
+	[holder addSubview:button];
+	[NSLayoutConstraint activateConstraints:@[
+		[button.widthAnchor constraintEqualToConstant:size],
+		[button.heightAnchor constraintEqualToConstant:size],
+		[button.trailingAnchor constraintEqualToAnchor:holder.safeAreaLayoutGuide.trailingAnchor constant:-gap],
+		[button.bottomAnchor constraintEqualToAnchor:holder.bottomAnchor constant:-gap],
+	]];
+	return holder;
 }
 
 static UITextAutocapitalizationType autocap_type(enum ui_autocap autocap)
@@ -2146,7 +2178,7 @@ void records_edit_config_changed(struct ui_view *view)
 			if ([editor isKindOfClass:[UITextField class]]) {
 				((UITextField *)editor).placeholder = hint;
 				bool pad = config.keyboard == UI_KEYBOARD_NUMBER || config.keyboard == UI_KEYBOARD_DECIMAL || config.keyboard == UI_KEYBOARD_PHONE;
-				((UITextField *)editor).inputAccessoryView = pad ? return_bar(editor, config.return_key) : nil;
+				((UITextField *)editor).inputAccessoryView = pad ? return_button(editor, config.return_key) : nil;
 			}
 			else
 				[(ATLEditView *)editor atlShowPlaceholder];

@@ -14,16 +14,16 @@ import android.view.ViewGroup;
 /* The toolkit's scroll view (UIScrollView, GtkScrolledWindow) scrolls and reports; Java's scroll
  * offset mirrors it and asks it to move. */
 public class ScrollView extends FrameLayout {
+	public ScrollView(Context context) {
+		this(context, null);
+	}
+
 	public ScrollView(Context context, AttributeSet attrs) {
-		super(context, attrs);
+		this(context, attrs, com.android.internal.R.attr.scrollViewStyle);
 	}
 
 	public ScrollView(Context context, AttributeSet attrs, int defStyleAttr) {
 		super(context, attrs, defStyleAttr);
-	}
-
-	public ScrollView(Context context) {
-		super(context);
 	}
 
 	@Override
@@ -92,6 +92,20 @@ public class ScrollView extends FrameLayout {
 		boolean scrolls = y != getScrollY();
 		smoothScrollTo(getScrollX(), y);
 		return scrolls;
+	}
+
+	// a focused view that showed before a resize (the keyboard's) shows after it
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		super.onSizeChanged(w, h, oldw, oldh);
+		View focused = findFocus();
+		if (focused == null || focused == this)
+			return;
+		Rect rect = new Rect();
+		focused.getDrawingRect(rect);
+		offsetDescendantRectToMyCoords(focused, rect);
+		if (rect.bottom >= getScrollY() && rect.top <= getScrollY() + oldh)
+			smoothScrollBy(0, computeScrollDeltaToGetChildRectOnScreen(rect));
 	}
 
 	@Override

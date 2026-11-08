@@ -22,9 +22,16 @@ struct atl_window_frame {
 /* Measures and places the window's root as WindowManager would and tells its Java Window; the
  * backend lays the root out at the frame's size. */
 void windows_place(struct atl_subwindow *window, int screen_width, int screen_height, struct atl_window_frame *frame);
-/* Where windows_place last put it: its root, and with a panel alert's chrome around it the panel. */
+/* Where windows_place last put it, moved up by its pan: its root, and with a panel alert's chrome
+ * around it the panel. */
 const struct atl_window_frame *windows_frame(const struct atl_subwindow *window);
 const struct atl_window_frame *windows_panel(const struct atl_subwindow *window);
+/* Its pan changed (Window.set_soft_input). */
+void windows_panned(struct atl_subwindow *window);
+/* The room a window (NULL: the shown activity's) lays out in: the app's window, without the keyboard
+ * when it resizes for it (adjustResize); and how far its root moves up for the keyboard (adjustPan). */
+void windows_area(struct atl_app *app, const struct atl_subwindow *window, int *width, int *height);
+int windows_pan(struct atl_app *app, const struct atl_subwindow *window);
 /* AOSP's input dispatch at a DOWN over the roots the backend shows (bottom first): the topmost
  * touchable one under the point (its panel, chrome included), else the topmost touch-modal one;
  * NULL: the shown activity. */

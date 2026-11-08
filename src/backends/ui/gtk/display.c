@@ -6,6 +6,8 @@
 #endif
 
 #include "src/api-impl-jni/content/android_content_Context.h"
+#include "src/shared/app.h"
+#include "src/shared/nav.h"
 #include "src/shared/upcall.h"
 #include "src/slots/ui.h"
 
@@ -39,10 +41,10 @@ static int night_from_color_scheme(GVariant *value)
 
 static void settings_changed_cb(XdpSettings *xdp_settings, gchar *namestpace, gchar *key, GVariant *value, gpointer user_data)
 {
-	if (!strcmp(namestpace, "org.freedesktop.appearance") && !strcmp(key, "color-scheme")) {
-		struct ui_display display = {UI_DISPLAY_UNKNOWN, UI_DISPLAY_UNKNOWN, night_from_color_scheme(value)};
-		atl_upcall_display_changed(&display);
-	}
+	// the portal's main loop is the app's: its main thread is GTK's
+	struct atl_app *app = atl_app_current();
+	if (app && !strcmp(namestpace, "org.freedesktop.appearance") && !strcmp(key, "color-scheme"))
+		atl_nav_set_night(app, night_from_color_scheme(value));
 }
 
 static XdpSettings *xdp_settings = NULL;

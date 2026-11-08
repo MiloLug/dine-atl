@@ -14,5 +14,10 @@
 		<activity android:name=".MenuActivity"/>
 		<activity android:name=".ToastActivity"/>
 		<activity android:name=".SelfActivity"/>
+		<activity android:name=".PanActivity" android:windowSoftInputMode="adjustPan"/>
+		<activity android:name=".ResizeActivity" android:windowSoftInputMode="adjustResize"/>
+		<activity android:name=".UnspecifiedActivity"/>
+		<activity android:name=".ConfigActivity" android:configChanges="uiMode"/>
+		<activity android:name=".PlainConfigActivity"/>
 	</application>
 </manifest>

@@ -7,7 +7,9 @@ import java.util.List;
 
 public class WindowInsets {
 
-	public static final WindowInsets CONSUMED = new WindowInsets(null, null);
+	private static final int DEFAULT_VISIBLE = ~Type.IME;
+
+	public static final WindowInsets CONSUMED = new WindowInsets(null, null, DEFAULT_VISIBLE);
 
 	// the system window insets of Android before API 30: these bars
 	private static final int SYSTEM_WINDOW = Type.STATUS_BARS | Type.NAVIGATION_BARS | Type.CAPTION_BAR;
@@ -16,26 +18,28 @@ public class WindowInsets {
 	 * consuming the system window insets drops every type's */
 	private final Insets[] typeInsets;
 	private final Insets[] maxInsets; // the stable insets' source
+	private final int visible;        // the shown types
 
-	private WindowInsets(Insets[] typeInsets, Insets[] maxInsets) {
+	private WindowInsets(Insets[] typeInsets, Insets[] maxInsets, int visible) {
 		this.typeInsets = typeInsets;
 		this.maxInsets = maxInsets;
+		this.visible = visible;
 	}
 
 	public WindowInsets() {
-		this(new Insets[Type.SIZE], new Insets[Type.SIZE]);
+		this(new Insets[Type.SIZE], new Insets[Type.SIZE], DEFAULT_VISIBLE);
 	}
 
 	public WindowInsets(WindowInsets windowInsets) {
-		this(windowInsets.typeInsets, windowInsets.maxInsets);
+		this(windowInsets.typeInsets, windowInsets.maxInsets, windowInsets.visible);
 	}
 
 	public WindowInsets consumeStableInsets() {
-		return new WindowInsets(typeInsets, null);
+		return new WindowInsets(typeInsets, null, visible);
 	}
 
 	public WindowInsets consumeSystemWindowInsets() {
-		return new WindowInsets(null, maxInsets);
+		return new WindowInsets(null, maxInsets, visible);
 	}
 
 	// consumed insets stay consumed, as on AOSP 10
@@ -144,9 +148,8 @@ public class WindowInsets {
 		return typeInsets == null && maxInsets == null;
 	}
 
-	// every type but the IME (there is none) is shown
 	public boolean isVisible(int typeMask) {
-		return (typeMask & Type.IME) == 0;
+		return (visible & typeMask) == typeMask;
 	}
 
 	public WindowInsets consumeDisplayCutout() {
@@ -161,7 +164,7 @@ public class WindowInsets {
 	public WindowInsets inset(int left, int top, int right, int bottom) {
 		if (left < 0 || top < 0 || right < 0 || bottom < 0)
 			throw new IllegalArgumentException("insets must be non-negative");
-		return new WindowInsets(inset_map(typeInsets, left, top, right, bottom), inset_map(maxInsets, left, top, right, bottom));
+		return new WindowInsets(inset_map(typeInsets, left, top, right, bottom), inset_map(maxInsets, left, top, right, bottom), visible);
 	}
 
 	private static Insets[] inset_map(Insets[] map, int left, int top, int right, int bottom) {
@@ -180,12 +183,14 @@ public class WindowInsets {
 	public static final class Builder {
 		private Insets[] typeInsets;
 		private Insets[] maxInsets;
+		private int visible = DEFAULT_VISIBLE;
 
 		public Builder() {}
 
 		public Builder(WindowInsets insets) {
 			typeInsets = insets.typeInsets != null ? insets.typeInsets.clone() : null;
 			maxInsets = insets.maxInsets != null ? insets.maxInsets.clone() : null;
+			visible = insets.visible;
 		}
 
 		private static Insets[] set(Insets[] map, int typeMask, Insets insets) {
@@ -218,10 +223,10 @@ public class WindowInsets {
 			return setInsets(Type.TAPPABLE_ELEMENT, insets);
 		}
 
-		// the bars never hide: an inset is also its maximum
+		// an inset is also its maximum, but the IME's, which has none (setInsetsIgnoringVisibility)
 		public Builder setInsets(int typeMask, Insets insets) {
 			typeInsets = set(typeInsets, typeMask, insets);
-			maxInsets = set(maxInsets, typeMask, insets);
+			maxInsets = set(maxInsets, typeMask & ~Type.IME, insets);
 			return this;
 		}
 
@@ -234,6 +239,7 @@ public class WindowInsets {
 		}
 
 		public Builder setVisible(int typeMask, boolean visible) {
+			this.visible = visible ? this.visible | typeMask : this.visible & ~typeMask;
 			return this;
 		}
 
@@ -276,7 +282,7 @@ public class WindowInsets {
 		}
 
 		public WindowInsets build() {
-			return new WindowInsets(typeInsets != null ? typeInsets.clone() : null, maxInsets != null ? maxInsets.clone() : null);
+			return new WindowInsets(typeInsets != null ? typeInsets.clone() : null, maxInsets != null ? maxInsets.clone() : null, visible);
 		}
 	}
 

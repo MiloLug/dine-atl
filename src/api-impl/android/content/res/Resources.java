@@ -109,10 +109,10 @@ public class Resources {
 	/*package*/ final Configuration mTmpConfig = new Configuration();
 	/*package*/ TypedValue mTmpValue = new TypedValue();
 	private ThemedResourceCache<Drawable.ConstantState> mDrawableCacheInternal = new ThemedResourceCache<Drawable.ConstantState>() {
+		// any change: ATL's drawables don't keep the configurations they depend on (setChangingConfigurations)
 		@Override
 		protected boolean shouldInvalidateEntry(Drawable.ConstantState entry, int configChanges) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'shouldInvalidateEntry'");
+			return true;
 		}
 	};
 	/*package*/ Object mDrawableCache = Build.VERSION.SDK_INT < 23
@@ -120,10 +120,10 @@ public class Resources {
 	                                      : mDrawableCacheInternal;
 	private final ConfigurationBoundResourceCache<ComplexColor> mComplexColorCache = new ConfigurationBoundResourceCache<>(this);
 	/*package*/ final ThemedResourceCache<Drawable.ConstantState> mColorDrawableCache = new ThemedResourceCache<Drawable.ConstantState>() {
+		// any change: ATL's drawables don't keep the configurations they depend on (setChangingConfigurations)
 		@Override
 		protected boolean shouldInvalidateEntry(Drawable.ConstantState entry, int configChanges) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'shouldInvalidateEntry'");
+			return true;
 		}
 	};
 	/*package*/ boolean mPreloading;
@@ -1691,8 +1691,7 @@ public class Resources {
 					mTmpConfig.locale = Locale.getDefault();
 					mTmpConfig.setLayoutDirection(mTmpConfig.locale);
 				}
-				configChanges = mConfiguration.updateFrom(mTmpConfig);
-				configChanges = ActivityInfo.activityInfoConfigToNative(configChanges);
+				configChanges = mConfiguration.updateFrom(mTmpConfig); // AOSP 10's caches take the Java bits
 			}
 			if (mConfiguration.locale == null) {
 				mConfiguration.locale = Locale.getDefault();

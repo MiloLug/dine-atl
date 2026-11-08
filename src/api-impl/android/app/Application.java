@@ -6,13 +6,14 @@
 package android.app;
 
 import android.R;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.PackageParser;
 import android.content.res.Configuration;
 import android.os.Bundle;
 
-public class Application extends ContextWrapper {
+public class Application extends ContextWrapper implements android.content.ComponentCallbacks2 {
 	public long native_window;
 
 	private String get_app_icon_path() {
@@ -126,16 +127,33 @@ public class Application extends ContextWrapper {
 	 */
 	public void onTerminate() {
 	}
+	/* Copyright (C) 2006 The Android Open Source Project: the registered callbacks hear it too */
+	private final java.util.ArrayList<ComponentCallbacks> component_callbacks = new java.util.ArrayList<>();
+
 	public void onConfigurationChanged(Configuration newConfig) {
+		ComponentCallbacks[] callbacks;
+		synchronized (component_callbacks) {
+			callbacks = component_callbacks.toArray(new ComponentCallbacks[0]);
+		}
+		for (ComponentCallbacks callback : callbacks)
+			callback.onConfigurationChanged(newConfig);
 	}
 	public void onLowMemory() {
 	}
 	public void onTrimMemory(int level) {
 	}
-	/*public void registerComponentCallbacks(ComponentCallbacks callback) {
+	@Override
+	public void registerComponentCallbacks(ComponentCallbacks callback) {
+		synchronized (component_callbacks) {
+			component_callbacks.add(callback);
+		}
 	}
+	@Override
 	public void unregisterComponentCallbacks(ComponentCallbacks callback) {
-	}*/
+		synchronized (component_callbacks) {
+			component_callbacks.remove(callback);
+		}
+	}
 	public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
 		synchronized (activity_lifecycle_callbacks) {
 			activity_lifecycle_callbacks.add(callback);

@@ -19,6 +19,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.location.LocationListener;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.Slog;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
@@ -79,11 +80,14 @@ public final class ATLLoadedApp {
 	public android.widget.Toast.Queue toasts;
 	/** @hide the PopupMenu up, which takes Back: its native menu is no window of the registry */
 	public android.widget.PopupMenu open_menu;
+	// every Resources made for the app, for a configuration change (AOSP's ResourcesManager's)
+	private final java.util.ArrayList<java.lang.ref.WeakReference<Resources>> made_resources = new java.util.ArrayList<>();
 
 	ATLLoadedApp(Resources resources, ClassLoader classLoader,
 	             PackageParser.Package pkg, Configuration config) {
 		this.default_resources = resources;
 		this.config = config;
+		made_resources.add(new java.lang.ref.WeakReference<>(resources));
 		this.class_loader = classLoader;
 		this.pkg = pkg;
 		this.effective_sdk_compat = Math.min(pkg.applicationInfo.targetSdkVersion, Build.VERSION.SDK_INT);
@@ -204,7 +208,79 @@ public final class ATLLoadedApp {
 		if (configuration == null)
 			configuration = config;
 		Resources resources = new Resources(this.default_resources.getAssets(), displayMetrics, configuration);
+		synchronized (made_resources) {
+			for (java.util.Iterator<java.lang.ref.WeakReference<Resources>> it = made_resources.iterator(); it.hasNext();) {
+				if (it.next().get() == null)
+					it.remove();
+			}
+			made_resources.add(new java.lang.ref.WeakReference<>(resources));
+		}
 		return resources;
+	}
+
+	/* atl_nav_set_night's post, on the app's main thread: AOSP's ActivityThread.handleConfigurationChanged
+	 * for the night bits. An activity whose manifest's configChanges covers uiMode hears it, any other
+	 * keeps its configuration until a recreation (multi-app MA5). */
+	private void applyNight(int night, Activity[] activities) {
+		applySystemNight(night);
+		int old = config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+		if (old == night)
+			return;
+		config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
+		java.util.ArrayList<Resources> live = new java.util.ArrayList<>();
+		synchronized (made_resources) {
+			for (java.util.Iterator<java.lang.ref.WeakReference<Resources>> it = made_resources.iterator(); it.hasNext();) {
+				Resources resources = it.next().get();
+				if (resources == null)
+					it.remove();
+				else if (resources != default_resources)
+					live.add(resources);
+			}
+		}
+		live.add(default_resources); // last: the app's Resources share its AssetManager, whose configuration the last one sets
+		for (Resources resources : live)
+			setNight(resources, old, night);
+		Configuration changed = new Configuration(config);
+		if (application != null)
+			application.onConfigurationChanged(changed);
+		for (Activity activity : activities) {
+			if ((manifestConfigChanges(activity) & android.content.pm.ActivityInfo.CONFIG_UI_MODE) == 0) {
+				Log.i(TAG, activity.getClass().getName() + " doesn't handle uiMode; keeps its configuration");
+				continue;
+			}
+			Configuration own = new Configuration(activity.getResources().getConfiguration());
+			activity.onConfigurationChanged(own);
+			activity.getWindow().getDecorView().dispatchConfigurationChanged(own);
+		}
+	}
+
+	// a configuration context that overrides the night bits keeps them
+	private static void setNight(Resources resources, int old, int night) {
+		Configuration config = new Configuration(resources.getConfiguration());
+		if ((config.uiMode & Configuration.UI_MODE_NIGHT_MASK) != old)
+			return;
+		config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
+		resources.updateConfiguration(config, resources.getDisplayMetrics());
+	}
+
+	// the VM's display configuration, once per change whichever app's post comes first
+	private static synchronized void applySystemNight(int night) {
+		int old = Context.sys_config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+		if (old == night)
+			return;
+		Context.sys_config.uiMode = (Context.sys_config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
+		if (system_application != null)
+			system_application.config.uiMode = Context.sys_config.uiMode;
+		setNight(Resources.getSystem(), old, night);
+	}
+
+	// the manifest's: PackageManager.getActivityInfo claims uiMode for every activity (AppCompat's check)
+	private int manifestConfigChanges(Activity activity) {
+		for (PackageParser.Activity info : pkg.activities) {
+			if (info.className.equals(activity.getClass().getName()))
+				return info.info.configChanges;
+		}
+		return 0;
 	}
 
 	public ContextImpl createContext(DisplayMetrics displayMetrics, Configuration configuration, int theme) {
@@ -272,10 +348,12 @@ public final class ATLLoadedApp {
 	    throws ReflectiveOperationException {
 		int theme_res = 0;
 		int label_res = 0;
+		int soft_input_mode = 0;
 		for (PackageParser.Activity activity : pkg.activities) {
 			if (className.equals(activity.className)) {
 				label_res = activity.info.labelRes;
 				theme_res = activity.info.getThemeResource();
+				soft_input_mode = activity.info.softInputMode;
 				break;
 			}
 		}
@@ -294,6 +372,7 @@ public final class ATLLoadedApp {
 		} else if (pkg.applicationInfo.labelRes != 0) {
 			activity.atlAttachTitle(r.getText(pkg.applicationInfo.labelRes));
 		}
+		activity.getWindow().setSoftInputMode(soft_input_mode); // Activity.attach's
 		return activity;
 	}
 

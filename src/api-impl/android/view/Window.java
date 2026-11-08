@@ -1,8 +1,8 @@
 /*
  * Portions Copyright (C) 2006 The Android Open Source Project, from
- * core/java/com/android/internal/policy/PhoneWindow.java, core/java/android/view/Window.java and
- * core/java/com/android/internal/policy/DecorView.java at android-security-10.0.0_r75, Apache
- * License 2.0; see doc/AOSP.md.
+ * core/java/com/android/internal/policy/PhoneWindow.java, core/java/android/view/Window.java,
+ * core/java/com/android/internal/policy/DecorView.java and core/java/android/view/ViewRootImpl.java
+ * at android-security-10.0.0_r75, Apache License 2.0; see doc/AOSP.md.
  */
 package android.view;
 
@@ -391,6 +391,7 @@ public class Window {
 		// DecorView's: the window's padding is its background's, none without one
 		if (drawable == null || !drawable.getPadding(new Rect()))
 			decorView.setPadding(0, 0, 0, 0);
+		frameChanged();
 	}
 
 	public void setAttributes(WindowManager.LayoutParams params) {
@@ -585,7 +586,18 @@ public class Window {
 		return panel_parent;
 	}
 
-	public void setSoftInputMode(int dummy) {}
+	/* Copyright (C) 2006 The Android Open Source Project: Window.setSoftInputMode */
+	private boolean has_soft_input_mode;
+
+	public void setSoftInputMode(int mode) {
+		if (mode != WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED) {
+			params.softInputMode = mode;
+			has_soft_input_mode = true;
+		} else {
+			has_soft_input_mode = false;
+		}
+		requestInsets();
+	}
 
 	public int getNavigationBarColor() {
 		return 0xFF888888; // gray
@@ -626,18 +638,110 @@ public class Window {
 	private void dispatchInsets(boolean forced) {
 		insets_requested = false;
 		insets_forced = false;
-		// system gestures, mandatory system gestures, navigation bars: l t r b
-		int[] px = get_insets(subwindow != 0, frame_left, frame_top, frame_width, frame_height);
-		if (!forced && Arrays.equals(px, insets_px))
+		sendSoftInput(resolvedAdjust(), soft_pan); // the activity's insets are clipped to its resized room
+		// system gestures, mandatory system gestures, navigation bars, status bars, IME: l t r b
+		int[] px = get_insets(subwindow, frame_left, frame_top, frame_width, frame_height);
+		if (!forced && Arrays.equals(px, insets_px)) {
+			updatePan();
 			return;
+		}
 		insets_px = px;
-		rootInsets = new WindowInsets.Builder()
-		                 .setInsets(WindowInsets.Type.systemGestures(), Insets.of(px[0], px[1], px[2], px[3]))
-		                 .setInsets(WindowInsets.Type.mandatorySystemGestures(), Insets.of(px[4], px[5], px[6], px[7]))
-		                 .setInsets(WindowInsets.Type.navigationBars(), Insets.of(px[8], px[9], px[10], px[11]))
-		                 .build();
+		Insets ime = Insets.of(px[16], px[17], px[18], px[19]);
+		WindowInsets.Builder insets = new WindowInsets.Builder()
+		                                  .setInsets(WindowInsets.Type.systemGestures(), Insets.of(px[0], px[1], px[2], px[3]))
+		                                  .setInsets(WindowInsets.Type.mandatorySystemGestures(), Insets.of(px[4], px[5], px[6], px[7]))
+		                                  .setInsets(WindowInsets.Type.ime(), ime)
+		                                  .setVisible(WindowInsets.Type.ime(), !ime.equals(Insets.NONE));
+		bars_hidden = 0;
+		bar(insets, WindowInsets.Type.navigationBars(), Insets.of(px[8], px[9], px[10], px[11]), barsHideNavigation());
+		bar(insets, WindowInsets.Type.statusBars(), Insets.of(px[12], px[13], px[14], px[15]), barsFullscreen());
+		rootInsets = insets.build();
 		root.dispatchApplyWindowInsets(rootInsets);
 		root.requestLayout();
+		updatePan();
+	}
+
+	private int bars_hidden; // as the last insets took them: 1 the status bar, 2 the navigation bar
+
+	// a hidden bar takes no room, but keeps its maximum (getInsetsIgnoringVisibility)
+	private void bar(WindowInsets.Builder insets, int type, Insets value, boolean hidden) {
+		insets.setInsets(type, hidden ? Insets.NONE : value).setInsetsIgnoringVisibility(type, value).setVisible(type, !hidden);
+		if (hidden)
+			bars_hidden |= type == WindowInsets.Type.statusBars() ? 1 : 2;
+	}
+
+	private int soft_adjust, soft_pan; // as last sent
+
+	/* Copyright (C) 2006 The Android Open Source Project: ViewRootImpl.performTraversals' resize
+	 * mode; unspecified resizes while a scroll container shows */
+	private int resolvedAdjust() {
+		int adjust = params.softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST;
+		if (adjust != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_UNSPECIFIED)
+			return adjust;
+		return hasShownScrollContainer(root) ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
+	}
+
+	private static boolean hasShownScrollContainer(View view) {
+		if (view.getVisibility() != View.VISIBLE)
+			return false;
+		if (view.isScrollContainer())
+			return true;
+		if (view instanceof ViewGroup) {
+			ViewGroup group = (ViewGroup)view;
+			for (int i = 0; i < group.getChildCount(); i++) {
+				if (hasShownScrollContainer(group.getChildAt(i)))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	// a change lays the window out again in its new room, or moved
+	private void sendSoftInput(int adjust, int pan) {
+		if (adjust == soft_adjust && pan == soft_pan)
+			return;
+		soft_adjust = adjust;
+		soft_pan = pan;
+		set_soft_input(subwindow, adjust, pan);
+		root.requestLayout();
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: ViewRootImpl.scrollToRectOrFocus, for the
+	 * focused view only: the pan that shows it above the keyboard, none when it can't fit */
+	private void updatePan() {
+		int ime = insets_px != null ? insets_px[19] : 0;
+		int pan = 0;
+		if (ime > 0 && soft_adjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN) {
+			pan = soft_pan;
+			View focus = root.findFocus();
+			if (focus != null) {
+				int[] location = new int[2];
+				focus.atlLocationInRoot(location);
+				int top = location[1], bottom = top + focus.getHeight();
+				int visible = root.getHeight() - ime;
+				if (bottom - top <= visible)
+					pan = top < 0 ? top : bottom > visible ? bottom - visible : 0;
+			}
+		}
+		sendSoftInput(soft_adjust, pan);
+	}
+
+	/** @hide AOSP's mCurScrollY: how far the keyboard's pan moved the root up */
+	int atlPan() {
+		return soft_pan;
+	}
+
+	// the root's layout pass ended: its views have their frames
+	void atlLaidOut() {
+		updateExclusion();
+		updatePan();
+		if (subwindow == 0 && soft_adjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+			requestInsets(false); // clipped to the room it now has
+	}
+
+	// a view in it took the focus
+	void atlFocusMoved() {
+		updatePan();
 	}
 
 	void requestInsets() {
@@ -711,12 +815,69 @@ public class Window {
 		frameChanged();
 	}
 
-	private boolean view_fullscreen;
-	void setViewFullscreen(boolean fullscreen) {
-		if (view_fullscreen == fullscreen)
+	// a view's setSystemUiVisibility; its views hear of a change, in a post as AOSP's
+	private int view_system_ui;
+	void setViewSystemUi(int flags) {
+		if (view_system_ui == flags)
 			return;
-		view_fullscreen = fullscreen;
+		view_system_ui = flags;
 		frameChanged();
+		new Handler(context.getMainLooper()).post(new Runnable() {
+			@Override
+			public void run() {
+				root.dispatchSystemUiVisibilityChanged(view_system_ui);
+			}
+		});
+	}
+
+	/** @hide View.getWindowSystemUiVisibility */
+	int atlSystemUi() {
+		return view_system_ui;
+	}
+
+	// InsetsController's: the bar types it hides, and how they come back
+	private int controller_hidden;
+	private int bars_behavior;
+	void setControllerHidden(int types, boolean hidden) {
+		controller_hidden = hidden ? controller_hidden | types : controller_hidden & ~types;
+		frameChanged();
+	}
+
+	void setBarsBehavior(int behavior) {
+		bars_behavior = behavior;
+		frameChanged();
+	}
+
+	int getBarsBehavior() {
+		return bars_behavior;
+	}
+
+	private boolean decor_fits = true;
+
+	public void setDecorFitsSystemWindows(boolean fits) {
+		decor_fits = fits;
+		frameChanged();
+	}
+
+	private boolean barsFullscreen() {
+		return (view_system_ui & View.SYSTEM_UI_FLAG_FULLSCREEN) != 0 || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0
+		    || (controller_hidden & WindowInsets.Type.statusBars()) != 0;
+	}
+
+	private boolean barsHideNavigation() {
+		return (view_system_ui & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) != 0 || (controller_hidden & WindowInsets.Type.navigationBars()) != 0;
+	}
+
+	/* The window runs under the status bar: a layout-fullscreen window, unless its cutout mode keeps
+	 * it off the notch; or one without the status bar whose cutout mode takes the notch (no cutout
+	 * inset yet: general-todo ATL-69). FLAG_LAYOUT_IN_SCREEN doesn't count: AOSP sets it on every
+	 * non-floating window, whose decor insets its content. */
+	private boolean coversTop() {
+		boolean layout_fullscreen = (view_system_ui & View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN) != 0
+		                            || (params.flags & WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS) != 0 || !decor_fits;
+		int cutout = params.layoutInDisplayCutoutMode;
+		boolean takes_notch = cutout == WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES || cutout == 3 /*ALWAYS*/;
+		return layout_fullscreen && cutout != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER || barsFullscreen() && takes_notch;
 	}
 
 	private void styleBars() {
@@ -734,6 +895,8 @@ public class Window {
 			light_status_bar = a.getBoolean(com.android.internal.R.styleable.Window_windowLightStatusBar, false);
 		if (a.getBoolean(com.android.internal.R.styleable.Window_windowFullscreen, false))
 			params.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN & ~forced_flags;
+		if (!has_soft_input_mode) // PhoneWindow.generateLayout's
+			params.softInputMode = a.getInt(com.android.internal.R.styleable.Window_windowSoftInputMode, params.softInputMode);
 		/* Copyright (C) 2006 The Android Open Source Project: PhoneWindow.generateLayout's floating
 		 * window, dim and minimum width */
 		boolean floating = a.getBoolean(com.android.internal.R.styleable.Window_windowIsFloating, false);
@@ -770,11 +933,16 @@ public class Window {
 	// activity.c calls it by name (handle_cache) when the activity is shown
 	private void updateFrame() {
 		styleBars();
+		boolean immersive = (view_system_ui & (View.SYSTEM_UI_FLAG_IMMERSIVE | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)) != 0
+		                    || controller_hidden != 0 && bars_behavior != WindowInsetsController.BEHAVIOR_SHOW_BARS_BY_TOUCH;
 		set_frame(subwindow, (params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
-		          view_fullscreen || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0);
+		          barsFullscreen(), coversTop(), barsHideNavigation(), immersive, backgroundColor());
+		if (bars_hidden != (barsFullscreen() ? 1 : 0) + (barsHideNavigation() ? 2 : 0))
+			requestInsets(); // a hidden bar's insets are its maximum only
 		set_keep_screen_on(subwindow, views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
 		set_screen_brightness(subwindow, params.screenBrightness);
 		set_exclusion_rects(subwindow, exclusion_rects);
+		set_soft_input(subwindow, soft_adjust, soft_pan);
 		set_title(title != null ? title.toString() : context.getPackageName());
 	}
 
@@ -824,8 +992,6 @@ public class Window {
 		layoutChanged();
 	}
 
-	public void setDecorFitsSystemWindows(boolean fits) {}
-
 	public WindowInsetsController getInsetsController() {
 		return insets_controller;
 	}
@@ -859,9 +1025,21 @@ public class Window {
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
 	private native void set_layout(long subwindow, int type, int flags, int gravity, int x, int y, int width, int height, int min_width, float dim_amount);
 	private native void clear_background(long native_window);
-	private native void set_frame(long subwindow, boolean has_color, int color, boolean light, boolean fullscreen);
+	private native void set_frame(long subwindow, boolean has_color, int color, boolean light, boolean fullscreen, boolean cover_top, boolean hide_navigation, boolean immersive, int background);
+
+	// what shows where the root doesn't reach (a keyboard's rounded corners): its background's color, else the theme's
+	private int backgroundColor() {
+		Drawable background = root.getBackground();
+		if (background instanceof android.graphics.drawable.ColorDrawable)
+			return ((android.graphics.drawable.ColorDrawable)background).getColor();
+		TypedArray a = context.obtainStyledAttributes(new int[] {android.R.attr.colorBackground});
+		int color = a.getColor(0, 0);
+		a.recycle();
+		return color;
+	}
 	private native void set_keep_screen_on(long subwindow, boolean keep);
 	private native void set_exclusion_rects(long subwindow, int[] rects);
-	private native int[] get_insets(boolean clip, int left, int top, int width, int height);
+	private native int[] get_insets(long subwindow, int left, int top, int width, int height);
+	private native void set_soft_input(long subwindow, int adjust, int pan);
 	private native void set_screen_brightness(long subwindow, float brightness);
 }

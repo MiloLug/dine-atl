@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdlib.h>
 
 #include "src/api-impl-jni/defines.h"
@@ -8,6 +9,7 @@
 
 #include "app.h"
 #include "startup.h"
+#include "upcall.h"
 #include "view.h"
 
 void atl_view_traits_get(JNIEnv *env, jobject view, struct ui_view_traits *traits)
@@ -150,11 +152,15 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobjec
 JNIEXPORT void JNICALL Java_android_view_View_getWindowVisibleDisplayFrame(JNIEnv *env, jobject this, jobject rect)
 {
 	jobject context = (*env)->CallObjectMethod(env, this, _METHOD(_CLASS(this), "getContext", "()Landroid/content/Context;"));
-	int width, height;
-	ui_window_get_size(atl_app_of(env, context)->window, &width, &height);
+	struct atl_app *app = atl_app_of(env, context);
 	(*env)->DeleteLocalRef(env, context);
-	_SET_INT_FIELD(rect, "left", 0);
-	_SET_INT_FIELD(rect, "top", 0);
-	_SET_INT_FIELD(rect, "right", width);
-	_SET_INT_FIELD(rect, "bottom", height);
+	int width, height;
+	ui_window_get_size(app->window, &width, &height);
+	// AOSP's visible insets: the bars and the keyboard
+	struct atl_window_insets insets = atl_app_insets(app);
+	float scale = atl_screen_get()->density_dpi / 160.f;
+	_SET_INT_FIELD(rect, "left", roundf(fmaxf(insets.navigation_bars.left, insets.ime.left) * scale));
+	_SET_INT_FIELD(rect, "top", roundf(fmaxf(insets.status_bars.top, insets.navigation_bars.top) * scale));
+	_SET_INT_FIELD(rect, "right", width - roundf(fmaxf(insets.navigation_bars.right, insets.ime.right) * scale));
+	_SET_INT_FIELD(rect, "bottom", height - roundf(fmaxf(insets.navigation_bars.bottom, insets.ime.bottom) * scale));
 }

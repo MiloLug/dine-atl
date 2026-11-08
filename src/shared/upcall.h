@@ -22,11 +22,15 @@ struct atl_window_config {
 	int density_dpi;
 	int night; // Configuration.UI_MODE_NIGHT_* value, or UI_DISPLAY_UNKNOWN
 };
-/* The screen the host gave the VM: every app's window has its size until a window per task (MA6). */
+/* The screen the host gave the VM; an app's window has its own size (atl_app_window_size). */
 const struct atl_window_config *atl_screen_get(void);
+/* The app's window size in px, as the host last set it (atl_nav_set_window_size); any thread. One
+ * window per app until a window per task (MA6). */
+void atl_app_window_size(struct atl_app *app, int *width, int *height);
 
 void atl_upcall_looper_loop(void);
-/* Applies the known fields to Context.sys_config. */
+/* Applies the known fields to Context.sys_config and each loaded app's configuration; gtk's
+ * portal sends night per app (atl_nav_set_night). */
 void atl_upcall_display_changed(const struct ui_display *display);
 
 /* View.measure; an exception is printed and cleared. */

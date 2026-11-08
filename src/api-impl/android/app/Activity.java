@@ -44,7 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Activity extends ContextThemeWrapper implements Window.Callback, KeyEvent.Callback, LayoutInflater.Factory2 {
+public class Activity extends ContextThemeWrapper implements Window.Callback, KeyEvent.Callback, LayoutInflater.Factory2, android.content.ComponentCallbacks2 {
 	private final static String TAG = "Activity";
 
 	public static final int RESULT_CANCELED = 0;
@@ -348,6 +348,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public void onLowMemory() {
+	}
+
+	public void onTrimMemory(int level) {
 	}
 
 	/* --- */

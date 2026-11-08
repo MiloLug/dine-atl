@@ -50,7 +50,21 @@ void atl_window_state_reset(struct atl_app *app)
 {
 	app->activity_state.keep_screen_on = false;
 	app->activity_state.brightness = -1;
+	app->activity_state.adjust = 0;
+	app->activity_state.pan = 0;
 	windows_state_changed(app);
+}
+
+// the layout pass the window requests after either takes them
+JNIEXPORT void JNICALL Java_android_view_Window_set_1soft_1input(JNIEnv *env, jobject this, jlong subwindow, jint adjust, jint pan)
+{
+	struct atl_window_state *state = atl_window_state_of(env, atl_app_of_window(env, this), this, subwindow);
+	if (!state)
+		return;
+	state->adjust = adjust;
+	state->pan = pan;
+	if (subwindow)
+		windows_panned(_PTR(subwindow));
 }
 
 JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness(JNIEnv *env, jobject this, jlong subwindow, jfloat brightness)
@@ -63,20 +77,24 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness(JNIEnv *
 	windows_state_changed(app);
 }
 
-// a window over the activities adds only its fullscreen flag
-JNIEXPORT void JNICALL Java_android_view_Window_set_1frame(JNIEnv *env, jobject this, jlong subwindow, jboolean has_color, jint color, jboolean light, jboolean fullscreen)
+// a window over the activities adds only its bars' flags
+JNIEXPORT void JNICALL Java_android_view_Window_set_1frame(JNIEnv *env, jobject this, jlong subwindow, jboolean has_color, jint color, jboolean light, jboolean fullscreen,
+                                                          jboolean cover_top, jboolean hide_navigation, jboolean immersive, jint background)
 {
 	struct atl_app *app = atl_app_of_window(env, this);
 	struct atl_window_state *state = atl_window_state_of(env, app, this, subwindow);
 	if (!state)
 		return;
 	state->fullscreen = fullscreen;
-	if (!subwindow && (!app->bar_set || app->bar_has_color != has_color || app->bar_color != color || app->bar_light != light)) {
+	state->hide_navigation = hide_navigation;
+	state->immersive = immersive;
+	if (!subwindow) {
 		app->bar_set = true;
 		app->bar_has_color = has_color;
 		app->bar_color = color;
 		app->bar_light = light;
-		app->frame_sent = false;
+		app->cover_top = cover_top;
+		app->background = background;
 	}
 	windows_state_changed(app);
 }

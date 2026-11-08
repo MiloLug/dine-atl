@@ -97,8 +97,19 @@ struct ui_frame {
 	uint32_t color;  // ARGB
 	bool light;      // the frame is light: dark text and icons on it
 	bool fullscreen; // FLAG_FULLSCREEN: the host hides its bars; the window keeps its size
+	bool cover_top;  // the window runs under the status bar to the screen's top; the host resizes it
+	bool hide_navigation; // SYSTEM_UI_FLAG_HIDE_NAVIGATION: the host hides its navigation bar
+	bool immersive;       // a hidden bar comes back only for a swipe from its edge
+	uint32_t background;  // ARGB behind the window's root where it doesn't reach (a keyboard's corners); 0: none
 };
 void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame);
+/* color and light count only with has_color */
+static inline bool ui_frame_equal(const struct ui_frame *a, const struct ui_frame *b)
+{
+	return a->has_color == b->has_color && (!a->has_color || (a->color == b->color && a->light == b->light)) && a->fullscreen == b->fullscreen
+	       && a->cover_top == b->cover_top && a->hide_navigation == b->hide_navigation && a->immersive == b->immersive
+	       && a->background == b->background;
+}
 #ifdef ATL_TEST_HOOKS
 /* Prints the shown activity's view tree: "viewtree: " lines, one per view with its class, frame
  * relative to the parent and text, then "viewtree: end". */

@@ -383,9 +383,14 @@ public abstract class Context {
 		return checkCallingOrSelfPermission(permission);
 	}
 
-	public void registerComponentCallbacks(ComponentCallbacks callbacks) {}
+	// AOSP's: the Application keeps them
+	public void registerComponentCallbacks(ComponentCallbacks callbacks) {
+		getApplicationContext().registerComponentCallbacks(callbacks);
+	}
 
-	public void unregisterComponentCallbacks(ComponentCallbacks callbacks) {}
+	public void unregisterComponentCallbacks(ComponentCallbacks callbacks) {
+		getApplicationContext().unregisterComponentCallbacks(callbacks);
+	}
 
 	public abstract boolean bindService(final Intent intent, final ServiceConnection serviceConnection, int flags);
 

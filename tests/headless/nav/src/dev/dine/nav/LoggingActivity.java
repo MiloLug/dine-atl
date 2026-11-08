@@ -9,7 +9,9 @@ import android.view.WindowInsets;
 import android.widget.TextView;
 
 /* Logs each lifecycle callback as "nav: <name> <callback>", and the window insets its content gets:
- * "nav: <name> insets" and px for system gestures, mandatory gestures, navigation bars. */
+ * "nav: <name> insets" and px for system gestures, mandatory gestures, navigation bars; then, when
+ * any is set, "nav: <name> edges status <px> ime <px> <shown|hidden>". A size change after the
+ * first layout logs "nav: <name> size <w>x<h>". */
 public abstract class LoggingActivity extends Activity {
 	private final String name;
 
@@ -34,7 +36,16 @@ public abstract class LoggingActivity extends Activity {
 		content.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
 			public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
 				log("insets " + px(insets.getSystemGestureInsets()) + " " + px(insets.getMandatorySystemGestureInsets()) + " " + px(insets.getInsets(WindowInsets.Type.navigationBars())));
+				Insets status = insets.getInsets(WindowInsets.Type.statusBars()), ime = insets.getInsets(WindowInsets.Type.ime());
+				if (!status.equals(Insets.NONE) || !ime.equals(Insets.NONE))
+					log("edges status " + px(status) + " ime " + px(ime) + (insets.isVisible(WindowInsets.Type.ime()) ? " shown" : " hidden"));
 				return insets;
+			}
+		});
+		content.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+			public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
+				if (oldRight > oldLeft && (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop))
+					log("size " + (right - left) + "x" + (bottom - top));
 			}
 		});
 		setContentView(content);

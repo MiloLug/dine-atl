@@ -125,6 +125,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/bitmap.c',
 	'src/shared/input.c',
 	'src/shared/insets.c',
+	'src/shared/night.c',
 	'src/shared/ninepatch.c',
 	'src/shared/path.c',
 	'src/shared/region.c',

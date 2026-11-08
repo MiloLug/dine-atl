@@ -3,6 +3,7 @@
  * core/java/android/view/Gravity.java at android-security-10.0.0_r75, Apache License 2.0; see
  * doc/AOSP.md.
  */
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,7 @@ struct atl_subwindow {
 	struct atl_window_state state;
 	struct atl_window_frame frame;
 	struct atl_window_frame panel; // with a chrome around root: the frame and the chrome
+	struct atl_window_frame shown, shown_panel; // both moved up by the state's pan
 	bool requested; // added by a show, until a dismiss
 	bool hidden;    // Dialog.hide: still added
 	bool visible;   // as Java last heard it (Window.atlSetVisible)
@@ -134,12 +136,15 @@ void windows_state_changed(struct atl_app *app)
 {
 	const struct atl_window_state *activity = &app->activity_state;
 	bool keep = activity->keep_screen_on, fullscreen = activity->fullscreen;
+	bool hide_navigation = activity->hide_navigation, immersive = activity->immersive;
 	float brightness = activity->brightness;
 	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
 		if (!window->visible)
 			continue;
 		keep |= window->state.keep_screen_on;
 		fullscreen |= window->state.fullscreen;
+		hide_navigation |= window->state.hide_navigation;
+		immersive |= window->state.immersive;
 		if (window->state.brightness >= 0)
 			brightness = window->state.brightness;
 	}
@@ -151,10 +156,13 @@ void windows_state_changed(struct atl_app *app)
 		app->screen_brightness = brightness;
 		host_screen_brightness(app, brightness);
 	}
-	if (app->bar_set && app->window && (!app->frame_sent || app->fullscreen != fullscreen)) {
+	struct ui_frame frame = {.has_color = app->bar_has_color, .color = app->bar_color, .light = app->bar_light, .fullscreen = fullscreen,
+	                         .cover_top = app->cover_top, .hide_navigation = hide_navigation, .immersive = immersive,
+	                         .background = app->background};
+	if (app->bar_set && app->window && (!app->frame_sent || !ui_frame_equal(&app->frame, &frame))) {
 		app->frame_sent = true;
-		app->fullscreen = fullscreen;
-		ui_window_set_frame(app->window, &(struct ui_frame){.has_color = app->bar_has_color, .color = app->bar_color, .light = app->bar_light, .fullscreen = fullscreen});
+		app->frame = frame;
+		ui_window_set_frame(app->window, &frame);
 	}
 	atl_exclusion_update(app);
 }
@@ -465,9 +473,18 @@ static void place_panel(struct atl_subwindow *window, int screen_width, int scre
 	window->frame = (struct atl_window_frame){left + chrome.left, top + chrome.top, width, height};
 }
 
+void windows_panned(struct atl_subwindow *window)
+{
+	window->shown = window->frame;
+	window->shown.top -= window->state.pan;
+	window->shown_panel = window->chrome ? window->panel : window->frame;
+	window->shown_panel.top -= window->state.pan;
+}
+
 // Java's Window learns its frame; exclusion rects move with it
 static void frame_placed(struct atl_subwindow *window, const struct atl_window_frame *old)
 {
+	windows_panned(window);
 	const struct atl_window_frame *frame = &window->frame;
 	call_window(get_jni_env(), window, handle_cache.window.atlSetFrame, frame->left, frame->top, frame->width, frame->height);
 	if (window->state.n_exclusion_rects && (frame->left != old->left || frame->top != old->top))
@@ -507,12 +524,27 @@ void windows_place(struct atl_subwindow *window, int screen_width, int screen_he
 
 const struct atl_window_frame *windows_frame(const struct atl_subwindow *window)
 {
-	return &window->frame;
+	return &window->shown;
 }
 
 const struct atl_window_frame *windows_panel(const struct atl_subwindow *window)
 {
-	return window->chrome ? &window->panel : &window->frame;
+	return &window->shown_panel;
+}
+
+void windows_area(struct atl_app *app, const struct atl_subwindow *window, int *width, int *height)
+{
+	atl_app_window_size(app, width, height);
+	const struct atl_window_state *state = window ? &window->state : &app->activity_state;
+	if (state->adjust == ATL_ADJUST_RESIZE) {
+		int ime = roundf(atl_app_insets(app).ime.bottom * atl_screen_get()->density_dpi / 160.f);
+		*height = ime < *height ? *height - ime : 0;
+	}
+}
+
+int windows_pan(struct atl_app *app, const struct atl_subwindow *window)
+{
+	return window ? window->state.pan : app->activity_state.pan;
 }
 
 static bool frame_holds(const struct atl_window_frame *frame, float x, float y)
@@ -545,5 +577,5 @@ size_t windows_outside_targets(const struct ui_root *roots, size_t n, const stru
 
 bool windows_in_chrome(const struct atl_subwindow *window, float x, float y)
 {
-	return window->chrome && frame_holds(&window->panel, x, y) && !frame_holds(&window->frame, x, y);
+	return window->chrome && frame_holds(&window->shown_panel, x, y) && !frame_holds(&window->shown, x, y);
 }

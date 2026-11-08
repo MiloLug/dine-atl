@@ -307,7 +307,16 @@ jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *windo
 		exit(1);
 	app->window = window;
 	app->loop = prepare_main_looper(env);
-	app->running = true;
+	pthread_mutex_lock(&app->insets_lock); // a host that set none: the screen's
+	if (!app->window_width) {
+		app->window_width = atl_screen.width;
+		app->window_height = atl_screen.height;
+	}
+	if (!app->night)
+		app->night = atl_screen.night;
+	pthread_mutex_unlock(&app->insets_lock);
+	app->running = true; // first: a night set during the apply posts, so none is lost
+	atl_night_apply(env, app);
 
 	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD(_CLASS(app->record), "start", "(J)Landroid/app/Application;"), _INTPTR(window));
 	exit_on_exception(env);

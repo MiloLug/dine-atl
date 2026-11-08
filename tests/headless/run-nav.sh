@@ -7,7 +7,8 @@
 # insets the content gets; B's exclusion rect reaches the host once the insets give the right edge a
 # gesture strip, and A, which has none, clears it. Each command's
 # lifecycle, dialog, host and window lines must come in order; a command that must do nothing is
-# checked by the next command's lines coming first.
+# checked by the next command's lines coming first. Then the status bar and IME edges reach the
+# content, and a size command lays the window out again; last, ImmersiveActivity's bar flags.
 # Usage: run-nav.sh <headless build dir> <nav.apk>
 set -euo pipefail
 
@@ -83,6 +84,28 @@ send front
 expect "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "$list" "host: task front host"
 send back # the shown list takes it: cancel, then the close
 expect "nav: list canceled" "dialog: close"
+# the status bars and the IME, a 24 dp bar and a 200 dp keyboard; then the window's own size
+send "insets $insets 0 24 0 0 0 0 0 200"
+expect "nav: A insets $insets" "nav: A edges status 0 24 0 0 ime 0 0 0 200 shown"
+send "size 200 300"
+expect "nav: A insets $insets" "nav: A edges status 0 24 0 0 ime 0 0 0 200 shown" "nav: A size 200x300"
+kill "$pid" 2>/dev/null || true
+wait "$pid" 2>/dev/null || true
+
+# ImmersiveActivity: the frame line has its flags and its views hear them; while the navigation bar
+# hides, its inset is 0; the status bar's reaches it, and the host's size lays it out again
+coproc ATL {
+  exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data" timeout 60 \
+    ./android-translation-layer -c "$apk" -l dev/dine/nav/ImmersiveActivity -X -Xint 2>&1
+}
+pid=$ATL_PID
+expect "nav: I onCreate" "nav: I onStart" "$a_frame cover-top hide-navigation immersive" "nav: I insets $none" "nav: I onResume" \
+  "nav: I ui 5122" # LAYOUT_FULLSCREEN | HIDE_NAVIGATION | IMMERSIVE_STICKY
+hidden='20 10 20 10 0 10 0 10 0 0 0 0'
+send "insets $insets 0 24 0 0 0 0 0 0"
+expect "nav: I insets $hidden" "nav: I edges status 0 24 0 0 ime 0 0 0 0 hidden"
+send "size 960 600"
+expect "nav: I insets $hidden" "nav: I edges status 0 24 0 0 ime 0 0 0 0 hidden" "nav: I size 960x600"
 
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true

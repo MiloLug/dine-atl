@@ -713,7 +713,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public interface OnSystemUiVisibilityChangeListener {
-		// TODO
+		void onSystemUiVisibilityChange(int visibility);
 	}
 
 	public static interface OnKeyListener {
@@ -1170,6 +1170,12 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			int resId = a.getResourceId(com.android.internal.R.styleable.View_stateListAnimator, 0);
 			setStateListAnimator(AnimatorInflater.loadStateListAnimator(context, resId));
 		}
+		/* Copyright (C) 2006 The Android Open Source Project: a view with a vertical scroll bar is a
+		 * scroll container unless it says */
+		if (a.hasValue(com.android.internal.R.styleable.View_isScrollContainer))
+			scroll_container = a.getBoolean(com.android.internal.R.styleable.View_isScrollContainer, false);
+		else
+			scroll_container = (a.getInt(com.android.internal.R.styleable.View_scrollbars, 0) & 0x200 /*SCROLLBARS_VERTICAL*/) != 0;
 		a.recycle();
 		onCreateDrawableState(0);
 	}
@@ -1577,7 +1583,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		on_scroll_change_listener = l;
 	}
 
-	public /*native*/ void setOnSystemUiVisibilityChangeListener(OnSystemUiVisibilityChangeListener l) {}
+	private OnSystemUiVisibilityChangeListener on_system_ui_visibility_change_listener;
+
+	public void setOnSystemUiVisibilityChangeListener(OnSystemUiVisibilityChangeListener l) {
+		on_system_ui_visibility_change_listener = l;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void dispatchSystemUiVisibilityChanged(int visibility) {
+		if (on_system_ui_visibility_change_listener != null)
+			on_system_ui_visibility_change_listener.onSystemUiVisibilityChange(visibility & 0x3ff7 /*PUBLIC_STATUS_BAR_VISIBILITY_MASK*/);
+	}
 	public final int getWidth() {
 		return right - left;
 	}
@@ -1713,6 +1729,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			native_setFocused(widget, true);
 			onFocusChanged(true, direction, previouslyFocusedRect);
 			refreshDrawableState();
+			if (attachedWindow != null)
+				attachedWindow.atlFocusMoved();
 		}
 	}
 
@@ -1968,11 +1986,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	public void setSystemUiVisibility(int visibility) {
 		if (decor_window != null)
 			decor_window.setLightStatusBar((visibility & SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0, false);
+		system_ui_visibility = visibility;
 		// Android ORs the flags of every view in the window; here the last view to set them wins
 		Window window = getRootView().decor_window;
 		if (window != null)
-			window.setViewFullscreen((visibility & SYSTEM_UI_FLAG_FULLSCREEN) != 0);
-		system_ui_visibility = visibility;
+			window.setViewSystemUi(visibility);
 	}
 	// the decor's light status bar flag is its Window's
 	public int getSystemUiVisibility() {
@@ -2233,6 +2251,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void getLocationInWindow(int[] location) {
+		atlLocationInRoot(location);
+		Window window = getRootView().decor_window; // AOSP's mCurScrollY
+		if (window != null)
+			location[1] -= window.atlPan();
+	}
+
+	/** @hide in its root's coordinates, without the window's pan */
+	void atlLocationInRoot(int[] location) {
 		float x = 0;
 		float y = 0;
 		for (View view = this; view != null;) {
@@ -2517,7 +2543,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		oldWidth = width;
 		oldHeight = height;
 		if (decor_window != null) // the root: the window's views have their frames
-			decor_window.updateExclusion();
+			decor_window.atlLaidOut();
 	}
 
 	/** Prefill the measureSpec cache, so that AndroidLayout can use it from native code if GTK measure spec is incomplete */
@@ -2606,7 +2632,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public void setWillNotDraw(boolean value) {}
 
-	public void setScrollContainer(boolean isScrollContainer) {}
+	// the window resizes for the keyboard while one shows (SOFT_INPUT_ADJUST_UNSPECIFIED)
+	private boolean scroll_container;
+
+	public void setScrollContainer(boolean isScrollContainer) {
+		scroll_container = isScrollContainer;
+	}
+
+	/** @hide AOSP's, also detached */
+	public boolean isScrollContainer() {
+		return scroll_container;
+	}
 
 	public boolean removeCallbacks(Runnable action) {
 		getHandler().removeCallbacks(action);
@@ -3251,7 +3287,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	public void setTranslationZ(float translationZ) {}
 
 	public int getWindowSystemUiVisibility() {
-		return 0;
+		Window window = getRootView().decor_window;
+		return window != null ? window.atlSystemUi() : 0;
 	}
 
 	public void setScrollIndicators(int indicators, int mask) {}
@@ -3489,6 +3526,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	public void setHasTransientState(boolean hasTransientState) {}
 
 	protected void onConfigurationChanged(Configuration newConfig) {}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void dispatchConfigurationChanged(Configuration newConfig) {
+		onConfigurationChanged(newConfig);
+	}
 
 	public boolean isDrawingCacheEnabled() { return false; }
 

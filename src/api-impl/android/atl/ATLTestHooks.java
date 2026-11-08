@@ -29,5 +29,14 @@ public final class ATLTestHooks {
 		return nativeDrawViewCanvas(handle, target);
 	}
 	private static native long nativeNewViewCanvas();
+
+	/* The frame the context's app last sent its ui backend: fullscreen, cover top, hide
+	 * navigation, immersive; null before the first. */
+	public static native boolean[] frame(android.content.Context context);
+	/* That frame's background, ARGB; 0: none or no frame yet. */
+	public static native int frameBackground(android.content.Context context);
+
+	/* atl_nav_set_night for the context's app only: Configuration.UI_MODE_NIGHT_YES or _NO. */
+	public static native void setNight(android.content.Context context, int night);
 	private static native boolean nativeDrawViewCanvas(long canvas, Bitmap target);
 }

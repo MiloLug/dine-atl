@@ -27,13 +27,23 @@
 // each app runs on its own thread, with the process main thread's stack size (host_linux.c)
 #define APP_THREAD_STACK (8 * 1024 * 1024)
 
-// "insets" and 12 dp: system gestures, mandatory gestures, navigation bars, each left top right bottom
+/* "insets" and 12 or 20 dp: system gestures, mandatory gestures, navigation bars, then status bars
+ * and the IME (else none), each left top right bottom */
 static bool parse_insets(const char *line, struct atl_window_insets *insets)
 {
-	struct atl_edges *e[] = {&insets->system_gestures, &insets->mandatory_gestures, &insets->navigation_bars};
-	return sscanf(line, "insets %f %f %f %f %f %f %f %f %f %f %f %f",
-	              &e[0]->left, &e[0]->top, &e[0]->right, &e[0]->bottom, &e[1]->left, &e[1]->top, &e[1]->right, &e[1]->bottom,
-	              &e[2]->left, &e[2]->top, &e[2]->right, &e[2]->bottom) == 12;
+	if (strncmp(line, "insets ", 7))
+		return false;
+	struct atl_edges *edges[] = {&insets->system_gestures, &insets->mandatory_gestures, &insets->navigation_bars, &insets->status_bars, &insets->ime};
+	float dp[20];
+	int n = 0, used;
+	for (const char *at = line + 7; n < 20 && sscanf(at, "%f%n", &dp[n], &used) == 1; at += used)
+		n++;
+	if (n != 12 && n != 20)
+		return false;
+	*insets = (struct atl_window_insets){0};
+	for (int i = 0; i < n / 4; i++)
+		*edges[i] = (struct atl_edges){dp[i * 4], dp[i * 4 + 1], dp[i * 4 + 2], dp[i * 4 + 3]};
+	return true;
 }
 
 // "touch down|move|up|cancel <id> <x> <y>", px in the window
@@ -129,6 +139,7 @@ static void *read_commands(void *data)
 	while (getline(&line, &size, stdin) != -1) {
 		line[strcspn(line, "\n")] = '\0';
 		struct atl_window_insets insets;
+		float width, height;
 		if (!strcmp(line, "back"))
 			atl_nav_back(app);
 		else if (!strcmp(line, "home"))
@@ -137,6 +148,10 @@ static void *read_commands(void *data)
 			atl_nav_front(app);
 		else if (parse_insets(line, &insets))
 			atl_nav_set_insets(app, &insets);
+		else if (sscanf(line, "size %f %f", &width, &height) == 2)
+			atl_nav_set_window_size(app, width, height);
+		else if (!strcmp(line, "night 0") || !strcmp(line, "night 1"))
+			atl_nav_set_night(app, line[6] == '1' ? /*UI_MODE_NIGHT_YES*/ 0x20 : /*UI_MODE_NIGHT_NO*/ 0x10);
 		else if (!strcmp(line, "dump"))
 			headless_dump(app->window);
 		else if (!strncmp(line, "tap ", 4))
@@ -144,7 +159,7 @@ static void *read_commands(void *data)
 		else if (!strncmp(line, "answer ", 7))
 			headless_answer(app, line + 7);
 		else if (!parse_touch(app->window, line) && !parse_key(app->window, line) && !parse_text(app->window, line))
-			fprintf(stderr, "commands: back, home, front, insets <12 dp>, dump, tap <text>, answer <label>, touch down|move|up|cancel <id> <x> <y>, "
+			fprintf(stderr, "commands: back, home, front, insets <12 or 20 dp>, size <width> <height> (dp), night 0|1, dump, tap <text>, answer <label>, touch down|move|up|cancel <id> <x> <y>, "
 			                "key down|up <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
 			                "text select <start> <end>, text tap <x> <y>, text action|dismiss|hold|release; not \"%s\"\n",
 			        line);

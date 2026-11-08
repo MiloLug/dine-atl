@@ -101,6 +101,14 @@ int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 {
 	struct atl_app *app = config->app;
 	app->listener = config->listener;
+	struct atl_window_config window = window_config(config);
+	pthread_mutex_lock(&app->insets_lock); // each app's own, not only the first's (atl_embedded_vm_init)
+	if (!app->window_width) {
+		app->window_width = window.width;
+		app->window_height = window.height;
+	}
+	app->night = window.night;
+	pthread_mutex_unlock(&app->insets_lock);
 	if (atl_app_prepare(env, app, (char *const[]){(char *)config->apk}, 1, NULL) < 0)
 		return exited(app, -1);
 

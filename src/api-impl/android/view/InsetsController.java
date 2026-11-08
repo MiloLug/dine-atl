@@ -16,7 +16,17 @@ public class InsetsController implements WindowInsetsController {
 	public int getSystemBarsAppearance() {
 		return window.isLightStatusBar() ? APPEARANCE_LIGHT_STATUS_BARS : 0;
 	}
-	public void setSystemBarsBehavior(int behavior) {}
-	public void show(@InsetsType int types) {}
-	public void hide(@InsetsType int types) {}
+	public void setSystemBarsBehavior(int behavior) {
+		window.setBarsBehavior(behavior);
+	}
+	public int getSystemBarsBehavior() {
+		return window.getBarsBehavior();
+	}
+	// the bars only: the IME follows the focused field
+	public void show(@InsetsType int types) {
+		window.setControllerHidden(types & (WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars()), false);
+	}
+	public void hide(@InsetsType int types) {
+		window.setControllerHidden(types & (WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars()), true);
+	}
 }
