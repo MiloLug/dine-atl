@@ -917,6 +917,16 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		return false;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: down the focus chain */
+	@Override
+	public boolean dispatchKeyEventPreIme(KeyEvent event) {
+		if (isFocused())
+			return super.dispatchKeyEventPreIme(event);
+		if (focusedChild != null)
+			return focusedChild.dispatchKeyEventPreIme(event);
+		return false;
+	}
+
 	@Override
 	public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
 		int descendantFocusability = getDescendantFocusability();

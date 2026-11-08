@@ -20,6 +20,7 @@
 #import "panel.h"
 #import "queue.h"
 #import "surface.h"
+#import "toast.h"
 
 /* A UIView per view record, an ATLLabel per text record (an ATLButton per button's, a UITextField or
  * UITextView per edit record's), in the surface the host gave; the shown activity's frame goes to
@@ -29,6 +30,10 @@
 
 // each node view hands the touches UIKit gives it to input.m
 #define FORWARD_TOUCHES                                                            \
+	-(BOOL)atlForwardsTouches                                                      \
+	{                                                                              \
+		return YES;                                                                \
+	}                                                                              \
 	-(void)touchesBegan : (NSSet<UITouch *> *)touches withEvent : (UIEvent *)event \
 	{                                                                              \
 		input_touches(touches, event, UITouchPhaseBegan);                          \
@@ -65,8 +70,14 @@
 @property(nonatomic) UIView *panel;
 @end
 
-// a window's dim: a touch on it is the window's outside touch (records picks the window)
+// a window's dim, or a clear one under a touch-modal window: a touch on it is the window's
+// outside touch (records picks the window)
 @interface ATLDimView : UIView
+@end
+
+/* On the surface: a DOWN on a native control (a field, a scroll view), which records never sees,
+ * still gives the windows that watch outside touches their ACTION_OUTSIDE. It never recognizes. */
+@interface ATLOutsideWatch : UIGestureRecognizer
 @end
 
 static void root_take_responder(UIView *root);
@@ -159,6 +170,26 @@ FORWARD_TOUCHES
 {
 	UIView *hit = [super hitTest:point withEvent:event];
 	return hit == self ? nil : hit;
+}
+@end
+
+@implementation ATLOutsideWatch
+- (instancetype)init
+{
+	self = [super initWithTarget:nil action:nil];
+	self.cancelsTouchesInView = NO;
+	self.delaysTouchesBegan = NO;
+	self.delaysTouchesEnded = NO;
+	return self;
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+	for (UITouch *touch in touches) {
+		if (![touch.view respondsToSelector:@selector(atlForwardsTouches)])
+			input_native_down(self.view, [touch locationInView:self.view]);
+	}
+	self.state = UIGestureRecognizerStateFailed;
 }
 @end
 
@@ -1010,8 +1041,9 @@ struct shown_root {
 	struct ui_view *view; // NULL: a plain alert
 	float dim;            // without DIM_BEHIND: 0
 	bool alert_dim;       // a panel's: the system alert's
-	bool modal;           // touch-modal: VoiceOver stays in it
+	bool modal;           // touch-modal: VoiceOver stays in it, touches outside it are its own
 	bool focusable;       // it takes the keys
+	bool touchable;       // without: touches go through to what is below (a toast)
 };
 
 void records_roots_changed(struct ui_window *window)
@@ -1031,6 +1063,7 @@ void records_roots_changed(struct ui_window *window)
 			.alert_dim = flags & UI_WINDOW_DIM_BEHIND && root->chrome,
 			.modal = !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)),
 			.focusable = !(flags & UI_WINDOW_NOT_FOCUSABLE),
+			.touchable = !(flags & UI_WINDOW_NOT_TOUCHABLE),
 		};
 		[alerts addObject:root->chrome ? (id)uikit_dialog_of(root->chrome) : NSNull.null];
 	}
@@ -1042,15 +1075,16 @@ void records_roots_changed(struct ui_window *window)
 				overlay = [[ATLOverlayContainer alloc] initWithFrame:surface.bounds];
 				overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 				[surface addSubview:overlay];
+				[surface addGestureRecognizer:[[ATLOutsideWatch alloc] init]];
 			}
 			NSMutableArray<UIView *> *containers = [NSMutableArray array];
 			UIView *key_root = nil;
 			CGFloat seen = 1; // of the status bar through the dims
-			bool above = false; // a window with a root is above this one
+			bool above = false; // a window with a root, not one touches go through, is above this one
 			for (size_t i = n; i-- > 0;) {
 				if (alerts[i] != NSNull.null && !shown[i].view)
 					uikit_dialog_set_covered(alerts[i], above);
-				above |= shown[i].view != NULL;
+				above |= shown[i].view && shown[i].touchable;
 			}
 			for (size_t i = 0; i < n; i++) {
 				if (!shown[i].view) // a plain alert: dialog.m presents it
@@ -1064,14 +1098,16 @@ void records_roots_changed(struct ui_window *window)
 					if ([root isKindOfClass:ATLView.class])
 						((ATLView *)root).atlRoot = YES;
 				}
-				if (shown[i].dim > 0 && !container.dim) {
+				bool catches = shown[i].dim > 0 || (shown[i].modal && shown[i].touchable); // native controls under it get nothing
+				if (catches && !container.dim) {
 					container.dim = [[ATLDimView alloc] initWithFrame:container.bounds];
 					container.dim.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 					[container insertSubview:container.dim atIndex:0];
-				} else if (shown[i].dim <= 0 && container.dim) {
+				} else if (!catches && container.dim) {
 					[container.dim removeFromSuperview];
 					container.dim = nil;
 				}
+				container.userInteractionEnabled = shown[i].touchable;
 				UIColor *dim = shown[i].alert_dim ? [panel_dim_color() resolvedColorWithTraitCollection:surface.traitCollection]
 				                                  : [UIColor colorWithWhite:0 alpha:shown[i].dim];
 				container.dim.backgroundColor = shown[i].alert_dim ? panel_dim_color() : dim;
@@ -1166,6 +1202,7 @@ void records_window_closed(struct ui_window *window)
 		return;
 	@autoreleasepool {
 		uikit_enqueue(window->app, ^{
+			uikit_toast_surface_closed((__bridge UIView *)closed);
 			CFRelease(closed);
 		});
 		flush(ui);

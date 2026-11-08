@@ -77,11 +77,26 @@ public final class ATLInput {
 		return key(view.getRootView(), event);
 	}
 
+	// ViewRootImpl's stages: the focused view before the IME (an AutoCompleteTextView's drop-down
+	// takes Back there), the IME, then the window
 	private static boolean deliver(Window window, View decor, KeyEvent event) {
+		if (menuTakesBack(app(decor), event))
+			return true;
+		if (decor.dispatchKeyEventPreIme(event))
+			return true;
 		if (keyboardTakesBack(app(decor), event))
 			return true;
 		Window.Callback callback = window != null ? window.getCallback() : null;
 		return callback != null ? callback.dispatchKeyEvent(event) : decor.dispatchKeyEvent(event);
+	}
+
+	// an open PopupMenu is Android's focused popup window: Back closes it, at the up as PopupDecorView
+	private static boolean menuTakesBack(ATLLoadedApp app, KeyEvent event) {
+		if (event.getKeyCode() != KeyEvent.KEYCODE_BACK || app.open_menu == null)
+			return false;
+		if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled())
+			app.open_menu.dismiss();
+		return true;
 	}
 
 	private static boolean keyboardTakesBack(ATLLoadedApp app, KeyEvent event) {

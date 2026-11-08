@@ -44,10 +44,10 @@ extern "C" {
 /*
  * Class:     android_view_Window
  * Method:    nativeAddSubwindow
- * Signature: (Ljava/lang/Object;)J
+ * Signature: (Ljava/lang/Object;JLandroid/view/View;)J
  */
 JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow
-  (JNIEnv *, jobject, jobject);
+  (JNIEnv *, jobject, jobject, jlong, jobject);
 
 /*
  * Class:     android_view_Window
@@ -124,42 +124,42 @@ JNIEXPORT void JNICALL Java_android_view_Window_clear_1background
 /*
  * Class:     android_view_Window
  * Method:    set_frame
- * Signature: (ZIZZ)V
+ * Signature: (JZIZZ)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1frame
-  (JNIEnv *, jobject, jboolean, jint, jboolean, jboolean);
+  (JNIEnv *, jobject, jlong, jboolean, jint, jboolean, jboolean);
 
 /*
  * Class:     android_view_Window
  * Method:    set_keep_screen_on
- * Signature: (Z)V
+ * Signature: (JZ)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1keep_1screen_1on
-  (JNIEnv *, jobject, jboolean);
+  (JNIEnv *, jobject, jlong, jboolean);
 
 /*
  * Class:     android_view_Window
  * Method:    set_exclusion_rects
- * Signature: ([I)V
+ * Signature: (J[I)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects
-  (JNIEnv *, jobject, jintArray);
+  (JNIEnv *, jobject, jlong, jintArray);
 
 /*
  * Class:     android_view_Window
  * Method:    get_insets
- * Signature: ()[I
+ * Signature: (ZIIII)[I
  */
 JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets
-  (JNIEnv *, jobject);
+  (JNIEnv *, jobject, jboolean, jint, jint, jint, jint);
 
 /*
  * Class:     android_view_Window
  * Method:    set_screen_brightness
- * Signature: (F)V
+ * Signature: (JF)V
  */
 JNIEXPORT void JNICALL Java_android_view_Window_set_1screen_1brightness
-  (JNIEnv *, jobject, jfloat);
+  (JNIEnv *, jobject, jlong, jfloat);
 
 #ifdef __cplusplus
 }

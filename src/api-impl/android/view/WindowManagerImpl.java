@@ -1,144 +1,62 @@
 package android.view;
 
-import android.graphics.Rect;
-import android.util.Slog;
+import android.content.Context;
 
-public class WindowManagerImpl implements WindowManager, ViewManager {
+/* AOSP's WindowManagerImpl over windows.c's registry: an added view is the root of a window of its
+ * own (Window.atlAddView). One per Context; an Activity's is its Window's, which gives the windows
+ * added through it the activity's token as AOSP's Window.adjustLayoutParamsForSubWindow. */
+public final class WindowManagerImpl implements WindowManager, ViewManager {
+	private final Context context;
+	private final Window parent_window;
 
-	private static final String TAG = "WindowManagerImpl";
-
-	private static class WindowViewParent implements ViewParent {
-
-		@Override
-		public android.view.ViewParent getParent() {
-			return null;
-		}
-
-		@Override
-		public boolean isLayoutRequested() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'isLayoutRequested'");
-		}
-
-		@Override
-		public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {}
-
-		@Override
-		public boolean onStartNestedScroll(View child, View target, int nestedScrollAxes) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onStartNestedScroll'");
-		}
-
-		@Override
-		public boolean onNestedPreFling(View target, float velocityX, float velocityY) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onNestedPreFling'");
-		}
-
-		@Override
-		public boolean onNestedFling(View target, float velocityX, float velocityY, boolean consumed) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onNestedFling'");
-		}
-
-		@Override
-		public void onNestedScrollAccepted(View child, View target, int nestedScrollAxes) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onNestedScrollAccepted'");
-		}
-
-		@Override
-		public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onNestedPreScroll'");
-		}
-
-		@Override
-		public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onNestedScroll'");
-		}
-
-		@Override
-		public void onStopNestedScroll(View target) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onStopNestedScroll'");
-		}
-
-		@Override
-		public void onDescendantInvalidated(View child, View target) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'onDescendantInvalidated'");
-		}
-
-		@Override
-		public void requestLayout() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'requestLayout'");
-		}
-
-		// the window's root: focus stays in its view tree
-		@Override
-		public void requestChildFocus(View child, View focused) {}
-
-		@Override
-		public void clearChildFocus(View child) {}
-
-		@Override
-		public View focusSearch(View v, int direction) {
-			return null;
-		}
-
-		@Override
-		public void focusableViewAvailable(View v) {}
-
-		@Override
-		public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
-			return false;
-		}
+	public WindowManagerImpl(Context context, Window parentWindow) {
+		this.context = context;
+		this.parent_window = parentWindow;
 	}
 
 	public android.view.Display getDefaultDisplay() {
 		return new android.view.Display();
 	}
 
-	@Override
-	public void addView(View view, android.view.ViewGroup.LayoutParams params) {
-		Slog.v(TAG, "addView(" + view + ", " + params + ") called");
-		view.setLayoutParams(params);
-		view.parent = new WindowViewParent();
-		view.dispatchAttachedToWindow();
-		Rect displayFrame = new Rect();
-		view.getWindowVisibleDisplayFrame(displayFrame);
-		view.internalSetDefaultMeasureSpec(View.MeasureSpec.AT_MOST | displayFrame.width(), View.MeasureSpec.AT_MOST | displayFrame.height());
-		WindowManager.LayoutParams windowParams = (WindowManager.LayoutParams)params;
-		native_addView(view.widget, windowParams.type, windowParams.x, windowParams.y, params.width, params.height);
+	private static WindowManager.LayoutParams windowParams(ViewGroup.LayoutParams params) {
+		if (!(params instanceof WindowManager.LayoutParams))
+			throw new IllegalArgumentException("Params must be WindowManager.LayoutParams");
+		return (WindowManager.LayoutParams)params;
+	}
+
+	private static Window added(View view) {
+		Window window = view != null ? Window.atlAddedWindow(view) : null;
+		if (window == null)
+			throw new IllegalArgumentException("View=" + view + " not attached to window manager");
+		return window;
 	}
 
 	@Override
-	public void updateViewLayout(View view, android.view.ViewGroup.LayoutParams params) {
-		Slog.v(TAG, "updateViewLayout(" + view + ", " + params + ") called");
-		Rect displayFrame = new Rect();
-		view.getWindowVisibleDisplayFrame(displayFrame);
-		view.internalSetDefaultMeasureSpec(View.MeasureSpec.AT_MOST | displayFrame.width(), View.MeasureSpec.AT_MOST | displayFrame.height());
-		WindowManager.LayoutParams windowParams = (WindowManager.LayoutParams)params;
-		view.setLayoutParams(params);
-		native_updateViewLayout(view.widget, windowParams.x, windowParams.y, params.width, params.height);
+	public void addView(View view, ViewGroup.LayoutParams params) {
+		if (view == null)
+			throw new IllegalArgumentException("view must not be null");
+		WindowManager.LayoutParams wparams = windowParams(params);
+		if (Window.atlAddedWindow(view) != null)
+			throw new IllegalStateException("View " + view + " has already been added to the window manager.");
+		if (parent_window != null)
+			parent_window.adjustLayoutParamsForSubWindow(wparams);
+		Window.atlAddView(context, view, wparams);
+	}
+
+	@Override
+	public void updateViewLayout(View view, ViewGroup.LayoutParams params) {
+		if (view == null)
+			throw new IllegalArgumentException("view must not be null");
+		added(view).atlUpdateLayout(windowParams(params));
 	}
 
 	@Override
 	public void removeView(View view) {
-		view.dispatchDetachedFromWindow();
-		native_removeView(view.widget);
-		view.parent = null;
+		added(view).atlRemoveView();
 	}
 
 	@Override
 	public void removeViewImmediate(View view) {
 		removeView(view);
 	}
-
-	private static native void native_addView(long widget, int type, int x, int y, int width, int height);
-	private static native void native_updateViewLayout(long widget, int x, int y, int width, int height);
-	private static native void native_removeView(long widget);
 }

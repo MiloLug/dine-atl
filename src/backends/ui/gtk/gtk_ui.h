@@ -15,6 +15,11 @@ void window_attach_stack(GtkWindow *window, GtkWidget *stack);
 /* The root wrapper a DOWN at x, y in the window's content goes to: a window over the activity, or
  * the shown activity's; NULL: none. */
 GtkWidget *window_touch_root(GtkWindow *window, double x, double y);
+/* toast.c: the toast's label back on top of the windows ui_window_set_roots added */
+void toast_raise(GtkOverlay *overlay);
+/* A DOWN at x, y (the window's content): ACTION_OUTSIDE to the windows above its root that watch. */
+struct atl_touch;
+void window_touch_outside(GtkWindow *window, double x, double y, const struct atl_touch *down);
 /* A text node's label, next to its compound drawables in a box; NULL on other handles. */
 GtkLabel *text_get_label(GtkWidget *handle);
 /* A text node's height without the lines past ui_text_set_lines' max. */

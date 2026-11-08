@@ -32,7 +32,8 @@ static bool match(const struct ui_alert *alert, const char *answer, int *which)
 	return false;
 }
 
-bool atl_dialog_scripted(const struct ui_alert *alert, int *which)
+// the next answer, NULL at the end; scripted: whether there are answers at all
+static char *next_answer(void)
 {
 	if (!loaded) {
 		loaded = true;
@@ -40,15 +41,45 @@ bool atl_dialog_scripted(const struct ui_alert *alert, int *which)
 		scripted = answers != NULL;
 		rest = answers ? strdup(answers) : NULL;
 	}
+	return scripted && rest ? strsep(&rest, ";") : NULL;
+}
+
+// a test that waits for a click would hang until its timeout
+static void no_answer(const char *what, const char *title, const char *answer)
+{
+	fflush(stdout);
+	fprintf(stderr, "%s: no scripted answer for \"%s\" (next answer: %s)\n", what, title, answer ?: "none");
+	_exit(1);
+}
+
+bool atl_dialog_scripted(const struct ui_alert *alert, int *which)
+{
+	char *answer = next_answer();
 	if (!scripted)
 		return false;
-	char *answer = rest ? strsep(&rest, ";") : NULL;
 	if (answer && match(alert, answer, which))
 		return true;
-	// a test that waits for a click would hang until its timeout
-	fflush(stdout);
-	fprintf(stderr, "dialog: no scripted answer for \"%s\" (next answer: %s)\n", alert->title ?: "", answer ?: "none");
-	_exit(1);
+	no_answer("dialog", alert->title ?: "", answer);
+	return false;
+}
+
+bool atl_menu_scripted(const struct ui_menu_item *items, int n, int *index)
+{
+	char *answer = next_answer();
+	if (!scripted)
+		return false;
+	if (answer && !strcmp(answer, "!cancel")) {
+		*index = UI_MENU_DISMISSED;
+		return true;
+	}
+	for (int i = 0; answer && i < n; i++) {
+		if (items[i].enabled && !items[i].has_submenu && !strcmp(items[i].title, answer)) {
+			*index = i;
+			return true;
+		}
+	}
+	no_answer("menu", n ? items[0].title : "", answer);
+	return false;
 }
 
 void atl_test_window_ready(struct ui_window *window)

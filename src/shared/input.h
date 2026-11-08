@@ -31,6 +31,7 @@ struct atl_touch {
 #define ATL_ACTION_UP           1
 #define ATL_ACTION_MOVE         2
 #define ATL_ACTION_CANCEL       3
+#define ATL_ACTION_OUTSIDE      4
 #define ATL_ACTION_POINTER_DOWN 5
 #define ATL_ACTION_POINTER_UP   6
 #define ATL_ACTION_INDEX_SHIFT  8

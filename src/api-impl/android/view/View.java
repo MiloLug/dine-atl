@@ -1887,6 +1887,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		return false;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: a key before the IME takes it */
+	public boolean dispatchKeyEventPreIme(KeyEvent event) {
+		return onKeyPreIme(event.getKeyCode(), event);
+	}
+
+	public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+		return false;
+	}
+
 	public boolean dispatchKeyEvent(KeyEvent event) {
 		// Give any attached key listener a first crack at the event.
 		if (on_key_listener != null && atl_enabled && on_key_listener.onKey(this, event.getKeyCode(), event)) {
@@ -2151,6 +2160,18 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		}
 	}
 
+	/** @hide AOSP's */
+	public int[] getLocationOnScreen() {
+		int[] location = new int[2];
+		getLocationOnScreen(location);
+		return location;
+	}
+
+	/** @hide AOSP's: the display's frame, without the decorations; ATL's windows have none */
+	public void getWindowDisplayFrame(Rect outRect) {
+		getWindowVisibleDisplayFrame(outRect);
+	}
+
 	public boolean performHapticFeedback(int feedbackConstant) {
 		return performHapticFeedback(feedbackConstant, 0);
 	}
@@ -2206,8 +2227,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public void setOnGenericMotionListener(View.OnGenericMotionListener l) {}
 
+	// its window's token while attached, as AOSP's AttachInfo
 	public IBinder getWindowToken() {
-		return new Binder();
+		return attachedWindow != null ? attachedWindow.token : null;
 	}
 
 	public void getLocationInWindow(int[] location) {
@@ -2228,7 +2250,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void addOnAttachStateChangeListener(OnAttachStateChangeListener l) {
-		onAttachStateChangeListener = l;
+		if (onAttachStateChangeListeners == null)
+			onAttachStateChangeListeners = new java.util.concurrent.CopyOnWriteArrayList<OnAttachStateChangeListener>();
+		onAttachStateChangeListeners.add(l);
 	}
 
 	public Context getContext() {
@@ -2951,8 +2975,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		if (attachedWindow != null && !systemGestureExclusionRects.isEmpty())
 			attachedWindow.exclusionViewChanged(this, true);
 		onAttachedToWindow();
-		if (onAttachStateChangeListener != null)
-			onAttachStateChangeListener.onViewAttachedToWindow(this);
+		if (onAttachStateChangeListeners != null) {
+			for (OnAttachStateChangeListener listener : onAttachStateChangeListeners)
+				listener.onViewAttachedToWindow(this);
+		}
 		int windowVisibility = getWindowVisibility(); // AOSP's
 		if (windowVisibility != GONE)
 			onWindowVisibilityChanged(windowVisibility);
@@ -2966,8 +2992,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		removeUnsetPressCallback();
 		removeLongPressCallback();
 		removePerformClickCallback();
-		if (onAttachStateChangeListener != null)
-			onAttachStateChangeListener.onViewDetachedFromWindow(this);
+		if (onAttachStateChangeListeners != null) {
+			for (OnAttachStateChangeListener listener : onAttachStateChangeListeners)
+				listener.onViewDetachedFromWindow(this);
+		}
 		if (keepScreenOn)
 			windowKeepsScreenOn(false);
 		if (attachedWindow != null && !systemGestureExclusionRects.isEmpty())
@@ -3151,11 +3179,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		}
 	}
 
-	private OnAttachStateChangeListener onAttachStateChangeListener;
+	private java.util.concurrent.CopyOnWriteArrayList<OnAttachStateChangeListener> onAttachStateChangeListeners;
 	public void removeOnAttachStateChangeListener(OnAttachStateChangeListener listener) {
-		if (onAttachStateChangeListener == listener) {
-			onAttachStateChangeListener = null;
-		}
+		if (onAttachStateChangeListeners != null)
+			onAttachStateChangeListeners.remove(listener);
 	}
 
 
@@ -3368,7 +3395,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	public void setPointerIcon(PointerIcon pointerIcon) {}
 
-	public IBinder getApplicationWindowToken() { return null; }
+	// the token of the window a popup's panel chain is attached to: AOSP's mPanelParentWindowToken
+	public IBinder getApplicationWindowToken() {
+		Window window = attachedWindow;
+		while (window != null && window.atlPanelParent() != null)
+			window = window.atlPanelParent();
+		return window != null ? window.token : null;
+	}
 
 	public int getVerticalFadingEdgeLength() { return 0; }
 	public int getVerticalScrollbarWidth() { return 0; }

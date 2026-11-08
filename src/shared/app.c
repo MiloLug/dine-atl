@@ -18,6 +18,7 @@ struct atl_app *atl_app_new(void)
 	pthread_mutex_init(&app->insets_lock, NULL);
 	app->task_front = true;
 	app->screen_brightness = -1;
+	app->activity_state.brightness = -1;
 	return app;
 }
 

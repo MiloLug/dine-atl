@@ -1,14 +1,17 @@
 #ifndef SHARED_WINDOWS_H
 #define SHARED_WINDOWS_H
 
-/* Windows an app shows over its activities (a Dialog's; popups later): each belongs to an activity
- * (AOSP's token) and shows while it shows, or to the app (TYPE_APPLICATION_OVERLAY) while its task
- * is in front. The ui slot gets the shown ones (ui_window_set_roots). Android main thread. */
+/* Windows an app shows over its activities (a Dialog's, WindowManager.addView's): each belongs to
+ * an activity (AOSP's token) and shows while it shows, or to the app (TYPE_APPLICATION_OVERLAY,
+ * TYPE_TOAST) while its task is in front; a sub-panel shows with the window it is attached to. The
+ * ui slot gets the shown ones (ui_window_set_roots). Android main thread. */
 
 #include <stdbool.h>
 #include <stddef.h>
 
+struct atl_app;
 struct atl_subwindow;
+struct atl_window_state;
 struct ui_root;
 struct ui_window;
 
@@ -26,9 +29,22 @@ const struct atl_window_frame *windows_panel(const struct atl_subwindow *window)
  * touchable one under the point (its panel, chrome included), else the topmost touch-modal one;
  * NULL: the shown activity. */
 const struct ui_root *windows_touch_target(const struct ui_root *roots, size_t n, float x, float y);
+/* AOSP's outside targets of a DOWN that went to target (NULL: the shown activity): the windows above
+ * it that watch outside touches; their indexes into roots in *out, topmost first; returns how many. */
+size_t windows_outside_targets(const struct ui_root *roots, size_t n, const struct ui_root *target, size_t *out);
 /* The point is on the window's chrome, outside its root: the backend's own, no view's. */
 bool windows_in_chrome(const struct atl_subwindow *window, float x, float y);
 /* A panel alert's content changed: its chrome is placed again. */
 void windows_chrome_changed(struct ui_window *chrome);
+
+struct atl_window_state *windows_state(struct atl_subwindow *window);
+/* A window's state, or which windows are drawn, changed: the host gets the drawn windows' together
+ * (keep-screen-on and fullscreen if any asks, the topmost brightness, every exclusion rect). */
+void windows_state_changed(struct atl_app *app);
+/* The drawn windows' exclusion rects in the app's window, the shown activity's first; *n rects,
+ * malloc'd. */
+int *windows_exclusion_rects(struct atl_app *app, int *n);
+/* The host's insets changed: each drawn window over the activities takes them. */
+void windows_dispatch_insets(struct atl_app *app);
 
 #endif

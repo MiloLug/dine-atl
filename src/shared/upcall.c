@@ -115,7 +115,7 @@ static void call_observer(struct atl_ref *observer, jmethodID method)
 	jobject observer_obj = (*env)->NewLocalRef(env, (jobject)observer);
 	if (!observer_obj)
 		return;
-	(*env)->CallVoidMethod(env, observer_obj, method); // dispatchOnPreDraw's boolean is ignored
+	(*env)->CallVoidMethod(env, observer_obj, method);
 	if ((*env)->ExceptionCheck(env)) {
 		(*env)->ExceptionDescribe(env);
 		(*env)->ExceptionClear(env);

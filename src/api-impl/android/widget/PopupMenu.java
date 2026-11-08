@@ -32,13 +32,8 @@ import com.android.internal.R;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A PopupMenu displays a {@link Menu} in a modal popup window anchored to a
- * {@link View}. The popup will appear below the anchor view if there is room,
- * or above it if there is not. If the IME is visible the popup will not
- * overlap it until it is touched. Touching outside of the popup will dismiss
- * it.
- */
+/* PopupMenu's API over the ui slot's native menu (ui_menu_show): its items go to the backend at
+ * show(), which answers once with the picked item or the dismissal (atlMenuResult). */
 
 public class PopupMenu {
 	private final Context mContext;
@@ -46,7 +41,8 @@ public class PopupMenu {
 	private OnMenuItemClickListener mMenuItemClickListener;
 	private OnDismissListener mOnDismissListener;
 	private OnTouchListener mDragListener;
-	private long popover;
+	private long shown; // the native menu while it is up, else 0
+	private List<MenuItemImpl> shown_items; // its items in the order the backend got them
 	private MenuImpl menu;
 
 	/**
@@ -96,7 +92,6 @@ public class PopupMenu {
 		mContext = context;
 		mAnchor = anchor;
 		menu = new MenuImpl();
-		popover = native_buildPopover(menu.menu);
 	}
 
 	/**
@@ -127,18 +122,37 @@ public class PopupMenu {
 		mOnDismissListener = listener;
 	}
 
-	protected native long native_init();
-	protected native void native_insertItem(long menu, int position, String item, int id);
-	protected native void native_insertSubmenu(long menu, int position, String item, long submenu);
-	protected native void native_removeItem(long menu, int position);
-	protected native long native_buildPopover(long menu);
-	protected native void native_show(long popover, long anchor);
+	// titles, parents and flags per item, depth first; flags: 1 enabled, 2 checkable, 4 checked, 8 submenu
+	private native long nativeShow(long anchor, String[] titles, int[] parents, int[] flags);
+	private native void nativeClose(long menu);
 
-	// callback from native code
-	protected void menuItemClickCallback(final int id) {
-		if (mMenuItemClickListener != null) {
-			mMenuItemClickListener.onMenuItemClick(getMenu().findItem(id));
+	// the visible items, a submenu's after the item that opens it
+	private static void flatten(MenuImpl from, int parent, List<MenuItemImpl> items, List<Integer> parents) {
+		for (MenuItemImpl item : from.items) {
+			if (!item.visible)
+				continue;
+			int index = items.size();
+			items.add(item);
+			parents.add(parent);
+			if (item.subMenu != null)
+				flatten(item.subMenu, index, items, parents);
 		}
+	}
+
+	// the backend's answer, or nativeClose's: an item's index or -1 (UI_MENU_DISMISSED)
+	private void atlMenuResult(int index) {
+		shown = 0;
+		if (mContext.atl_process_app().open_menu == this)
+			mContext.atl_process_app().open_menu = null;
+		MenuItemImpl item = index >= 0 ? shown_items.get(index) : null;
+		shown_items = null;
+		/* Copyright (C) 2006 The Android Open Source Project: MenuItemImpl.invoke, then the
+		 * dismissal that a pick brings */
+		if (item != null && (item.click_listener == null || !item.click_listener.onMenuItemClick(item))
+		    && mMenuItemClickListener != null)
+			mMenuItemClickListener.onMenuItemClick(item);
+		if (mOnDismissListener != null)
+			mOnDismissListener.onDismiss(this);
 	}
 
 	/**
@@ -158,8 +172,23 @@ public class PopupMenu {
 	* @see #dismiss()
 	*/
 	public void show() {
-		System.out.println("PopupMenu.show() called");
-		native_show(popover, mAnchor.widget);
+		if (shown != 0)
+			return;
+		List<MenuItemImpl> items = new ArrayList<>();
+		List<Integer> parents = new ArrayList<>();
+		flatten(menu, -1, items, parents);
+		String[] titles = new String[items.size()];
+		int[] parent = new int[items.size()];
+		int[] flags = new int[items.size()];
+		for (int i = 0; i < titles.length; i++) {
+			MenuItemImpl item = items.get(i);
+			titles[i] = String.valueOf(item.title);
+			parent[i] = parents.get(i);
+			flags[i] = (item.enabled ? 1 : 0) | (item.checkable ? 2 : 0) | (item.checked ? 4 : 0) | (item.subMenu != null ? 8 : 0);
+		}
+		shown_items = items;
+		shown = nativeShow(mAnchor.widget, titles, parent, flags);
+		mContext.atl_process_app().open_menu = this;
 	}
 
 	public Menu getMenu() {
@@ -167,7 +196,8 @@ public class PopupMenu {
 	}
 
 	public void dismiss() {
-		System.out.println("PopupMenu.dismiss() called");
+		if (shown != 0)
+			nativeClose(shown);
 	}
 
 	/**
@@ -199,23 +229,19 @@ public class PopupMenu {
 	}
 
 	private class MenuImpl implements Menu {
-		long menu = native_init();
-
 		List<MenuItemImpl> items = new ArrayList<>();
-		int numVisibleItems = 0;
 
 		@Override
 		public MenuItem add(int groupId, int itemId, int order, CharSequence title) {
-			MenuItemImpl item = new MenuItemImpl(itemId, this, String.valueOf(title), null);
+			MenuItemImpl item = new MenuItemImpl(itemId, this, title, null);
+			item.group = groupId;
 			items.add(item);
-			item.setVisible(true);
 			return item;
 		}
 
 		@Override
 		public MenuItem add(int groupId, int itemId, int order, int titleRes) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'add'");
+			return add(groupId, itemId, order, mContext.getString(titleRes));
 		}
 
 		@Override
@@ -257,14 +283,12 @@ public class PopupMenu {
 
 		@Override
 		public MenuItem add(int id) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'add'");
+			return add(0, 0, 0, id);
 		}
 
 		@Override
 		public MenuItem add(CharSequence text) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'add'");
+			return add(0, 0, 0, text);
 		}
 
 		@Override
@@ -275,9 +299,9 @@ public class PopupMenu {
 
 		@Override
 		public SubMenu addSubMenu(int groupId, int itemId, int order, CharSequence title) {
-			SubMenuImpl submenu = new SubMenuImpl(itemId, this, String.valueOf(title));
+			SubMenuImpl submenu = new SubMenuImpl(itemId, this, title);
+			submenu.item.group = groupId;
 			items.add(submenu.item);
-			submenu.item.setVisible(true);
 			return submenu;
 		}
 
@@ -306,8 +330,7 @@ public class PopupMenu {
 
 		@Override
 		public SubMenu addSubMenu(int groupId, int itemId, int order, int titleRes) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'addSubMenu'");
+			return addSubMenu(groupId, itemId, order, mContext.getString(titleRes));
 		}
 
 		@Override
@@ -317,15 +340,27 @@ public class PopupMenu {
 
 		@Override
 		public void close() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'close'");
+			dismiss();
+		}
+
+		/* Copyright (C) 2006 The Android Open Source Project: MenuBuilder.performIdentifierAction,
+		 * without the submenu it would open */
+		public boolean performIdentifierAction(int id, int flags) {
+			MenuItemImpl item = (MenuItemImpl)findItem(id);
+			if (item == null || !item.enabled)
+				return false;
+			boolean handled = item.click_listener != null && item.click_listener.onMenuItemClick(item);
+			if (!handled && mMenuItemClickListener != null)
+				handled = mMenuItemClickListener.onMenuItemClick(item);
+			dismiss();
+			return handled;
 		}
 	}
 
 	private class SubMenuImpl extends MenuImpl implements SubMenu {
 		private MenuItemImpl item;
 
-		public SubMenuImpl(int id, MenuImpl parent, String title) {
+		public SubMenuImpl(int id, MenuImpl parent, CharSequence title) {
 			item = new MenuItemImpl(id, parent, title, this);
 		}
 
@@ -349,15 +384,16 @@ public class PopupMenu {
 
 	private class MenuItemImpl implements MenuItem {
 		private int id;
+		int group;
 		private MenuImpl parent;
-		private String title;
+		CharSequence title;
 		SubMenuImpl subMenu;
-		int position; // position in list of visible items, or -1 if not visible
+		boolean visible = true, enabled = true, checkable, checked;
+		OnMenuItemClickListener click_listener;
 
-		private MenuItemImpl(int id, MenuImpl parent, String title, SubMenuImpl subMenu) {
+		private MenuItemImpl(int id, MenuImpl parent, CharSequence title, SubMenuImpl subMenu) {
 			this.id = id;
 			this.parent = parent;
-			this.position = -1;
 			this.title = title;
 			this.subMenu = subMenu;
 		}
@@ -374,53 +410,31 @@ public class PopupMenu {
 
 		@Override
 		public MenuItem setVisible(boolean visible) {
-			// GMenu doesn't support invisible items, so we remove them while they're not visible
-			if (!visible && isVisible()) {
-				parent.numVisibleItems--;
-				for (int i = parent.items.size() - 1; i >= 0; i--) {
-					MenuItemImpl item = parent.items.get(i);
-					if (item != this && item.isVisible())
-						item.position--;
-					else if (item == this)
-						break;
-				}
-				native_removeItem(parent.menu, position);
-				position = -1;
-			} else if (visible && !isVisible()) {
-				position = parent.numVisibleItems++;
-				for (int i = parent.items.size() - 1; i >= 0; i--) {
-					MenuItemImpl item = parent.items.get(i);
-					if (item != this && item.isVisible())
-						position = item.position++;
-					else if (item == this)
-						break;
-				}
-				if (subMenu != null)
-					native_insertSubmenu(parent.menu, position, title, subMenu.menu);
-				else
-					native_insertItem(parent.menu, position, title, id);
-			}
+			this.visible = visible;
 			return this;
 		}
 
 		@Override
 		public MenuItem setChecked(boolean checked) {
+			this.checked = checked;
 			return this;
 		}
 
 		@Override
 		public MenuItem setEnabled(boolean enabled) {
+			this.enabled = enabled;
 			return this;
 		}
 
 		@Override
 		public MenuItem setCheckable(boolean checkable) {
+			this.checkable = checkable;
 			return this;
 		}
 
 		@Override
 		public boolean isCheckable() {
-			return false;
+			return checkable;
 		}
 
 		@Override
@@ -430,7 +444,7 @@ public class PopupMenu {
 
 		@Override
 		public MenuItem setTitle(CharSequence title) {
-			this.title = String.valueOf(title);
+			this.title = title;
 			return this;
 		}
 
@@ -453,25 +467,23 @@ public class PopupMenu {
 
 		@Override
 		public int getGroupId() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'getGroupId'");
+			return group;
 		}
 
 		@Override
 		public MenuItem setOnMenuItemClickListener(OnMenuItemClickListener listener) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'setOnMenuItemClickListener'");
+			click_listener = listener;
+			return this;
 		}
 
 		@Override
 		public MenuItem setTitle(int resId) {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'setTitle'");
+			return setTitle(mContext.getString(resId));
 		}
 
 		@Override
 		public boolean isVisible() {
-			return position >= 0;
+			return visible;
 		}
 
 		@Override
@@ -498,8 +510,7 @@ public class PopupMenu {
 
 		@Override
 		public boolean hasSubMenu() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'hasSubMenu'");
+			return subMenu != null;
 		}
 
 		@Override
@@ -510,8 +521,7 @@ public class PopupMenu {
 
 		@Override
 		public boolean isChecked() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'isChecked'");
+			return checked;
 		}
 
 		@Override
@@ -537,8 +547,7 @@ public class PopupMenu {
 
 		@Override
 		public boolean isEnabled() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'isEnabled'");
+			return enabled;
 		}
 
 		@Override
@@ -549,8 +558,7 @@ public class PopupMenu {
 
 		@Override
 		public CharSequence getTitle() {
-			// TODO Auto-generated method stub
-			throw new UnsupportedOperationException("Unimplemented method 'getTitle'");
+			return title;
 		}
 
 		@Override

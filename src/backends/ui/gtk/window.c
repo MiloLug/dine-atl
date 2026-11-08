@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/api-impl-jni/widgets/WrapperWidget.h"
 #include "src/main-executable/back_button.h"
+#include "src/shared/input.h"
 #include "src/shared/upcall.h"
 #include "src/shared/windows.h"
 #include "src/slots/ui.h"
@@ -124,6 +126,8 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, s
 	}
 	for (guint i = same; i < widgets->len; i++)
 		gtk_overlay_add_overlay(overlay, g_ptr_array_index(widgets, i));
+	if (same < widgets->len) // above application windows, as AOSP's toast layer
+		toast_raise(overlay);
 	struct roots *roots = g_new0(struct roots, 1);
 	roots->roots = n ? memcpy(malloc(n * sizeof(*list)), list, n * sizeof(*list)) : NULL;
 	roots->n = n;
@@ -140,6 +144,32 @@ GtkWidget *window_touch_root(GtkWindow *window, double x, double y)
 	if (target)
 		return view_wrapper(target->view);
 	return gtk_stack_get_visible_child(GTK_STACK(gtk_overlay_get_child(overlay)));
+}
+
+void window_touch_outside(GtkWindow *window, double x, double y, const struct atl_touch *down)
+{
+	struct roots *roots = get_roots(window_overlay(window));
+	if (!roots)
+		return;
+	const struct ui_root *target = windows_touch_target(roots->roots, roots->n, x, y);
+	size_t *indexes = malloc((roots->n + 1) * sizeof(*indexes));
+	size_t n = windows_outside_targets(roots->roots, roots->n, target, indexes);
+	// a window may close from its own ACTION_OUTSIDE: its wrappers are held first
+	GPtrArray *wrappers = g_ptr_array_new_with_free_func(g_object_unref);
+	GArray *touches = g_array_new(FALSE, FALSE, sizeof(struct atl_touch));
+	for (size_t i = 0; i < n; i++) {
+		const struct ui_root *root = &roots->roots[indexes[i]];
+		const struct atl_window_frame *frame = windows_frame(root->window);
+		struct atl_touch outside = {.action = ATL_ACTION_OUTSIDE, .down_time = down->down_time, .time = down->time, .count = 1};
+		outside.pointers[0] = (struct atl_pointer){.x = x - frame->left, .y = y - frame->top};
+		g_ptr_array_add(wrappers, g_object_ref(view_wrapper(root->view)));
+		g_array_append_val(touches, outside);
+	}
+	free(indexes);
+	for (guint i = 0; i < wrappers->len; i++)
+		atl_upcall_touch((struct atl_ref *)WRAPPER_WIDGET(g_ptr_array_index(wrappers, i))->jobj, &g_array_index(touches, struct atl_touch, i));
+	g_ptr_array_unref(wrappers);
+	g_array_unref(touches);
 }
 
 

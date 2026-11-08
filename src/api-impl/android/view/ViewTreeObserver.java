@@ -303,9 +303,39 @@ public final class ViewTreeObserver {
 		public void onComputeInternalInsets(InternalInsetsInfo inoutInfo);
 	}
 
+	private Window owner;
+
 	ViewTreeObserver(Window window) {
+		owner = window;
 		if (window != null)
 			this.window = window.native_window;
+	}
+
+	// a Dialog's window joins the app window at its add, after its decor may have made this observer
+	void atlWindowAdded(long native_window) {
+		window = native_window;
+		if (mOnGlobalLayoutListeners != null && mOnGlobalLayoutListeners.size() > 0)
+			native_set_have_global_layout_listeners(true);
+		if (mOnPreDrawListeners != null && mOnPreDrawListeners.size() > 0)
+			native_set_have_predraw_listeners(true);
+	}
+
+	void atlWindowRemoved() {
+		if (mOnGlobalLayoutListeners != null && mOnGlobalLayoutListeners.size() > 0)
+			native_set_have_global_layout_listeners(false);
+		if (mOnPreDrawListeners != null && mOnPreDrawListeners.size() > 0)
+			native_set_have_predraw_listeners(false);
+	}
+
+	// the app window's passes: a window over the activities takes part only while it is shown
+	private void atlDispatchOnGlobalLayout() {
+		if (owner == null || owner.atlDrawn())
+			dispatchOnGlobalLayout();
+	}
+
+	private void atlDispatchOnPreDraw() {
+		if (owner == null || owner.atlDrawn())
+			dispatchOnPreDraw();
 	}
 
 	/**

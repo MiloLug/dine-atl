@@ -208,6 +208,31 @@ void input_tap(UIView *view, CGPoint point)
 	end_gesture();
 }
 
+static void deliver_native_down(void *data)
+{
+	struct posted_touch *posted = data;
+	struct ui_window *window = uikit_window_of(posted->app, posted->surface);
+	if (window)
+		records_touch_outside(window, &posted->touch);
+	free(posted);
+}
+
+void input_native_down(UIView *surface, CGPoint point)
+{
+	struct atl_app *app = uikit_app_of((__bridge void *)surface);
+	if (!app)
+		return;
+	CGFloat scale = atl_screen_get()->density_dpi / 160.;
+	struct posted_touch *posted = malloc(sizeof(*posted));
+	posted->app = app;
+	posted->surface = (__bridge void *)surface;
+	posted->touch = (struct atl_touch){.action = ATL_ACTION_DOWN, .down_time = atl_uptime_ms(), .count = 1};
+	posted->touch.time = posted->touch.down_time;
+	posted->touch.pointers[0] = (struct atl_pointer){.id = 0, .x = point.x * scale, .y = point.y * scale};
+	if (!loop_main_post(atl_app_loop(app), deliver_native_down, posted))
+		free(posted);
+}
+
 struct posted_key {
 	struct atl_key key;
 	struct atl_app *app;

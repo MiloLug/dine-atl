@@ -37,13 +37,11 @@ bool input_pointers_up(void)
 	return gesture.touch.count == 0;
 }
 
-// the root view a native shows: the app window's shown activity, a popover's or a window's content
+// the root view a native shows: the app window's shown activity, or a window's content
 static WrapperWidget *root_wrapper(GtkNative *native)
 {
 	GtkWidget *child = NULL;
-	if (GTK_IS_POPOVER(native)) {
-		child = gtk_popover_get_child(GTK_POPOVER(native));
-	} else if (GTK_IS_WINDOW(native)) {
+	if (GTK_IS_WINDOW(native)) {
 		child = gtk_window_get_child(GTK_WINDOW(native));
 		if (GTK_IS_OVERLAY(child))
 			child = gtk_overlay_get_child(GTK_OVERLAY(child));
@@ -53,7 +51,7 @@ static WrapperWidget *root_wrapper(GtkNative *native)
 	return child && WRAPPER_IS_WIDGET(child) ? WRAPPER_WIDGET(child) : NULL;
 }
 
-// the root a view is in: an activity's, a window's over it, or a popover's
+// the root a view is in: an activity's, a window's over it, or another native's
 static WrapperWidget *view_root(GtkWidget *view)
 {
 	for (GtkWidget *widget = view; widget; widget = gtk_widget_get_parent(widget)) {
@@ -73,6 +71,8 @@ static WrapperWidget *down_root(GtkNative *native, double x, double y)
 		if (!gtk_widget_compute_point(GTK_WIDGET(native), content, &GRAPHENE_POINT_INIT(x, y), &point)
 		    || point.x < 0 || point.y < 0 || point.x >= gtk_widget_get_width(content) || point.y >= gtk_widget_get_height(content))
 			return NULL;
+		struct atl_touch down = {.down_time = atl_uptime_ms(), .time = atl_uptime_ms()};
+		window_touch_outside(GTK_WINDOW(native), point.x, point.y, &down);
 		GtkWidget *root = window_touch_root(GTK_WINDOW(native), point.x, point.y);
 		return root && WRAPPER_IS_WIDGET(root) ? WRAPPER_WIDGET(root) : NULL;
 	}

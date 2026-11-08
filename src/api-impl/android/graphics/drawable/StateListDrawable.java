@@ -207,6 +207,15 @@ public class StateListDrawable extends DrawableContainer {
 		return mStateListState.mStateSets[index];
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public int getStateCount() {
+		return mStateListState.getChildCount();
+	}
+
+	public Drawable getStateDrawable(int index) {
+		return mStateListState.getChild(index);
+	}
+
 	/**
 	 * Gets the index of the drawable with the provided state set.
 	 *

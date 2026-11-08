@@ -8,5 +8,11 @@
 				<category android:name="android.intent.category.LAUNCHER"/>
 			</intent-filter>
 		</activity>
+		<activity android:name=".StateActivity"/>
+		<activity android:name=".OverlayActivity"/>
+		<activity android:name=".PopupActivity"/>
+		<activity android:name=".MenuActivity"/>
+		<activity android:name=".ToastActivity"/>
+		<activity android:name=".SelfActivity"/>
 	</application>
 </manifest>

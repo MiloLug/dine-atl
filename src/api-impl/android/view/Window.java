@@ -74,6 +74,18 @@ public class Window {
 
 	public long native_window;
 	private ViewGroup decorView;
+	private View root; // the view the window shows: its decor, or a WindowManager.addView window's view
+	private boolean added; // a WindowManager.addView window
+
+	/** @hide AOSP's window token (View.getWindowToken): it stands for this Window */
+	public static final class Token extends android.os.Binder {
+		final Window window;
+
+		Token(Window window) {
+			this.window = window;
+		}
+	}
+	final Token token = new Token(this);
 	private final InsetsController insets_controller = new InsetsController(this);
 
 	// the status bar as PhoneWindow.generateLayout sets it up: the theme's values, read once by
@@ -96,20 +108,34 @@ public class Window {
 		decorView = new FrameLayout(context);
 		decorView.setId(android.R.id.content);
 		decorView.decor_window = this;
+		root = decorView;
+	}
+
+	// WindowManagerImpl.addView's: the view is the root, the theme sets nothing, the params all
+	private Window(Context context, View view, WindowManager.LayoutParams params) {
+		this(context, (Callback)null);
+		root = view;
+		view.decor_window = this;
+		added = true;
+		bars_styled = true;
+		this.params = params;
 	}
 
 	public void set_native_window(long native_window) {
 		this.native_window = native_window;
 	}
 
-	/* A window over the activities (a Dialog's), in windows.c's registry: it shows while its
-	 * owner, an activity (AOSP's token), shows and the window is shown; owner null: the app's own
-	 * (TYPE_APPLICATION_OVERLAY). Its decor view is the root the ui slot lays out and draws; an
-	 * alert has none, the ui slot shows it itself. */
+	/* A window over the activities (a Dialog's, or WindowManager.addView's), in windows.c's
+	 * registry: it shows while its owner, an activity (AOSP's token), shows and the window is shown;
+	 * owner null: the app's own (TYPE_APPLICATION_OVERLAY, TYPE_TOAST). A sub-panel (PopupWindow)
+	 * is attached to a parent window and goes with it. Its root view is what the ui slot lays out
+	 * and draws; an alert has none, the ui slot shows it itself. */
 	private long subwindow;
 	private boolean window_visible;
+	private Object owner;
+	private Window panel_parent; // a sub-panel's window: a Dialog's, a popup's or an activity's
 
-	private native long nativeAddSubwindow(Object owner);
+	private native long nativeAddSubwindow(Object owner, long parent, View root);
 	private native void nativeSetSubwindowRoot(long subwindow, long decor, long chrome);
 	private native boolean nativeShowSubwindow(long subwindow);
 	private native boolean nativeHideSubwindow(long subwindow, boolean remove);
@@ -118,14 +144,18 @@ public class Window {
 
 	/** @hide its root and alert come with each show (atlSetSubwindowRoot) */
 	public void atlAddSubwindow(Object owner) {
-		subwindow = nativeAddSubwindow(owner);
+		this.owner = owner;
+		subwindow = nativeAddSubwindow(owner, panel_parent != null ? panel_parent.subwindow : 0, root); // an activity's: 0
+		if (view_tree_observer != null)
+			view_tree_observer.atlWindowAdded(native_window);
 		layoutChanged();
+		frameChanged(); // what the theme asked before, kept for the show
 	}
 
 	/** @hide before a show: whether the decor is drawn, and an AlertDialog's alert (its ui-slot
 	 * dialog, else 0) drawn around it or alone */
 	public void atlSetSubwindowRoot(boolean root, long chrome) {
-		nativeSetSubwindowRoot(subwindow, root ? decorView.widget : 0, chrome);
+		nativeSetSubwindowRoot(subwindow, root ? this.root.widget : 0, chrome);
 	}
 
 	/** @hide false: no live token (BadTokenException) */
@@ -160,13 +190,20 @@ public class Window {
 		return window_visible;
 	}
 
+	// its tree's passes count: an activity's always, one over the activities while shown
+	boolean atlDrawn() {
+		return subwindow == 0 || window_visible;
+	}
+
 	// windows.c (sub-windows) and activity.c (an activity's): shown or hidden with its token
 	private void atlSetVisible(boolean visible) {
 		if (window_visible == visible)
 			return;
 		window_visible = visible;
-		if (decorView.isAttachedToWindow())
-			decorView.dispatchWindowVisibilityChanged(visible ? View.VISIBLE : View.GONE);
+		if (visible && subwindow != 0)
+			requestInsets();
+		if (root.isAttachedToWindow())
+			root.dispatchWindowVisibilityChanged(visible ? View.VISIBLE : View.GONE);
 		if (window_visible != visible) // a listener changed it meanwhile
 			return;
 		if (callback instanceof android.app.Dialog)
@@ -175,15 +212,22 @@ public class Window {
 
 	// windows.c: its activity finished while it showed
 	private void atlLeaked(Object owner) {
-		android.util.Log.e("WindowManager", "android.view.WindowLeaked: Activity " + owner.getClass().getName() + " has leaked window " + decorView + " that was originally added here");
+		android.util.Log.e("WindowManager", "android.view.WindowLeaked: Activity " + owner.getClass().getName() + " has leaked window " + root + " that was originally added here");
 	}
 
-	// a sub-window's place in its app's window, from windows_place; 0, 0 for an activity's
-	private int frame_left, frame_top;
+	// a sub-window's place in its app's window, from windows_place; none for an activity's
+	private int frame_left, frame_top, frame_width, frame_height;
 
-	private void atlSetFrame(int left, int top) {
+	// inside a layout pass: insets clipped by the frame follow in a post
+	private void atlSetFrame(int left, int top, int width, int height) {
+		if (frame_left == left && frame_top == top && frame_width == width && frame_height == height)
+			return;
 		frame_left = left;
 		frame_top = top;
+		frame_width = width;
+		frame_height = height;
+		if (subwindow != 0)
+			requestInsets(false);
 	}
 
 	int atlFrameLeft() {
@@ -220,7 +264,7 @@ public class Window {
 		final int x = (int)event.getX();
 		final int y = (int)event.getY();
 		final int slop = ViewConfiguration.get(context).getScaledWindowTouchSlop();
-		return (x < -slop) || (y < -slop) || (x > (decorView.getWidth() + slop)) || (y > (decorView.getHeight() + slop));
+		return (x < -slop) || (y < -slop) || (x > (root.getWidth() + slop)) || (y > (root.getHeight() + slop));
 	}
 
 	public void addFlags(int flags) {
@@ -265,8 +309,8 @@ public class Window {
 		return decorView;
 	}
 
-	ViewGroup atlDecor() {
-		return decorView;
+	View atlDecor() {
+		return root;
 	}
 
 	public boolean superDispatchKeyEvent(KeyEvent event) {
@@ -393,8 +437,152 @@ public class Window {
 		return 0;
 	}
 
+	private WindowManagerImpl window_manager;
+
+	// an Activity's: windows it adds take its token (AOSP's Window.setWindowManager)
 	public WindowManager getWindowManager() {
-		return new WindowManagerImpl();
+		if (window_manager == null)
+			window_manager = new WindowManagerImpl(context, this);
+		return window_manager;
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: Window.adjustLayoutParamsForSubWindow,
+	 * the token a window added through this one's WindowManager takes */
+	void adjustLayoutParamsForSubWindow(WindowManager.LayoutParams wp) {
+		if (wp.type >= WindowManager.LayoutParams.FIRST_SUB_WINDOW && wp.type <= WindowManager.LayoutParams.LAST_SUB_WINDOW) {
+			if (wp.token == null)
+				wp.token = token;
+		} else if (wp.type >= WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW && wp.type <= WindowManager.LayoutParams.LAST_SYSTEM_WINDOW) {
+			// system windows take no token
+		} else if (wp.token == null) {
+			wp.token = token;
+		}
+	}
+
+	/** @hide WindowManagerImpl.addView: view becomes the root of a window, with AOSP's token rules
+	 * (WindowManagerService.addWindow) */
+	static void atlAddView(Context context, View view, WindowManager.LayoutParams params) {
+		Window token_window = params.token instanceof Token ? ((Token)params.token).window : null;
+		Object owner = null;
+		Window parent = null;
+		if (params.type >= WindowManager.LayoutParams.FIRST_SUB_WINDOW && params.type <= WindowManager.LayoutParams.LAST_SUB_WINDOW) {
+			if (token_window == null) // a parent that went: nativeShowSubwindow's
+				throw new WindowManager.BadTokenException("Unable to add window -- token " + params.token + " is not valid; is your activity running?");
+			parent = token_window;
+			owner = token_window.subwindow != 0 ? token_window.owner : token_window.callback;
+		} else if (params.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW) {
+			if (token_window == null || !(token_window.callback instanceof android.app.Activity))
+				throw new WindowManager.BadTokenException("Unable to add window -- token " + params.token + " is not valid; is your activity running?");
+			owner = token_window.callback;
+		}
+		Window window = new Added(context, view, params);
+		window.panel_parent = parent;
+		window.atlAddSubwindow(owner);
+		view.parent = new WindowViewParent();
+		view.setLayoutParams(params);
+		view.dispatchAttachedToWindow();
+		window.nativeSetSubwindowRoot(window.subwindow, view.widget, 0);
+		if (!window.atlShowSubwindow()) {
+			view.dispatchDetachedFromWindow();
+			window.atlRemoveView();
+			throw new WindowManager.BadTokenException("Unable to add window -- token " + params.token + " is not valid; is your activity running?");
+		}
+	}
+
+	// only an added window has a finalizer: a Dialog frees its own
+	private static final class Added extends Window {
+		Added(Context context, View view, WindowManager.LayoutParams params) {
+			super(context, view, params);
+		}
+
+		@Override
+		protected void finalize() throws Throwable {
+			try {
+				atlFreeSubwindow();
+			} finally {
+				super.finalize();
+			}
+		}
+	}
+
+	/** @hide the Window of a view added through WindowManagerImpl, else null */
+	static Window atlAddedWindow(View view) {
+		Window window = view.decor_window;
+		return window != null && window.added && window.root == view ? window : null;
+	}
+
+	/** @hide WindowManagerImpl.updateViewLayout */
+	void atlUpdateLayout(WindowManager.LayoutParams params) {
+		root.setLayoutParams(params);
+		setAttributes(params);
+	}
+
+	/** @hide WindowManagerImpl.removeView */
+	void atlRemoveView() {
+		if (root.isAttachedToWindow())
+			root.dispatchDetachedFromWindow();
+		if (view_tree_observer != null) // this window shows no more: its passes' observations go
+			view_tree_observer.atlWindowRemoved();
+		nativeHideSubwindow(subwindow, true);
+		root.decor_window = null;
+		root.parent = null;
+	}
+
+	/* An added view's parent, AOSP's ViewRootImpl in this: added views have one (PopupWindow removes
+	 * only those), the windows.c pass lays them out, focus stays in their tree. */
+	private static final class WindowViewParent implements ViewParent {
+		public ViewParent getParent() {
+			return null;
+		}
+
+		public boolean isLayoutRequested() {
+			return false;
+		}
+
+		public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {}
+
+		public boolean onStartNestedScroll(View child, View target, int nestedScrollAxes) {
+			return false;
+		}
+
+		public boolean onNestedPreFling(View target, float velocityX, float velocityY) {
+			return false;
+		}
+
+		public boolean onNestedFling(View target, float velocityX, float velocityY, boolean consumed) {
+			return false;
+		}
+
+		public void onNestedScrollAccepted(View child, View target, int nestedScrollAxes) {}
+
+		public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {}
+
+		public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {}
+
+		public void onStopNestedScroll(View target) {}
+
+		public void onDescendantInvalidated(View child, View target) {}
+
+		public void requestLayout() {}
+
+		public void requestChildFocus(View child, View focused) {}
+
+		public void clearChildFocus(View child) {}
+
+		public View focusSearch(View v, int direction) {
+			return null;
+		}
+
+		public void focusableViewAvailable(View v) {}
+
+		public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
+			return false;
+		}
+	}
+
+	/** @hide the window a sub-panel is attached to, else null: View.getApplicationWindowToken */
+	Window atlPanelParent() {
+		return panel_parent;
 	}
 
 	public void setSoftInputMode(int dummy) {}
@@ -426,29 +614,45 @@ public class Window {
 	}
 
 	WindowInsets rootInsets = new WindowInsets();
-	private boolean insets_requested;
+	private boolean insets_requested, insets_forced;
+	private int[] insets_px;
 
-	// activity.c calls it when the activity is shown and when the host's insets change
+	// activity.c and windows.c call it when the window is shown and when the host's insets change
 	private void dispatchInsets() {
+		dispatchInsets(true);
+	}
+
+	// unforced: only when they changed, as a frame move would loop a layout pass otherwise
+	private void dispatchInsets(boolean forced) {
 		insets_requested = false;
-		int[] px = get_insets(); // system gestures, mandatory system gestures, navigation bars: l t r b
+		insets_forced = false;
+		// system gestures, mandatory system gestures, navigation bars: l t r b
+		int[] px = get_insets(subwindow != 0, frame_left, frame_top, frame_width, frame_height);
+		if (!forced && Arrays.equals(px, insets_px))
+			return;
+		insets_px = px;
 		rootInsets = new WindowInsets.Builder()
 		                 .setInsets(WindowInsets.Type.systemGestures(), Insets.of(px[0], px[1], px[2], px[3]))
 		                 .setInsets(WindowInsets.Type.mandatorySystemGestures(), Insets.of(px[4], px[5], px[6], px[7]))
 		                 .setInsets(WindowInsets.Type.navigationBars(), Insets.of(px[8], px[9], px[10], px[11]))
 		                 .build();
-		decorView.dispatchApplyWindowInsets(rootInsets);
-		decorView.requestLayout();
+		root.dispatchApplyWindowInsets(rootInsets);
+		root.requestLayout();
 	}
 
 	void requestInsets() {
+		requestInsets(true);
+	}
+
+	private void requestInsets(boolean forced) {
+		insets_forced |= forced;
 		if (insets_requested)
 			return;
 		insets_requested = true;
 		new Handler(context.getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
-				dispatchInsets();
+				dispatchInsets(insets_forced);
 			}
 		});
 	}
@@ -498,7 +702,7 @@ public class Window {
 			return;
 		exclusion_rects = rects;
 		if (bars_styled) // else the show sends them, with the frame
-			set_exclusion_rects(rects);
+			set_exclusion_rects(subwindow, rects);
 	}
 
 	private int views_keeping_screen_on;
@@ -566,11 +770,11 @@ public class Window {
 	// activity.c calls it by name (handle_cache) when the activity is shown
 	private void updateFrame() {
 		styleBars();
-		set_frame((params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
+		set_frame(subwindow, (params.flags & WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0, status_bar_color, light_status_bar,
 		          view_fullscreen || (params.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0);
-		set_keep_screen_on(views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
-		set_screen_brightness(params.screenBrightness);
-		set_exclusion_rects(exclusion_rects);
+		set_keep_screen_on(subwindow, views_keeping_screen_on > 0 || (params.flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0);
+		set_screen_brightness(subwindow, params.screenBrightness);
+		set_exclusion_rects(subwindow, exclusion_rects);
 		set_title(title != null ? title.toString() : context.getPackageName());
 	}
 
@@ -655,9 +859,9 @@ public class Window {
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
 	private native void set_layout(long subwindow, int type, int flags, int gravity, int x, int y, int width, int height, int min_width, float dim_amount);
 	private native void clear_background(long native_window);
-	private native void set_frame(boolean has_color, int color, boolean light, boolean fullscreen);
-	private native void set_keep_screen_on(boolean keep);
-	private native void set_exclusion_rects(int[] rects);
-	private native int[] get_insets();
-	private native void set_screen_brightness(float brightness);
+	private native void set_frame(long subwindow, boolean has_color, int color, boolean light, boolean fullscreen);
+	private native void set_keep_screen_on(long subwindow, boolean keep);
+	private native void set_exclusion_rects(long subwindow, int[] rects);
+	private native int[] get_insets(boolean clip, int left, int top, int width, int height);
+	private native void set_screen_brightness(long subwindow, float brightness);
 }

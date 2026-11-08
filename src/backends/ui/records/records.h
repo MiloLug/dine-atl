@@ -156,6 +156,9 @@ void records_scroll_changed(struct ui_view *view, bool animated);
 
 /* The app's window, on the Android main thread: input goes to its shown activity. */
 void records_touch(struct ui_window *window, const struct atl_touch *touch);
+/* A DOWN that a native control took (not records_touch's): the windows that watch for it get
+ * ACTION_OUTSIDE. */
+void records_touch_outside(struct ui_window *window, const struct atl_touch *down);
 void records_key(struct ui_window *window, const struct atl_key *key);
 
 #ifdef ATL_TEST_HOOKS

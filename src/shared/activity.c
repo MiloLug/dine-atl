@@ -185,6 +185,8 @@ static void task_move(struct atl_app *app, bool front, bool by_host)
 	if (app->task_front == front)
 		return;
 	app->task_front = front;
+	if (!front)
+		atl_toast_hide(app);
 	JNIEnv *env = get_jni_env();
 	(*env)->PushLocalFrame(env, 16);
 	activity_update_current(env, app);

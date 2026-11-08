@@ -75,6 +75,10 @@ public final class ATLLoadedApp {
 	public boolean touch_mode = true;
 	public final Set<Integer> keys_falling_back = new HashSet<>();
 	public boolean keyboard_took_back;
+	/** @hide Toast's, made at the first show */
+	public android.widget.Toast.Queue toasts;
+	/** @hide the PopupMenu up, which takes Back: its native menu is no window of the registry */
+	public android.widget.PopupMenu open_menu;
 
 	ATLLoadedApp(Resources resources, ClassLoader classLoader,
 	             PackageParser.Package pkg, Configuration config) {

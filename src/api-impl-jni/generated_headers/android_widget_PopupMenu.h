@@ -9,51 +9,19 @@ extern "C" {
 #endif
 /*
  * Class:     android_widget_PopupMenu
- * Method:    native_init
- * Signature: ()J
+ * Method:    nativeShow
+ * Signature: (J[Ljava/lang/String;[I[I)J
  */
-JNIEXPORT jlong JNICALL Java_android_widget_PopupMenu_native_1init
-  (JNIEnv *, jobject);
+JNIEXPORT jlong JNICALL Java_android_widget_PopupMenu_nativeShow
+  (JNIEnv *, jobject, jlong, jobjectArray, jintArray, jintArray);
 
 /*
  * Class:     android_widget_PopupMenu
- * Method:    native_insertItem
- * Signature: (JILjava/lang/String;I)V
+ * Method:    nativeClose
+ * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_android_widget_PopupMenu_native_1insertItem
-  (JNIEnv *, jobject, jlong, jint, jstring, jint);
-
-/*
- * Class:     android_widget_PopupMenu
- * Method:    native_insertSubmenu
- * Signature: (JILjava/lang/String;J)V
- */
-JNIEXPORT void JNICALL Java_android_widget_PopupMenu_native_1insertSubmenu
-  (JNIEnv *, jobject, jlong, jint, jstring, jlong);
-
-/*
- * Class:     android_widget_PopupMenu
- * Method:    native_removeItem
- * Signature: (JI)V
- */
-JNIEXPORT void JNICALL Java_android_widget_PopupMenu_native_1removeItem
-  (JNIEnv *, jobject, jlong, jint);
-
-/*
- * Class:     android_widget_PopupMenu
- * Method:    native_buildPopover
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_android_widget_PopupMenu_native_1buildPopover
+JNIEXPORT void JNICALL Java_android_widget_PopupMenu_nativeClose
   (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_widget_PopupMenu
- * Method:    native_show
- * Signature: (JJ)V
- */
-JNIEXPORT void JNICALL Java_android_widget_PopupMenu_native_1show
-  (JNIEnv *, jobject, jlong, jlong);
 
 #ifdef __cplusplus
 }

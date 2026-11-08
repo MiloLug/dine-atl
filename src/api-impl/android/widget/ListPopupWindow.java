@@ -72,7 +72,7 @@ public class ListPopupWindow {
 	private int mDropDownWidth = ViewGroup.LayoutParams.WRAP_CONTENT;
 	private int mDropDownHorizontalOffset;
 	private int mDropDownVerticalOffset;
-	private int mDropDownWindowLayoutType = /*WindowManager.LayoutParams.TYPE_APPLICATION_SUB_PANEL*/ 0x000003ea;
+	private int mDropDownWindowLayoutType = WindowManager.LayoutParams.TYPE_APPLICATION_SUB_PANEL;
 	private boolean mDropDownVerticalOffsetSet;
 	private boolean mIsAnimatedFromAnchor = true;
 	private boolean mOverlapAnchor;
@@ -153,7 +153,7 @@ public class ListPopupWindow {
 	 * if it is focusable than it needs to work with the input method, else
 	 * it doesn't.
 	 */
-	public static final int INPUT_METHOD_FROM_FOCUSABLE = 0x00000000;
+	public static final int INPUT_METHOD_FROM_FOCUSABLE = PopupWindow.INPUT_METHOD_FROM_FOCUSABLE;
 
 	/**
 	 * Mode for {@link #setInputMethodMode(int)}: this popup always needs to
@@ -161,7 +161,7 @@ public class ListPopupWindow {
 	 * means that it will always be displayed so that the user can also operate
 	 * the input method while it is shown.
 	 */
-	public static final int INPUT_METHOD_NEEDED = 0x00000001;
+	public static final int INPUT_METHOD_NEEDED = PopupWindow.INPUT_METHOD_NEEDED;
 
 	/**
 	 * Mode for {@link #setInputMethodMode(int)}: this popup never needs to
@@ -169,7 +169,7 @@ public class ListPopupWindow {
 	 * means that it will always be displayed to use as much space on the
 	 * screen as needed, regardless of whether this covers the input method.
 	 */
-	public static final int INPUT_METHOD_NOT_NEEDED = 0x00000002;
+	public static final int INPUT_METHOD_NOT_NEEDED = PopupWindow.INPUT_METHOD_NOT_NEEDED;
 
 	/**
 	 * Create a new, empty popup window capable of displaying items from a ListAdapter.
@@ -348,7 +348,7 @@ public class ListPopupWindow {
 	 * @see #getSoftInputMode()
 	 */
 	public void setSoftInputMode(int mode) {
-		// mPopup.setSoftInputMode(mode);
+		mPopup.setSoftInputMode(mode);
 	}
 
 	/**
@@ -357,9 +357,9 @@ public class ListPopupWindow {
 	 * @see #setSoftInputMode(int)
 	 * @see android.view.WindowManager.LayoutParams#softInputMode
 	 */
-	// public int getSoftInputMode() {
-	// 	return mPopup.getSoftInputMode();
-	// }
+	public int getSoftInputMode() {
+		return mPopup.getSoftInputMode();
+	}
 
 	/**
 	 * Sets a drawable to use as the list item selector.
@@ -402,7 +402,7 @@ public class ListPopupWindow {
 	 * @return Animation style that will be used.
 	 */
 	public int getAnimationStyle() {
-		return 0; // mPopup.getAnimationStyle();
+		return mPopup.getAnimationStyle();
 	}
 
 	/**
@@ -627,8 +627,8 @@ public class ListPopupWindow {
 		int height = buildDropDown();
 
 		final boolean noInputMethod = isInputMethodNotNeeded();
-		// mPopup.setAllowScrollingAnchorParent(!noInputMethod);
-		// mPopup.setWindowLayoutType(mDropDownWindowLayoutType);
+		mPopup.setAllowScrollingAnchorParent(!noInputMethod);
+		mPopup.setWindowLayoutType(mDropDownWindowLayoutType);
 
 		if (mPopup.isShowing()) {
 			if (!getAnchorView().isAttachedToWindow()) {
@@ -669,7 +669,7 @@ public class ListPopupWindow {
 			mPopup.update(getAnchorView(), mDropDownHorizontalOffset,
 			              mDropDownVerticalOffset, (widthSpec < 0) ? -1 : widthSpec,
 			              (heightSpec < 0) ? -1 : heightSpec);
-			// mPopup.getContentView().restoreDefaultFocus();
+			mPopup.getContentView().restoreDefaultFocus();
 		} else {
 			final int widthSpec;
 			if (mDropDownWidth == ViewGroup.LayoutParams.MATCH_PARENT) {
@@ -695,20 +695,20 @@ public class ListPopupWindow {
 
 			mPopup.setWidth(widthSpec);
 			mPopup.setHeight(heightSpec);
-			// mPopup.setIsClippedToScreen(true);
+			mPopup.setIsClippedToScreen(true);
 
 			// use outside touchable to dismiss drop down when touching outside of it, so
 			// only set this if the dropdown is not always visible
 			mPopup.setOutsideTouchable(!mForceIgnoreOutsideTouch && !mDropDownAlwaysVisible);
 			mPopup.setTouchInterceptor(mTouchInterceptor);
-			// mPopup.setEpicenterBounds(mEpicenterBounds);
-			// if (mOverlapAnchorSet) {
-			// 	mPopup.setOverlapAnchor(mOverlapAnchor);
-			// }
+			mPopup.setEpicenterBounds(mEpicenterBounds);
+			if (mOverlapAnchorSet) {
+				mPopup.setOverlapAnchor(mOverlapAnchor);
+			}
 			mPopup.showAsDropDown(getAnchorView(), mDropDownHorizontalOffset,
 			                      mDropDownVerticalOffset, mDropDownGravity);
 			mDropDownList.setSelection(ListView.INVALID_POSITION);
-			// mPopup.getContentView().restoreDefaultFocus();
+			mPopup.getContentView().restoreDefaultFocus();
 
 			if (!mModal || mDropDownList.isInTouchMode()) {
 				clearListSelection();
@@ -734,10 +734,10 @@ public class ListPopupWindow {
 	 * Remove existing exit transition from PopupWindow and force immediate dismissal.
 	 * @hide
 	 */
-	// public void dismissImmediate() {
-	// 	mPopup.setExitTransition(null);
-	// 	dismiss();
-	// }
+	public void dismissImmediate() {
+		mPopup.setExitTransition(null);
+		dismiss();
+	}
 
 	/**
 	 * Set a listener to receive a callback when the popup is dismissed.
@@ -946,7 +946,7 @@ public class ListPopupWindow {
 				int curIndex = mDropDownList.getSelectedItemPosition();
 				boolean consumed;
 
-				final boolean below = true; //!mPopup.isAboveAnchor();
+				final boolean below = !mPopup.isAboveAnchor();
 
 				final ListAdapter adapter = mAdapter;
 
@@ -1060,16 +1060,16 @@ public class ListPopupWindow {
 			// to the drop down list but instead, consume it immediately
 			final View anchorView = mDropDownAnchorView;
 			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-				// KeyEvent.DispatcherState state = anchorView.getKeyDispatcherState();
-				// if (state != null) {
-				// 	state.startTracking(event, this);
-				// }
+				KeyEvent.DispatcherState state = anchorView.getKeyDispatcherState();
+				if (state != null) {
+					state.startTracking(event, this);
+				}
 				return true;
 			} else if (event.getAction() == KeyEvent.ACTION_UP) {
-				// KeyEvent.DispatcherState state = anchorView.getKeyDispatcherState();
-				// if (state != null) {
-				// 	state.handleUpEvent(event);
-				// }
+				KeyEvent.DispatcherState state = anchorView.getKeyDispatcherState();
+				if (state != null) {
+					state.handleUpEvent(event);
+				}
 				if (event.isTracking() && !event.isCanceled()) {
 					dismiss();
 					return true;

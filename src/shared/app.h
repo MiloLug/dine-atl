@@ -12,6 +12,15 @@
 struct loop_main;
 struct ui_window;
 
+/* What a window asks of the host: the shown activity's, or one over it (windows.c) */
+struct atl_window_state {
+	bool keep_screen_on;
+	bool fullscreen;
+	float brightness;     // negative: the screen's own
+	int *exclusion_rects; // px in the window: left, top, right, bottom per rect
+	int n_exclusion_rects;
+};
+
 /* An app ATL runs: the C half of its record (ATLLoadedApp.native_app). A host makes it before the
  * app starts and keeps it for the process's life. */
 struct atl_app {
@@ -29,16 +38,23 @@ struct atl_app {
 	size_t backlog_len, backlog_cap;
 	jobject activity_current;
 	bool task_front; // in the back, no activity is focused; the stack and the window stay
-	bool keep_screen_on;
-	float screen_brightness; // the last sent: negative is the screen's own
 	struct atl_subwindow *subwindows; // windows.c's
 	jobject token_shown;              // windows.c's: the activity whose windows show, the backlog's ref
+
+	// the shown activity's window (android_view_Window.c); its status bar is its own
+	struct atl_window_state activity_state;
+	bool bar_set, bar_has_color, bar_light;
+	int bar_color;
+	// the drawn windows' together, as last sent (windows_state_changed)
+	bool keep_screen_on;
+	float screen_brightness;
+	bool fullscreen;
+	bool frame_sent; // the bar and fullscreen above went to the ui slot
+	bool toast_shown; // a text toast is up (android_widget_Toast.c)
 
 	// insets.c
 	pthread_mutex_t insets_lock;
 	struct atl_window_insets insets; // set from any thread
-	int *exclusion_rects; // px in the window: left, top, right, bottom per rect; the main thread's
-	int n_exclusion_rects;
 	struct atl_gesture_exclusion exclusion_sent;
 };
 
@@ -65,7 +81,13 @@ struct atl_app *atl_app_current(void);
 void windows_token_visible(JNIEnv *env, struct atl_app *app, jobject activity, bool visible);
 void windows_update(JNIEnv *env, struct atl_app *app);
 void windows_owner_closed(JNIEnv *env, struct atl_app *app, jobject activity);
-/* android_view_Window.c: no window shows (task in the back, no activity): the host's defaults */
+/* android_view_Window.c: no activity shows: the host's defaults */
 void atl_window_state_reset(struct atl_app *app);
+/* The state a Java Window's natives set: its sub-window's, the shown activity's, else NULL. */
+struct atl_window_state *atl_window_state_of(JNIEnv *env, struct atl_app *app, jobject window, jlong subwindow);
+/* android_widget_Toast.c: the task went to the back: a text toast up goes */
+void atl_toast_hide(struct atl_app *app);
+/* insets.c: the drawn windows' exclusion rects changed, or where those windows are */
+void atl_exclusion_update(struct atl_app *app);
 
 #endif

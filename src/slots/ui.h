@@ -56,6 +56,7 @@ struct ui_window_layout {
 #define UI_WINDOW_NOT_FOCUSABLE   0x00000008
 #define UI_WINDOW_NOT_TOUCHABLE   0x00000010
 #define UI_WINDOW_NOT_TOUCH_MODAL 0x00000020
+#define UI_WINDOW_WATCH_OUTSIDE_TOUCH 0x00040000
 struct atl_subwindow;
 /* A window over the activities as the backend shows it; windows_place (shared/windows.h) places it. */
 struct ui_root {
@@ -160,6 +161,30 @@ void ui_dialog_close(struct ui_window *dialog);
 /* Java dropped the Dialog; it was closed or never shown. */
 void ui_dialog_free(struct ui_window *dialog);
 void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel);
+
+/* A PopupMenu's items, depth first: an item of a submenu follows the item that opens it. */
+struct ui_menu_item {
+	const char *title;
+	int parent; // the index of the item whose submenu holds it, -1 at the top
+	bool enabled, checkable, checked, has_submenu;
+};
+/* What a PopupMenu ended with, besides an item's index */
+#define UI_MENU_DISMISSED -1
+struct atl_menu;
+/* Shows a native menu at anchor, a view of window; it answers once through atl_menu_answer (the
+ * picked item's index, or UI_MENU_DISMISSED), and touches menu no more after that answer. Returns
+ * the backend's handle. Android main thread. */
+void *ui_menu_show(struct ui_window *window, struct ui_view *anchor, const struct ui_menu_item *items, int n, struct atl_menu *menu);
+/* Java dismissed it: the backend closes it, then answers UI_MENU_DISMISSED unless it already answered. */
+void ui_menu_close(void *menu);
+/* After its answer was taken. */
+void ui_menu_free(void *menu);
+
+/* A Toast's text, natively, over the app's window and the alerts above it: placed by gravity
+ * (Gravity's bits) and x, y px; until ui_toast_hide or the next ui_toast_show, one at a time. Java
+ * times it. Android main thread. */
+void ui_toast_show(struct ui_window *window, const char *text, int gravity, int x, int y);
+void ui_toast_hide(struct ui_window *window);
 
 /* A View drawn by Java, possibly with children. */
 struct ui_view *ui_view_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);

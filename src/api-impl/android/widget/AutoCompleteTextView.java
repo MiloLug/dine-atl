@@ -266,7 +266,7 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
 				unregisterOnBackInvokedCallback();
 			}
 		});
-		mPopup.setSoftInputMode(/*WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE*/ 0x00000010);
+		mPopup.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 		mPopup.setPromptPosition(ListPopupWindow.POSITION_PROMPT_BELOW);
 		mPopup.setListSelector(popupListSelector);
 		mPopup.setOnItemClickListener(new DropDownItemClickListener());
@@ -777,23 +777,23 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
 			// special case for the back key, we do not even try to send it
 			// to the drop down list but instead, consume it immediately
 			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-				// KeyEvent.DispatcherState state = getKeyDispatcherState();
-				// if (state != null) {
-				// 	state.startTracking(event, this);
-				// }
+				KeyEvent.DispatcherState state = getKeyDispatcherState();
+				if (state != null) {
+					state.startTracking(event, this);
+				}
 				return true;
 			} else if (event.getAction() == KeyEvent.ACTION_UP) {
-				// KeyEvent.DispatcherState state = getKeyDispatcherState();
-				// if (state != null) {
-				// 	state.handleUpEvent(event);
-				// }
+				KeyEvent.DispatcherState state = getKeyDispatcherState();
+				if (state != null) {
+					state.handleUpEvent(event);
+				}
 				if (event.isTracking() && !event.isCanceled()) {
 					dismissDropDown();
 					return true;
 				}
 			}
 		}
-		return false; // super.onKeyPreIme(keyCode, event);
+		return super.onKeyPreIme(keyCode, event);
 	}
 
 	public boolean onKeyUp(int keyCode, KeyEvent event) {
@@ -1287,7 +1287,7 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
 		if (!mPopup.isDropDownAlwaysVisible()) {
 			registerOnBackInvokedCallback();
 		}
-		mPopup.getListView().setOverScrollMode(/*View.OVER_SCROLL_ALWAYS*/ 0x00000000);
+		mPopup.getListView().setOverScrollMode(View.OVER_SCROLL_ALWAYS);
 	}
 
 	/**

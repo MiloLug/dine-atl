@@ -59,7 +59,9 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 		if (!window->roots[i].view)
 			continue;
 		const struct atl_window_frame *frame = windows_frame(window->roots[i].window);
-		fprintf(out, "viewtree: window dialog %d,%d %dx%d", frame->left, frame->top, frame->width, frame->height);
+		int type = window->roots[i].layout.type;
+		const char *kind = type < 1000 ? "dialog" : type < 2000 ? "panel" : type == 2005 ? "toast" : "overlay";
+		fprintf(out, "viewtree: window %s %d,%d %dx%d", kind, frame->left, frame->top, frame->width, frame->height);
 		if (window->roots[i].chrome) {
 			const struct atl_window_frame *panel = windows_panel(window->roots[i].window);
 			fprintf(out, " panel %d,%d %dx%d", panel->left, panel->top, panel->width, panel->height);

@@ -63,6 +63,7 @@ public final class ContextImpl extends Context {
 
 	private final LayoutInflater layout_inflater = new LayoutInflater(this);
 	private final JobScheduler job_scheduler = new JobScheduler(this);
+	private final WindowManagerImpl window_manager = new WindowManagerImpl(this, null);
 
 	private final int atl_flags;
 
@@ -160,7 +161,7 @@ public final class ContextImpl extends Context {
 	public Object getSystemService(String name) {
 		switch (name) {
 			case "window":
-				return new WindowManagerImpl();
+				return window_manager;
 			case "clipboard":
 				return new ClipboardManager();
 			case "sensor":
@@ -240,7 +241,7 @@ public final class ContextImpl extends Context {
 		if (serviceClass == JobScheduler.class)
 			return job_scheduler;
 		if (serviceClass == WindowManager.class)
-			return new WindowManagerImpl();
+			return window_manager;
 		if (serviceClass == InputMethodManager.class)
 			return process_app.input_method;
 		// services that take their Context

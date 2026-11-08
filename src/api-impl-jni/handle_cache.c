@@ -101,7 +101,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.window.class = _REF((*env)->FindClass(env, "android/view/Window"));
 	handle_cache.window.updateFrame = _METHOD(handle_cache.window.class, "updateFrame", "()V");
 	handle_cache.window.dispatchInsets = _METHOD(handle_cache.window.class, "dispatchInsets", "()V");
-	handle_cache.window.atlSetFrame = _METHOD(handle_cache.window.class, "atlSetFrame", "(II)V");
+	handle_cache.window.atlSetFrame = _METHOD(handle_cache.window.class, "atlSetFrame", "(IIII)V");
 	handle_cache.window.atlSetVisible = _METHOD(handle_cache.window.class, "atlSetVisible", "(Z)V");
 	handle_cache.window.atlLeaked = _METHOD(handle_cache.window.class, "atlLeaked", "(Ljava/lang/Object;)V");
 
@@ -174,8 +174,8 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.iter_parcel.constructor = _METHOD(handle_cache.iter_parcel.class, "<init>", "(J)V");
 
 	handle_cache.view_tree_observer.class = _REF((*env)->FindClass(env, "android/view/ViewTreeObserver"));
-	handle_cache.view_tree_observer.dispatchOnGlobalLayout = _METHOD(handle_cache.view_tree_observer.class, "dispatchOnGlobalLayout", "()V");
-	handle_cache.view_tree_observer.dispatchOnPreDraw = _METHOD(handle_cache.view_tree_observer.class, "dispatchOnPreDraw", "()Z");
+	handle_cache.view_tree_observer.dispatchOnGlobalLayout = _METHOD(handle_cache.view_tree_observer.class, "atlDispatchOnGlobalLayout", "()V");
+	handle_cache.view_tree_observer.dispatchOnPreDraw = _METHOD(handle_cache.view_tree_observer.class, "atlDispatchOnPreDraw", "()V");
 
 	handle_cache.time_picker.class = _REF((*env)->FindClass(env, "android/widget/TimePicker"));
 	handle_cache.time_picker.onTimeChange = _METHOD(handle_cache.time_picker.class, "onTimeChange", "()V");

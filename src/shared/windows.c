@@ -10,6 +10,7 @@
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/generated_headers/android_view_Window.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/host.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
@@ -17,7 +18,11 @@
 #include "upcall.h"
 #include "windows.h"
 
-#define FIRST_SYSTEM_WINDOW 2000 // LayoutParams' types from here on are the app's, not an activity's
+#define FIRST_SUB_WINDOW         1000 // panels attached to another window, to LAST_SUB_WINDOW
+#define LAST_SUB_WINDOW          1999
+#define FIRST_SYSTEM_WINDOW      2000 // LayoutParams' types from here on are the app's, not an activity's
+#define TYPE_TOAST               2005
+#define TYPE_APPLICATION_OVERLAY 2038
 
 struct atl_subwindow {
 	struct atl_app *app;
@@ -27,7 +32,9 @@ struct atl_subwindow {
 	jobject held;  // global ref to it while added: the window manager holds a shown Dialog (WindowManagerGlobal)
 	jweak decor;   // the root's View
 	jweak owner;   // its context's Activity; NULL: none
+	struct atl_subwindow *parent; // a sub-panel's window, NULL: the activity's or none
 	struct ui_window_layout layout;
+	struct atl_window_state state;
 	struct atl_window_frame frame;
 	struct atl_window_frame panel; // with a chrome around root: the frame and the chrome
 	bool requested; // added by a show, until a dismiss
@@ -69,9 +76,12 @@ static bool token_alive(JNIEnv *env, jweak activity)
 	return alive;
 }
 
+// a sub-panel's parent comes first in the list, so its visible is this pass's
 static bool shows(JNIEnv *env, struct atl_app *app, const struct atl_subwindow *window)
 {
 	if (!window->requested || window->hidden || window->leaked || !app->task_front)
+		return false;
+	if (window->parent && !window->parent->visible)
 		return false;
 	if (!token(window))
 		return true;
@@ -112,6 +122,68 @@ void windows_update(JNIEnv *env, struct atl_app *app)
 		call_window(env, window, handle_cache.window.atlSetVisible, visible);
 	}
 	push_roots(app);
+	windows_state_changed(app);
+}
+
+struct atl_window_state *windows_state(struct atl_subwindow *window)
+{
+	return &window->state;
+}
+
+void windows_state_changed(struct atl_app *app)
+{
+	const struct atl_window_state *activity = &app->activity_state;
+	bool keep = activity->keep_screen_on, fullscreen = activity->fullscreen;
+	float brightness = activity->brightness;
+	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
+		if (!window->visible)
+			continue;
+		keep |= window->state.keep_screen_on;
+		fullscreen |= window->state.fullscreen;
+		if (window->state.brightness >= 0)
+			brightness = window->state.brightness;
+	}
+	if (app->keep_screen_on != keep) {
+		app->keep_screen_on = keep;
+		host_keep_screen_on(app, keep);
+	}
+	if (app->screen_brightness != brightness) {
+		app->screen_brightness = brightness;
+		host_screen_brightness(app, brightness);
+	}
+	if (app->bar_set && app->window && (!app->frame_sent || app->fullscreen != fullscreen)) {
+		app->frame_sent = true;
+		app->fullscreen = fullscreen;
+		ui_window_set_frame(app->window, &(struct ui_frame){.has_color = app->bar_has_color, .color = app->bar_color, .light = app->bar_light, .fullscreen = fullscreen});
+	}
+	atl_exclusion_update(app);
+}
+
+int *windows_exclusion_rects(struct atl_app *app, int *n)
+{
+	int count = app->activity_state.n_exclusion_rects;
+	for (struct atl_subwindow *window = app->subwindows; window; window = window->next)
+		count += window->visible ? window->state.n_exclusion_rects : 0;
+	int *rects = malloc((count * 4 + 1) * sizeof(*rects)), *rect = rects;
+	for (int i = 0; i < app->activity_state.n_exclusion_rects * 4; i++)
+		*rect++ = app->activity_state.exclusion_rects[i];
+	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
+		if (!window->visible)
+			continue;
+		for (int i = 0; i < window->state.n_exclusion_rects * 4; i++)
+			*rect++ = window->state.exclusion_rects[i] + (i % 2 ? window->frame.top : window->frame.left);
+	}
+	*n = count;
+	return rects;
+}
+
+void windows_dispatch_insets(struct atl_app *app)
+{
+	JNIEnv *env = get_jni_env();
+	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
+		if (window->visible && window->root)
+			call_window(env, window, handle_cache.window.dispatchInsets);
+	}
 }
 
 void windows_owner_closed(JNIEnv *env, struct atl_app *app, jobject activity)
@@ -141,17 +213,18 @@ void windows_token_visible(JNIEnv *env, struct atl_app *app, jobject activity, b
 	windows_update(env, app);
 }
 
-JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow(JNIEnv *env, jobject this, jobject owner)
+JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow(JNIEnv *env, jobject this, jobject owner, jlong parent, jobject root)
 {
 	struct atl_subwindow *window = calloc(1, sizeof(*window));
 	window->app = atl_app_of_window(env, this);
 	if (!window->app) // a Context of a package no host runs: the app whose main thread makes the window
 		window->app = atl_app_current();
 	window->java_window = (*env)->NewWeakGlobalRef(env, this);
-	jobject decor = _GET_OBJ_FIELD(this, "decorView", "Landroid/view/ViewGroup;");
-	window->decor = (*env)->NewWeakGlobalRef(env, decor);
-	(*env)->DeleteLocalRef(env, decor);
+	window->state.brightness = -1;
+	_SET_LONG_FIELD(this, "native_window", _INTPTR(window->app->window)); // its views observe the app window's passes
+	window->decor = (*env)->NewWeakGlobalRef(env, root);
 	window->owner = owner ? (*env)->NewWeakGlobalRef(env, owner) : NULL;
+	window->parent = _PTR(parent);
 	struct atl_subwindow **last = &window->app->subwindows;
 	while (*last)
 		last = &(*last)->next;
@@ -178,27 +251,93 @@ void windows_chrome_changed(struct ui_window *chrome)
 	}
 }
 
+static bool is_sub_panel(const struct atl_subwindow *window)
+{
+	return window->layout.type >= FIRST_SUB_WINDOW && window->layout.type <= LAST_SUB_WINDOW;
+}
+
+static bool descends(const struct atl_subwindow *window, const struct atl_subwindow *ancestor)
+{
+	for (window = window->parent; window; window = window->parent) {
+		if (window == ancestor)
+			return true;
+	}
+	return false;
+}
+
+/* WindowManagerPolicy.getWindowLayerFromTypeLw's layers of the types an app adds (other system
+ * types as SYSTEM_ALERT); a sub-panel goes with the window it is attached to. */
+static int layer(const struct atl_subwindow *window)
+{
+	while (window->parent)
+		window = window->parent;
+	switch (window->layout.type) {
+	case TYPE_TOAST:
+		return 8;
+	case TYPE_APPLICATION_OVERLAY:
+		return 12;
+	default:
+		return window->layout.type < FIRST_SYSTEM_WINDOW ? 2 : 11;
+	}
+}
+
+// a sub-panel attached to the activity's window, which is under every window here
+static bool on_activity(const struct atl_subwindow *window)
+{
+	while (window->parent)
+		window = window->parent;
+	return is_sub_panel(window);
+}
+
+// to the top of its layer, the sub-panels attached to it with it: above its parent's other panels
+static void raise(struct atl_app *app, struct atl_subwindow *window)
+{
+	struct atl_subwindow *block = NULL, **block_end = &block;
+	for (struct atl_subwindow **link = &app->subwindows; *link;) {
+		if (*link == window || descends(*link, window)) {
+			struct atl_subwindow *moved = *link;
+			*link = moved->next;
+			moved->next = NULL;
+			*block_end = moved;
+			block_end = &moved->next;
+		} else {
+			link = &(*link)->next;
+		}
+	}
+	struct atl_subwindow **at = &app->subwindows;
+	if (window->parent) {
+		for (struct atl_subwindow **link = &app->subwindows; *link; link = &(*link)->next) {
+			if (*link == window->parent || descends(*link, window->parent))
+				at = &(*link)->next;
+		}
+	} else if (is_sub_panel(window)) { // above the activity's other panels, under its windows
+		for (struct atl_subwindow **link = &app->subwindows; *link && on_activity(*link); link = &(*link)->next)
+			at = &(*link)->next;
+	} else {
+		for (struct atl_subwindow **link = &app->subwindows; *link; link = &(*link)->next) {
+			if (layer(*link) <= layer(window))
+				at = &(*link)->next;
+		}
+	}
+	*block_end = *at;
+	*at = block;
+}
+
 JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeShowSubwindow(JNIEnv *env, jobject this, jlong ptr)
 {
 	struct atl_subwindow *window = _PTR(ptr);
 	struct atl_app *app = window->app;
-	if (token(window) ? !token_alive(env, token(window)) : window->layout.type < FIRST_SYSTEM_WINDOW)
+	if (window->parent) {
+		if (!window->parent->requested)
+			return false; // its window went: AOSP's token is no longer valid
+	} else if (token(window) ? !token_alive(env, token(window)) : window->layout.type < FIRST_SYSTEM_WINDOW) {
 		return false; // BadTokenException
+	}
 	window->requested = true;
 	window->hidden = false;
 	if (!window->held)
 		window->held = _REF(this);
-	for (struct atl_subwindow **link = &app->subwindows; *link; link = &(*link)->next) {
-		if (*link == window) {
-			*link = window->next;
-			break;
-		}
-	}
-	window->next = NULL;
-	struct atl_subwindow **last = &app->subwindows;
-	while (*last)
-		last = &(*last)->next;
-	*last = window;
+	raise(app, window);
 	windows_update(env, app);
 	return true;
 }
@@ -209,9 +348,15 @@ JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeHideSubwindow(JNIEnv *
 	struct atl_subwindow *window = _PTR(ptr);
 	if (window->leaked)
 		return false; // "not attached to window manager"
-	if (remove) {
+	if (remove) { // the windows attached to it go with it, as WindowManagerService removes them
 		window->requested = false;
 		release(env, window);
+		for (struct atl_subwindow *child = window->app->subwindows; child; child = child->next) {
+			if (descends(child, window)) {
+				child->requested = false;
+				release(env, child);
+			}
+		}
 	} else {
 		window->hidden = true;
 	}
@@ -229,9 +374,16 @@ static void free_subwindow(void *data)
 			break;
 		}
 	}
-	if (window->visible)
+	for (struct atl_subwindow *child = window->app->subwindows; child; child = child->next) {
+		if (child->parent == window) // Java frees its own window: it stays, not requested
+			child->parent = NULL;
+	}
+	if (window->visible) {
 		push_roots(window->app);
+		windows_state_changed(window->app);
+	}
 	release(env, window);
+	free(window->state.exclusion_rects);
 	(*env)->DeleteWeakGlobalRef(env, window->java_window);
 	(*env)->DeleteWeakGlobalRef(env, window->decor);
 	if (window->owner)
@@ -313,31 +465,44 @@ static void place_panel(struct atl_subwindow *window, int screen_width, int scre
 	window->frame = (struct atl_window_frame){left + chrome.left, top + chrome.top, width, height};
 }
 
+// Java's Window learns its frame; exclusion rects move with it
+static void frame_placed(struct atl_subwindow *window, const struct atl_window_frame *old)
+{
+	const struct atl_window_frame *frame = &window->frame;
+	call_window(get_jni_env(), window, handle_cache.window.atlSetFrame, frame->left, frame->top, frame->width, frame->height);
+	if (window->state.n_exclusion_rects && (frame->left != old->left || frame->top != old->top))
+		atl_exclusion_update(window->app);
+}
+
 void windows_place(struct atl_subwindow *window, int screen_width, int screen_height, struct atl_window_frame *frame)
 {
+	struct atl_window_frame old = window->frame;
 	if (window->chrome) {
 		place_panel(window, screen_width, screen_height);
 		*frame = window->frame;
-		call_window(get_jni_env(), window, handle_cache.window.atlSetFrame, frame->left, frame->top);
+		frame_placed(window, &old);
 		return;
 	}
 	struct atl_ref *root = (struct atl_ref *)window->decor;
 	const struct ui_window_layout *layout = &window->layout;
-	atl_upcall_view_measure(root, window_spec(layout->width, screen_width), window_spec(layout->height, screen_height));
+	// a sub-panel lays out in its parent's frame (AOSP's attached window), measured against the screen
+	struct atl_window_frame container = window->parent ? window->parent->frame : (struct atl_window_frame){0, 0, screen_width, screen_height};
+	int spec_width = layout->width == -1 ? container.width : screen_width, spec_height = layout->height == -1 ? container.height : screen_height;
+	atl_upcall_view_measure(root, window_spec(layout->width, spec_width), window_spec(layout->height, spec_height));
 	int width = atl_upcall_view_get_measured(root, false), height = atl_upcall_view_get_measured(root, true);
 	if (layout->width == -2 && width < layout->min_width) {
-		atl_upcall_view_measure(root, layout->min_width | MEASURE_SPEC_EXACTLY, window_spec(layout->height, screen_height));
+		atl_upcall_view_measure(root, layout->min_width | MEASURE_SPEC_EXACTLY, window_spec(layout->height, spec_height));
 		width = atl_upcall_view_get_measured(root, false);
 		height = atl_upcall_view_get_measured(root, true);
 	}
 	int measured_width = width, measured_height = height;
-	int left = gravity_apply(layout->gravity, &width, screen_width, layout->x);
-	int top = gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, screen_height, layout->y);
+	int left = container.left + gravity_apply(layout->gravity, &width, container.width, layout->x);
+	int top = container.top + gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, container.height, layout->y);
 	if (width != measured_width || height != measured_height)
 		atl_upcall_view_measure(root, width | MEASURE_SPEC_EXACTLY, height | MEASURE_SPEC_EXACTLY);
 	window->frame = (struct atl_window_frame){left, top, width, height};
 	*frame = window->frame;
-	call_window(get_jni_env(), window, handle_cache.window.atlSetFrame, left, top);
+	frame_placed(window, &old);
 }
 
 const struct atl_window_frame *windows_frame(const struct atl_subwindow *window)
@@ -366,6 +531,16 @@ const struct ui_root *windows_touch_target(const struct ui_root *roots, size_t n
 			return &roots[i];
 	}
 	return NULL;
+}
+
+size_t windows_outside_targets(const struct ui_root *roots, size_t n, const struct ui_root *target, size_t *out)
+{
+	size_t count = 0;
+	for (size_t i = n; i-- > 0 && &roots[i] != target;) {
+		if (roots[i].view && roots[i].layout.flags & UI_WINDOW_WATCH_OUTSIDE_TOUCH)
+			out[count++] = i;
+	}
+	return count;
 }
 
 bool windows_in_chrome(const struct atl_subwindow *window, float x, float y)

@@ -121,7 +121,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public WindowManager getWindowManager() {
-		return new WindowManagerImpl();
+		return window.getWindowManager();
+	}
+
+	// AOSP's: the window service of an activity is its window's, which adds windows with its token
+	@Override
+	public Object getSystemService(String name) {
+		if ("window".equals(name))
+			return getWindowManager();
+		return super.getSystemService(name);
+	}
+
+	@Override
+	public Object getSystemService(Class<?> serviceClass) throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException {
+		if (serviceClass == WindowManager.class)
+			return getWindowManager();
+		return super.getSystemService(serviceClass);
 	}
 
 	public String getCallingPackage() {

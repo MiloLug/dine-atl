@@ -199,6 +199,35 @@ static const struct ui_root *root_of(const struct ui_window *window, const struc
 	return NULL;
 }
 
+/* ACTION_OUTSIDE to the windows above target that watch for it, each in its own coordinates; they
+ * may close meanwhile, so their refs are taken first */
+static void touch_outside(struct ui_window *window, const struct ui_root *target, const struct atl_touch *down)
+{
+	size_t *indexes = malloc((window->n_roots + 1) * sizeof(*indexes));
+	size_t n = windows_outside_targets(window->roots, window->n_roots, target, indexes);
+	struct atl_ref **refs = malloc((n + 1) * sizeof(*refs));
+	struct atl_touch *outside = malloc((n + 1) * sizeof(*outside));
+	for (size_t i = 0; i < n; i++) {
+		const struct ui_root *root = &window->roots[indexes[i]];
+		const struct atl_window_frame *frame = windows_frame(root->window);
+		refs[i] = atl_ref_dup(root->view->ref);
+		outside[i] = (struct atl_touch){.action = ATL_ACTION_OUTSIDE, .down_time = down->down_time, .time = down->time, .count = 1};
+		outside[i].pointers[0] = (struct atl_pointer){.id = down->pointers[0].id, .x = down->pointers[0].x - frame->left, .y = down->pointers[0].y - frame->top};
+	}
+	free(indexes);
+	for (size_t i = 0; i < n; i++) {
+		atl_upcall_touch(refs[i], &outside[i]);
+		atl_ref_free(refs[i]);
+	}
+	free(refs);
+	free(outside);
+}
+
+void records_touch_outside(struct ui_window *window, const struct atl_touch *down)
+{
+	touch_outside(window, windows_touch_target(window->roots, window->n_roots, down->pointers[0].x, down->pointers[0].y), down);
+}
+
 void records_touch(struct ui_window *window, const struct atl_touch *touch)
 {
 	if (touch->action == ATL_ACTION_DOWN) {
@@ -206,6 +235,11 @@ void records_touch(struct ui_window *window, const struct atl_touch *touch)
 		const struct ui_root *target = windows_touch_target(window->roots, window->n_roots, x, y);
 		window->touch_dropped = target && windows_in_chrome(target->window, x, y); // the chrome's, no view's
 		window->touched = target && !window->touch_dropped ? target->view : NULL;
+		struct ui_view *touched = window->touched;
+		bool dropped = window->touch_dropped;
+		touch_outside(window, target, touch);
+		if (window->touched != touched || window->touch_dropped != dropped) // an outside touch closed its window
+			return;
 	}
 	struct ui_view *target = window->touched;
 	bool ends = touch->action == ATL_ACTION_UP || touch->action == ATL_ACTION_CANCEL;

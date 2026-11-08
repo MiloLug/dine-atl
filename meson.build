@@ -117,9 +117,11 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/android_widget_Button.c',
 	'src/shared/android_widget_EditText.c',
 	'src/shared/android_widget_ImageView.c',
+	'src/shared/android_widget_PopupMenu.c',
 	'src/shared/android_widget_ProgressBar.c',
 	'src/shared/android_widget_ScrollView.c',
 	'src/shared/android_widget_TextView.c',
+	'src/shared/android_widget_Toast.c',
 	'src/shared/bitmap.c',
 	'src/shared/input.c',
 	'src/shared/insets.c',
@@ -247,13 +249,10 @@ if desktop
     'src/api-impl-jni/sensors/android_hardware_SensorManager.c',
     'src/api-impl-jni/views/android_view_inputmethod_InputMethodManager.c',
     'src/api-impl-jni/views/android_view_View.c',
-    'src/api-impl-jni/views/android_view_WindowManagerImpl.c',
     'src/api-impl-jni/widgets/WrapperWidget.c',
     'src/api-impl-jni/widgets/android_view_SurfaceView.c',
     'src/api-impl-jni/widgets/android_webkit_WebView.c',
     'src/api-impl-jni/widgets/android_widget_DatePicker.c',
-    'src/api-impl-jni/widgets/android_widget_PopupMenu.c',
-    'src/api-impl-jni/widgets/android_widget_PopupWindow.c',
     'src/api-impl-jni/widgets/android_widget_Spinner.c',
     'src/api-impl-jni/widgets/android_widget_SeekBar.c',
     'src/api-impl-jni/widgets/android_widget_TimePicker.c',
@@ -296,9 +295,9 @@ endif
 
 records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/ui/records/dump.c'] : [])
 if ui_backend == 'headless'
-  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/edit.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/views.c'])
+  backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/edit.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/menu.c', 'src/backends/ui/headless/toast.c', 'src/backends/ui/headless/views.c'])
 elif ui_backend == 'uikit'
-  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/panel.m', 'src/backends/ui/uikit/view.m'])
+  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/menu.m', 'src/backends/ui/uikit/panel.m', 'src/backends/ui/uikit/toast.m', 'src/backends/ui/uikit/view.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',
@@ -306,7 +305,9 @@ else
                                    'src/backends/ui/gtk/display.c',
                                    'src/backends/ui/gtk/edit.c',
                                    'src/backends/ui/gtk/input.c',
+                                   'src/backends/ui/gtk/menu.c',
                                    'src/backends/ui/gtk/text.c',
+                                   'src/backends/ui/gtk/toast.c',
                                    'src/backends/ui/gtk/view.c',
                                    'src/backends/ui/gtk/widgets.c',
                                    'src/backends/ui/gtk/window.c',

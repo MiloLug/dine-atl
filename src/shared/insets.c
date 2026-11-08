@@ -13,6 +13,7 @@
 #include "app.h"
 #include "nav.h"
 #include "upcall.h"
+#include "windows.h"
 
 // AOSP's MIN_GESTURE_EXCLUSION_LIMIT_DP: per side edge, granted from the bottom-most rect up
 #define EXCLUSION_LIMIT_DP 200
@@ -38,14 +39,14 @@ static int span_compare(const void *a, const void *b)
 
 /* The rects' vertical extents within the strip [left, right) between top and bottom, merged, in dp,
  * cut to the limit from the bottom up. */
-static int edge_spans(struct atl_app *app, int left, int right, int top, int bottom, struct atl_span *out)
+static int edge_spans(const int *rects, int n_rects, int left, int right, int top, int bottom, struct atl_span *out)
 {
 	if (left >= right || top >= bottom) // no strip on this edge
 		return 0;
-	struct atl_span *spans = malloc((app->n_exclusion_rects + 1) * sizeof(*spans));
+	struct atl_span *spans = malloc((n_rects + 1) * sizeof(*spans));
 	int n = 0;
-	for (int i = 0; i < app->n_exclusion_rects; i++) {
-		const int *rect = &app->exclusion_rects[i * 4];
+	for (int i = 0; i < n_rects; i++) {
+		const int *rect = &rects[i * 4];
 		int span_top = rect[1] > top ? rect[1] : top;
 		int span_bottom = rect[3] < bottom ? rect[3] : bottom;
 		if (rect[0] < right && rect[2] > left && span_top < span_bottom)
@@ -78,7 +79,7 @@ static int edge_spans(struct atl_app *app, int left, int right, int top, int bot
 	return count;
 }
 
-static void exclusion_update(struct atl_app *app)
+void atl_exclusion_update(struct atl_app *app)
 {
 	struct atl_window_insets current = insets_get(app);
 	const struct atl_edges *strip = &current.system_gestures;
@@ -86,8 +87,11 @@ static void exclusion_update(struct atl_app *app)
 	int width = atl_screen_get()->width, height = atl_screen_get()->height;
 	int top = roundf(strip->top * scale), bottom = height - roundf(strip->bottom * scale);
 	struct atl_gesture_exclusion exclusion = {0};
-	exclusion.left_count = edge_spans(app, 0, roundf(strip->left * scale), top, bottom, exclusion.left);
-	exclusion.right_count = edge_spans(app, width - roundf(strip->right * scale), width, top, bottom, exclusion.right);
+	int n_rects;
+	int *rects = windows_exclusion_rects(app, &n_rects);
+	exclusion.left_count = edge_spans(rects, n_rects, 0, roundf(strip->left * scale), top, bottom, exclusion.left);
+	exclusion.right_count = edge_spans(rects, n_rects, width - roundf(strip->right * scale), width, top, bottom, exclusion.right);
+	free(rects);
 	if (!memcmp(&exclusion, &app->exclusion_sent, sizeof(exclusion)))
 		return;
 	app->exclusion_sent = exclusion;
@@ -105,7 +109,8 @@ static void insets_changed(void *data)
 		exit_on_exception(env);
 	}
 	(*env)->PopLocalFrame(env, NULL);
-	exclusion_update(app);
+	windows_dispatch_insets(app);
+	atl_exclusion_update(app);
 }
 
 void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *new_insets)
@@ -117,31 +122,45 @@ void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *new
 		loop_main_post(app->loop, insets_changed, app);
 }
 
-JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets(JNIEnv *env, jobject this)
+static int overlap(int inset, int distance)
+{
+	return inset > distance ? inset - distance : 0;
+}
+
+/* A window over the activities (clip) takes the part of each edge's inset that its frame, px in
+ * the app's window, overlaps; before its first placement (width 0) none. */
+JNIEXPORT jintArray JNICALL Java_android_view_Window_get_1insets(JNIEnv *env, jobject this, jboolean clip, jint left, jint top, jint width, jint height)
 {
 	struct atl_window_insets current = insets_get(atl_app_of_window(env, this));
 	const struct atl_edges *edges[] = {&current.system_gestures, &current.mandatory_gestures, &current.navigation_bars};
 	float scale = px_per_dp();
+	int screen_width = atl_screen_get()->width, screen_height = atl_screen_get()->height;
 	jint px[12];
 	for (int i = 0; i < 3; i++) {
 		px[i * 4 + 0] = roundf(edges[i]->left * scale);
 		px[i * 4 + 1] = roundf(edges[i]->top * scale);
 		px[i * 4 + 2] = roundf(edges[i]->right * scale);
 		px[i * 4 + 3] = roundf(edges[i]->bottom * scale);
+		if (!clip)
+			continue;
+		px[i * 4 + 0] = width ? overlap(px[i * 4 + 0], left) : 0;
+		px[i * 4 + 1] = width ? overlap(px[i * 4 + 1], top) : 0;
+		px[i * 4 + 2] = width ? overlap(px[i * 4 + 2], screen_width - left - width) : 0;
+		px[i * 4 + 3] = width ? overlap(px[i * 4 + 3], screen_height - top - height) : 0;
 	}
 	jintArray array = (*env)->NewIntArray(env, 12);
 	(*env)->SetIntArrayRegion(env, array, 0, 12, px);
 	return array;
 }
 
-// the shown activity's window decides, as for the frame
-JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects(JNIEnv *env, jobject this, jintArray rects)
+JNIEXPORT void JNICALL Java_android_view_Window_set_1exclusion_1rects(JNIEnv *env, jobject this, jlong subwindow, jintArray rects)
 {
 	struct atl_app *app = atl_app_of_window(env, this);
-	if (!activity_window_shown(env, app, this))
+	struct atl_window_state *state = atl_window_state_of(env, app, this, subwindow);
+	if (!state)
 		return;
-	app->n_exclusion_rects = (*env)->GetArrayLength(env, rects) / 4;
-	app->exclusion_rects = realloc(app->exclusion_rects, (app->n_exclusion_rects * 4 + 1) * sizeof(*app->exclusion_rects));
-	(*env)->GetIntArrayRegion(env, rects, 0, app->n_exclusion_rects * 4, app->exclusion_rects);
-	exclusion_update(app);
+	state->n_exclusion_rects = (*env)->GetArrayLength(env, rects) / 4;
+	state->exclusion_rects = realloc(state->exclusion_rects, (state->n_exclusion_rects * 4 + 1) * sizeof(*state->exclusion_rects));
+	(*env)->GetIntArrayRegion(env, rects, 0, state->n_exclusion_rects * 4, state->exclusion_rects);
+	atl_exclusion_update(app);
 }
