@@ -56,8 +56,15 @@ void ui_window_dump(struct ui_window *window, FILE *out)
 	if (window->shown)
 		dump_view(out, window->shown, 0);
 	for (size_t i = 0; i < window->n_roots; i++) {
+		if (!window->roots[i].view)
+			continue;
 		const struct atl_window_frame *frame = windows_frame(window->roots[i].window);
-		fprintf(out, "viewtree: window dialog %d,%d %dx%d\n", frame->left, frame->top, frame->width, frame->height);
+		fprintf(out, "viewtree: window dialog %d,%d %dx%d", frame->left, frame->top, frame->width, frame->height);
+		if (window->roots[i].chrome) {
+			const struct atl_window_frame *panel = windows_panel(window->roots[i].window);
+			fprintf(out, " panel %d,%d %dx%d", panel->left, panel->top, panel->width, panel->height);
+		}
+		fprintf(out, "\n");
 		dump_view(out, window->roots[i].view, 1);
 	}
 	fprintf(out, "viewtree: end\n");

@@ -44,6 +44,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	private Window window;
 	CharSequence title;
 	boolean cancelable = true;
+	private boolean created; // onCreate ran: once per Dialog, as AOSP's dispatchOnCreate
 	private boolean showing;
 	private boolean hidden; // by hide(): still showing to Java, its window hidden
 	private boolean canceled;
@@ -65,7 +66,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		window.getDecorView();
 		if (atlNativeAlert())
 			nativePtr = nativeInit();
-		window.atlAddSubwindow(ownerActivity(context), !atlNativeAlert());
+		window.atlAddSubwindow(ownerActivity(context));
 	}
 
 	// the window's token: the Activity under the context's wrappers (AOSP's WindowManager of the context)
@@ -78,6 +79,16 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	// AlertDialog: the ui slot shows the alert itself, not the decor view
 	protected boolean atlNativeAlert() {
 		return false;
+	}
+
+	// at a show: the decor view is drawn, inside the alert's panel when there is one
+	protected boolean atlHasRoot() {
+		return !atlNativeAlert();
+	}
+
+	// AlertDialog's ui-slot alert, which the registry orders with the windows over the activities
+	protected long atlChrome() {
+		return 0;
 	}
 
 	public Dialog(Context context) {
@@ -155,11 +166,15 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 					if (hidden) {
 						hidden = false;
 						window.getDecorView().setVisibility(View.VISIBLE);
+						window.atlSetSubwindowRoot(atlHasRoot(), atlChrome());
 						window.atlShowSubwindow();
 					}
 					return;
 				}
-				onCreate(null);
+				if (!created) {
+					created = true;
+					onCreate(null);
+				}
 				TypedArray a = context.obtainStyledAttributes(R.styleable.Window);
 				if (a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, false))
 					window.setCloseOnTouchOutsideIfNotSet(true);
@@ -167,6 +182,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 
 				canceled = false;
 				getWindow().getDecorView().dispatchAttachedToWindow();
+				window.atlSetSubwindowRoot(atlHasRoot(), atlChrome());
 				if (!window.atlShowSubwindow()) {
 					getWindow().getDecorView().dispatchDetachedFromWindow();
 					throw new WindowManager.BadTokenException("Unable to add window -- token null is not valid; is your activity running?");

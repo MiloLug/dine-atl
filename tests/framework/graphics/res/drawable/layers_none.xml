@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- no padding, and no intrinsic size: the item's inset doesn't make one -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+	<item android:left="3px" android:drawable="@color/idle"/>
+</layer-list>

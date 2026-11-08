@@ -11,8 +11,13 @@
 
 #include "app.h"
 #include "test_hooks.h"
+#include "windows.h"
 
 _Static_assert(UI_DIALOG_CANCEL == android_app_Dialog_RESULT_CANCEL, "Dialog.RESULT_CANCEL is the slot's cancel");
+_Static_assert(UI_ALERT_PROGRESS_BAR == android_app_AlertDialog_PROGRESS_BAR && UI_ALERT_PROGRESS_SPINNER == android_app_AlertDialog_PROGRESS_SPINNER,
+               "AlertDialog's PROGRESS_* are the slot's");
+_Static_assert(UI_ALERT_CHECK_SINGLE == android_app_AlertDialog_CHECK_SINGLE && UI_ALERT_CHECK_MULTI == android_app_AlertDialog_CHECK_MULTI,
+               "AlertDialog's CHECK_* are the slot's");
 
 JNIEXPORT jlong JNICALL Java_android_app_Dialog_nativeInit(JNIEnv *env, jobject this)
 {
@@ -80,18 +85,38 @@ static void free_array(char **chars, int length)
 }
 
 JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env, jobject this, jlong ptr, jstring title, jstring message,
-                                                                    jobjectArray items, jobjectArray buttons, jbooleanArray disabled, jboolean cancelable)
+                                                                    jobjectArray items, jint check, jbooleanArray checked, jint progress,
+                                                                    jboolean indeterminate, jint value, jint max, jboolean panel, jboolean content,
+                                                                    jboolean light, jobjectArray buttons, jbooleanArray disabled, jboolean cancelable)
 {
 	int n_items, n_buttons;
 	char **item_chars = get_array(env, items, &n_items);
 	char **button_chars = get_array(env, buttons, &n_buttons);
 	char *title_chars = jstring_to_utf8(env, title);
 	char *message_chars = jstring_to_utf8(env, message);
+	bool *checks = NULL;
+	if (checked) {
+		int n = (*env)->GetArrayLength(env, checked);
+		jboolean *flags = (*env)->GetBooleanArrayElements(env, checked, NULL);
+		checks = calloc(n_items ? n_items : 1, sizeof(*checks));
+		for (int i = 0; i < n && i < n_items; i++)
+			checks[i] = flags[i];
+		(*env)->ReleaseBooleanArrayElements(env, checked, flags, JNI_ABORT);
+	}
 	struct ui_alert alert = {
 		.title = title_chars,
 		.message = message_chars,
 		.items = (const char *const *)item_chars,
 		.n_items = n_items,
+		.check = checks ? check : UI_ALERT_CHECK_NONE,
+		.checked = checks,
+		.progress = progress,
+		.indeterminate = indeterminate,
+		.value = value,
+		.max = max,
+		.panel = panel,
+		.content = content,
+		.light = light,
 		.cancelable = cancelable,
 	};
 	for (int i = 0; i < n_buttons && i < 3; i++)
@@ -102,7 +127,9 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert(JNIEnv *env,
 		alert.disabled[i] = disabled_flags[i];
 
 	ui_dialog_show(_PTR(ptr), &alert);
+	windows_chrome_changed(_PTR(ptr));
 
+	free(checks);
 	free(title_chars);
 	free(message_chars);
 	free_array(item_chars, n_items);
@@ -113,5 +140,14 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetButton(JNIEnv *env,
 {
 	char *label = jstring_to_utf8(env, label_jstr);
 	ui_dialog_set_button(_PTR(ptr), which, label, enabled);
+	windows_chrome_changed(_PTR(ptr));
 	free(label);
+}
+
+// relayout: the spinner and the bar swapped
+JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetProgress(JNIEnv *env, jobject this, jlong ptr, jint value, jint max, jboolean indeterminate, jboolean relayout)
+{
+	ui_dialog_set_progress(_PTR(ptr), value, max, indeterminate);
+	if (relayout)
+		windows_chrome_changed(_PTR(ptr));
 }

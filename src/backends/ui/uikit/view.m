@@ -8,13 +8,16 @@
 
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
+#include "src/shared/windows.h"
 #include "src/slots/gfx.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 #include "../../gfx/coregraphics/coregraphics.h"
 #include "../records/records.h"
+#import "dialog.h"
 #import "input.h"
+#import "panel.h"
 #import "queue.h"
 #import "surface.h"
 
@@ -43,9 +46,27 @@
 		input_touches(touches, event, UITouchPhaseCancelled);                      \
 	}
 
-// an activity's root is the first responder while shown: the hardware keyboard's presses
+// a root (an activity's or a window's over them) is the first responder while it has the keys:
+// the hardware keyboard's presses
 @interface ATLView : UIView
-@property(nonatomic) BOOL activityRoot;
+@property(nonatomic) BOOL atlRoot;
+@end
+
+/* The windows over the activities (ui_window_set_roots): the surface's top subview, holding an
+ * ATLWindowContainer per window, the topmost last. Touches on none of their views go through. */
+@interface ATLOverlayContainer : UIView
+@property(nonatomic, weak) UIView *keyRoot; // the root that last took the keys
+@end
+
+// a window over the activities: its dim and an alert's panel under its root, all at the surface's
+// coordinates
+@interface ATLWindowContainer : UIView
+@property(nonatomic) UIView *dim;
+@property(nonatomic) UIView *panel;
+@end
+
+// a window's dim: a touch on it is the window's outside touch (records picks the window)
+@interface ATLDimView : UIView
 @end
 
 static void root_take_responder(UIView *root);
@@ -97,14 +118,15 @@ FORWARD_TOUCHES
 
 - (BOOL)canBecomeFirstResponder
 {
-	return _activityRoot;
+	return _atlRoot;
 }
 
-// shown before Dine put the surface in a window
+// an activity's root shown before Dine put the surface in a window; a window's root takes the keys
+// in records_roots_changed
 - (void)didMoveToWindow
 {
 	[super didMoveToWindow];
-	if (_activityRoot && !self.hidden && self.window)
+	if (_atlRoot && !self.hidden && self.window && ![self.superview isKindOfClass:ATLWindowContainer.class])
 		root_take_responder(self);
 }
 
@@ -121,6 +143,48 @@ FORWARD_TOUCHES
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
 	input_presses(self, presses, false);
+}
+@end
+
+@implementation ATLOverlayContainer
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+	UIView *hit = [super hitTest:point withEvent:event];
+	return hit == self ? nil : hit;
+}
+@end
+
+@implementation ATLWindowContainer
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+	UIView *hit = [super hitTest:point withEvent:event];
+	return hit == self ? nil : hit;
+}
+@end
+
+@implementation ATLDimView
+FORWARD_TOUCHES
+
+- (BOOL)isAccessibilityElement
+{
+	return YES;
+}
+
+- (NSString *)accessibilityLabel
+{
+	return @"Dismiss";
+}
+
+- (UIAccessibilityTraits)accessibilityTraits
+{
+	return UIAccessibilityTraitButton;
+}
+
+// a tap in the dim's corner, outside the window: Java decides whether it closes (shouldCloseOnTouch)
+- (BOOL)accessibilityActivate
+{
+	input_tap(self, CGPointMake(1, 1));
+	return YES;
 }
 @end
 
@@ -190,6 +254,13 @@ static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFo
 	NSTextAlignment _atlAlignment;
 }
 FORWARD_TOUCHES
+
+// a tap at its middle, as VoiceOver taps an element that declines: a list's row takes it
+- (BOOL)accessibilityActivate
+{
+	input_tap(self, CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds)));
+	return YES;
+}
 
 - (void)setList:(struct gfx_canvas *)list
 {
@@ -389,6 +460,10 @@ FORWARD_TOUCHES
 		// the title's lines align by titleAlignment, which a paragraph style would override
 		config.attributedTitle = styled_runs(_text, _runs, _font, color);
 		config.titleAlignment = box ? UIButtonConfigurationTitleAlignmentLeading : UIButtonConfigurationTitleAlignmentCenter;
+		// a background and Android padding: the view's frame already insets by it. Without padding
+		// (ATL's Button takes no theme padding) UIKit's insets stay
+		if (_hasBackground && !UIEdgeInsetsEqualToEdgeInsets(_padding, UIEdgeInsetsZero))
+			config.contentInsets = NSDirectionalEdgeInsetsZero;
 		if (box) {
 			config.image = box_image(_kind, _checked);
 			config.imagePadding = 8;
@@ -456,7 +531,11 @@ FORWARD_TOUCHES
 
 - (void)atlSetPadding:(UIEdgeInsets)padding
 {
+	bool padded = !UIEdgeInsetsEqualToEdgeInsets(padding, UIEdgeInsetsZero);
+	bool was = !UIEdgeInsetsEqualToEdgeInsets(_padding, UIEdgeInsetsZero);
 	_padding = padding;
+	if (padded != was)
+		[self update];
 	[self setNeedsLayout];
 }
 
@@ -860,6 +939,26 @@ void records_view_freed(struct ui_view *view)
 	}
 }
 
+// UIKit's thread: the surface's overlay container, nil before its first window over the activities
+static ATLOverlayContainer *find_overlay(UIView *surface)
+{
+	for (UIView *view in surface.subviews) {
+		if ([view isKindOfClass:ATLOverlayContainer.class])
+			return (ATLOverlayContainer *)view;
+	}
+	return nil;
+}
+
+// UIKit's thread: the shown activity's root, the frontmost subview under the overlay
+static UIView *front_root(UIView *surface)
+{
+	for (UIView *view in surface.subviews.reverseObjectEnumerator) {
+		if (![view isKindOfClass:ATLOverlayContainer.class])
+			return view;
+	}
+	return nil;
+}
+
 void records_root_added(struct ui_window *window, struct ui_view *root)
 {
 	if (!window->surface)
@@ -869,8 +968,13 @@ void records_root_added(struct ui_window *window, struct ui_view *root)
 		uikit_enqueue(window->app, ^{
 			ATLView *added = (ATLView *)native(root);
 			added.hidden = YES;
-			added.activityRoot = YES;
-			[(__bridge UIView *)target addSubview:added];
+			added.atlRoot = YES;
+			UIView *surface = (__bridge UIView *)target;
+			UIView *overlay = find_overlay(surface);
+			if (overlay)
+				[surface insertSubview:added belowSubview:overlay];
+			else
+				[surface addSubview:added];
 		});
 	}
 }
@@ -885,10 +989,135 @@ void records_root_shown(struct ui_window *window, struct ui_view *root)
 		uikit_enqueue(window->app, ^{
 			UIView *shown = native(root);
 			UIView *surface_view = (__bridge UIView *)target;
-			for (UIView *other in surface_view.subviews)
-				other.hidden = other != shown || !visible;
+			ATLOverlayContainer *overlay = find_overlay(surface_view);
+			for (UIView *other in surface_view.subviews) {
+				if (other != overlay)
+					other.hidden = other != shown || !visible;
+			}
 			[surface_view bringSubviewToFront:shown];
-			root_take_responder(shown);
+			if (overlay)
+				[surface_view bringSubviewToFront:overlay];
+			// a window over the activities keeps the keys
+			if (!overlay || ![overlay.keyRoot isDescendantOfView:overlay]) {
+				overlay.keyRoot = shown;
+				root_take_responder(shown);
+			}
+		});
+	}
+}
+
+struct shown_root {
+	struct ui_view *view; // NULL: a plain alert
+	float dim;            // without DIM_BEHIND: 0
+	bool alert_dim;       // a panel's: the system alert's
+	bool modal;           // touch-modal: VoiceOver stays in it
+	bool focusable;       // it takes the keys
+};
+
+void records_roots_changed(struct ui_window *window)
+{
+	if (!window->surface)
+		return;
+	void *target = window->surface;
+	size_t n = window->n_roots;
+	struct shown_root *shown = malloc((n ? n : 1) * sizeof(*shown));
+	NSMutableArray *alerts = [NSMutableArray array]; // per root: its ATLDialog, or NSNull
+	for (size_t i = 0; i < n; i++) {
+		const struct ui_root *root = &window->roots[i];
+		int flags = root->layout.flags;
+		shown[i] = (struct shown_root){
+			.view = root->view,
+			.dim = flags & UI_WINDOW_DIM_BEHIND ? root->layout.dim_amount : 0,
+			.alert_dim = flags & UI_WINDOW_DIM_BEHIND && root->chrome,
+			.modal = !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)),
+			.focusable = !(flags & UI_WINDOW_NOT_FOCUSABLE),
+		};
+		[alerts addObject:root->chrome ? (id)uikit_dialog_of(root->chrome) : NSNull.null];
+	}
+	@autoreleasepool {
+		uikit_enqueue(window->app, ^{
+			UIView *surface = (__bridge UIView *)target;
+			ATLOverlayContainer *overlay = find_overlay(surface);
+			if (!overlay) {
+				overlay = [[ATLOverlayContainer alloc] initWithFrame:surface.bounds];
+				overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+				[surface addSubview:overlay];
+			}
+			NSMutableArray<UIView *> *containers = [NSMutableArray array];
+			UIView *key_root = nil;
+			CGFloat seen = 1; // of the status bar through the dims
+			bool above = false; // a window with a root is above this one
+			for (size_t i = n; i-- > 0;) {
+				if (alerts[i] != NSNull.null && !shown[i].view)
+					uikit_dialog_set_covered(alerts[i], above);
+				above |= shown[i].view != NULL;
+			}
+			for (size_t i = 0; i < n; i++) {
+				if (!shown[i].view) // a plain alert: dialog.m presents it
+					continue;
+				UIView *root = native(shown[i].view);
+				ATLWindowContainer *container = (ATLWindowContainer *)root.superview;
+				if (![container isKindOfClass:ATLWindowContainer.class]) {
+					container = [[ATLWindowContainer alloc] initWithFrame:overlay.bounds];
+					container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+					[container addSubview:root];
+					if ([root isKindOfClass:ATLView.class])
+						((ATLView *)root).atlRoot = YES;
+				}
+				if (shown[i].dim > 0 && !container.dim) {
+					container.dim = [[ATLDimView alloc] initWithFrame:container.bounds];
+					container.dim.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+					[container insertSubview:container.dim atIndex:0];
+				} else if (shown[i].dim <= 0 && container.dim) {
+					[container.dim removeFromSuperview];
+					container.dim = nil;
+				}
+				UIColor *dim = shown[i].alert_dim ? [panel_dim_color() resolvedColorWithTraitCollection:surface.traitCollection]
+				                                  : [UIColor colorWithWhite:0 alpha:shown[i].dim];
+				container.dim.backgroundColor = shown[i].alert_dim ? panel_dim_color() : dim;
+				UIView *panel = alerts[i] != NSNull.null ? uikit_dialog_panel(alerts[i]) : nil;
+				if (panel != container.panel) {
+					[container.panel removeFromSuperview];
+					container.panel = panel;
+					if (panel)
+						[container insertSubview:panel belowSubview:root];
+				}
+				container.accessibilityViewIsModal = NO; // the topmost modal one, below
+				[overlay addSubview:container]; // in order: the topmost last
+				[containers addObject:container];
+				if (shown[i].focusable)
+					key_root = root;
+				CGFloat alpha = 0;
+				[dim getWhite:NULL alpha:&alpha];
+				seen *= 1 - alpha;
+			}
+			for (UIView *old in overlay.subviews.copy) {
+				if (![containers containsObject:old])
+					[old removeFromSuperview];
+			}
+			/* VoiceOver stays in the topmost touch-modal window and the windows above it: a
+			 * container's modality hides the other containers, the overlay's the activity */
+			bool modal = false;
+			for (size_t i = n, c = containers.count; i-- > 0;) {
+				if (!shown[i].view)
+					continue;
+				c--;
+				if (shown[i].modal && !modal) {
+					modal = true;
+					containers[c].accessibilityViewIsModal = c == containers.count - 1;
+				}
+			}
+			overlay.accessibilityViewIsModal = modal;
+			free(shown);
+			if (!key_root)
+				key_root = front_root(surface);
+			if (key_root != overlay.keyRoot) {
+				overlay.keyRoot = key_root;
+				if (key_root && !key_root.hidden)
+					root_take_responder(key_root);
+			}
+			if ([surface respondsToSelector:@selector(atlDimChanged:)])
+				[(id<ATLSurface>)surface atlDimChanged:1 - seen];
 		});
 	}
 }
@@ -998,7 +1227,7 @@ void records_visibility_changed(struct ui_view *view)
 			UIView *changed = native(view);
 			UIView *surface_view = (__bridge UIView *)target;
 			// activity roots: only the front one (records_root_shown) shows
-			bool behind = surface_view && changed.superview == surface_view && changed != surface_view.subviews.lastObject;
+			bool behind = surface_view && changed.superview == surface_view && changed != front_root(surface_view);
 			changed.hidden = hidden || behind;
 			changed.alpha = alpha;
 			changed.userInteractionEnabled = enabled;
@@ -1061,6 +1290,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		int style = view->text_style;
 		CGFloat s = scale();
 		bool is_button = view->is_button, has_background = view->has_background;
+		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 		bool edit = view->edit, multiline = view->edit_config.multiline, selectable = view->selectable;
 		int min_lines = view->min_lines, max_lines = view->max_lines > 0 ? view->max_lines : 0;
 		NSString *hint = view->edit_config.hint ? [NSString stringWithUTF8String:view->edit_config.hint] : nil;
@@ -1075,6 +1305,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 					scratches[button] = [[ATLButton alloc] initWithRecord:NULL kind:button];
 				ATLButton *scratch = scratches[button];
 				scratch.hasBackground = has_background;
+				[scratch atlSetPadding:padding];
 				[scratch atlSetText:text runs:runs font:font(size, style) alignment:NSTextAlignmentNatural];
 				fit = [scratch contentSizeThatFits:width];
 				return;
@@ -1160,15 +1391,35 @@ static void collect_frames(struct ui_view *view, CGFloat s, struct frame **next)
 		collect_frames(view->children[i], s, next);
 }
 
-// the frames of the shown root's views, to UIKit with the next flush
+// the frames of the shown root's views and the windows' over it, to UIKit with the next flush
 static void push_frames(struct ui_window *window)
 {
 	window->frames_moved = false;
-	if (window->dialog || !window->shown)
+	if (window->dialog || (!window->shown && !window->n_roots))
 		return;
-	size_t count = count_views(window->shown);
-	struct frame *frames = malloc(count * sizeof(*frames)), *next = frames;
-	collect_frames(window->shown, scale(), &next);
+	size_t count = window->shown ? count_views(window->shown) : 0;
+	for (size_t i = 0; i < window->n_roots; i++)
+		count += window->roots[i].view ? count_views(window->roots[i].view) : 0;
+	struct frame *frames = malloc((count ? count : 1) * sizeof(*frames)), *next = frames;
+	CGFloat s = scale();
+	if (window->shown)
+		collect_frames(window->shown, s, &next);
+	NSMutableArray *panels = [NSMutableArray array]; // an alert, then its panel's frame and its root's
+	CGFloat screen_height = atl_screen_get()->height / s;
+	for (size_t i = 0; i < window->n_roots; i++) {
+		if (!window->roots[i].view)
+			continue;
+		struct frame *root = next;
+		collect_frames(window->roots[i].view, s, &next);
+		const struct atl_window_frame *placed = windows_frame(window->roots[i].window);
+		root->rect.origin = CGPointMake(placed->left / s, placed->top / s); // in its container, at the surface's origin
+		if (window->roots[i].chrome) {
+			const struct atl_window_frame *panel = windows_panel(window->roots[i].window);
+			[panels addObject:uikit_dialog_of(window->roots[i].chrome)];
+			[panels addObject:[NSValue valueWithCGRect:CGRectMake(panel->left / s, panel->top / s, panel->width / s, panel->height / s)]];
+			[panels addObject:[NSValue valueWithCGRect:root->rect]];
+		}
+	}
 	uikit_enqueue(window->app, ^{
 		for (size_t i = 0; i < count; i++) {
 			UIView *framed = native(frames[i].view);
@@ -1177,6 +1428,22 @@ static void push_frames(struct ui_window *window)
 				((UIScrollView *)framed).contentSize = frames[i].content;
 		}
 		free(frames);
+		for (NSUInteger i = 0; i < panels.count; i += 3) {
+			ATLPanelView *panel = (ATLPanelView *)uikit_dialog_panel(panels[i]);
+			CGRect frame = [panels[i + 1] CGRectValue], root = [panels[i + 2] CGRectValue];
+			CGFloat footer = [panel atlFooterHeightForWidth:frame.size.width];
+			panel.atlHeaderCap = panel_header_cap(screen_height - 2 * panel_margin, footer, panel.atlContent); // as ui_dialog_chrome
+			panel.frame = frame;
+			[panel setNeedsLayout];
+#ifdef ATL_TEST_HOOKS
+			// records' chrome against the shown panel's parts: a drift between them clips content
+			CGFloat top = CGRectGetMinY(root) - CGRectGetMinY(frame), bottom = CGRectGetMaxY(frame) - CGRectGetMaxY(root);
+			CGFloat header = [panel atlHeaderHeightForWidth:frame.size.width cap:panel.atlHeaderCap];
+			printf("dialog: chrome measured %.1f,%.1f laid out %.1f,%.1f%s\n", top, bottom, header, footer,
+			       fabs(top - header) <= 1 && fabs(bottom - footer) <= 1 ? " ok" : " differs");
+			fflush(stdout);
+#endif
+		}
 	});
 }
 
@@ -1486,7 +1753,7 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 		if (keyboard_field)
 			return;
 		for (UIView *root = editor.superview; root; root = root.superview) {
-			if ([root isKindOfClass:[ATLView class]] && ((ATLView *)root).activityRoot && !root.hidden) {
+			if ([root isKindOfClass:[ATLView class]] && ((ATLView *)root).atlRoot && !root.hidden) {
 				[root becomeFirstResponder];
 				break;
 			}

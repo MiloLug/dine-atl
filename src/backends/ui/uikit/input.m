@@ -190,6 +190,24 @@ void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase
 	}
 }
 
+void input_tap(UIView *view, CGPoint point)
+{
+	UIView *surface = surface_of(view);
+	if (gesture.count || !surface)
+		return;
+	CGFloat scale = atl_screen_get()->density_dpi / 160.;
+	CGPoint at = [view convertPoint:point toView:surface];
+	gesture_surface = surface;
+	gesture.count = 1;
+	gesture.down_time = atl_uptime_ms();
+	gesture.pointers[0].id = 0;
+	gesture.pointers[0].x = at.x * scale;
+	gesture.pointers[0].y = at.y * scale;
+	post(ATL_ACTION_DOWN);
+	post(ATL_ACTION_UP);
+	end_gesture();
+}
+
 struct posted_key {
 	struct atl_key key;
 	struct atl_app *app;

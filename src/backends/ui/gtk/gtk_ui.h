@@ -39,6 +39,9 @@ bool input_pointers_up(void);
  * goes; whether Java took the DOWN. */
 bool input_tap(GtkWidget *view);
 
+/* A panel alert's box around its window's root, NULL before its show (dialog.c). */
+GtkWidget *dialog_panel(struct ui_window *dialog);
+
 /* ATL_DBG_AGENT: the debug agent's socket (agent.c, test hooks); once. */
 void agent_start(void);
 

@@ -21,3 +21,14 @@
 .ATL-dim {
 	background-color: black;
 }
+
+/* an alert's panel around its content view */
+.ATL-panel {
+	background-color: @window_bg_color;
+	border-radius: 12px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.ATL-panel-title {
+	font-weight: bold;
+}

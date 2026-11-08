@@ -44,10 +44,18 @@ extern "C" {
 /*
  * Class:     android_view_Window
  * Method:    nativeAddSubwindow
- * Signature: (JLjava/lang/Object;)J
+ * Signature: (Ljava/lang/Object;)J
  */
 JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow
-  (JNIEnv *, jobject, jlong, jobject);
+  (JNIEnv *, jobject, jobject);
+
+/*
+ * Class:     android_view_Window
+ * Method:    nativeSetSubwindowRoot
+ * Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_nativeSetSubwindowRoot
+  (JNIEnv *, jobject, jlong, jlong, jlong);
 
 /*
  * Class:     android_view_Window

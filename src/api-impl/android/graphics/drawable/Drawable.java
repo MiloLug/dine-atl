@@ -426,6 +426,7 @@ public class Drawable {
 	}
 
 	public boolean getPadding(Rect padding) {
+		padding.set(0, 0, 0, 0);
 		return false;
 	}
 
@@ -434,10 +435,13 @@ public class Drawable {
 	}
 
 	public int getMinimumWidth() {
-		return 10; // FIXME
+		final int intrinsicWidth = getIntrinsicWidth();
+		return intrinsicWidth > 0 ? intrinsicWidth : 0;
 	}
+
 	public int getMinimumHeight() {
-		return 10; // FIXME
+		final int intrinsicHeight = getIntrinsicHeight();
+		return intrinsicHeight > 0 ? intrinsicHeight : 0;
 	}
 
 	protected void onBoundsChange(Rect bounds) {}

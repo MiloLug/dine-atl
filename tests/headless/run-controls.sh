@@ -51,9 +51,11 @@ while :; do
     x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]}
   fi
 done
-for control in PUSH locked check red green switch "lamp off" image "BOLD & CAPS"; do
+for control in PUSH locked framed check red green switch "lamp off" image "BOLD & CAPS"; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
+# 160 dpi: a dp is a px, and framed's shape pads 6dp above and below
+((h[framed] == h[PUSH] + 12)) || fail "framed is ${h[framed]} high, PUSH ${h[PUSH]}: not the shape's padding"
 [[ -n ${bold_run:-} ]] || fail "no bold text run over \"BOLD\""
 [[ -n ${up_shift:-} ]] || fail "no superscript shift logged"
 [[ ${runs["twice up"]:-} == "textruns: 0-5 40px; 6-8 shift $up_shift;" ]] || fail "twice up runs: ${runs["twice up"]:-none}"

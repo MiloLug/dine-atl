@@ -21,13 +21,15 @@
 
 struct atl_subwindow {
 	struct atl_app *app;
-	struct ui_view *root; // NULL: an alert, which the ui slot shows itself
+	struct ui_view *root;     // NULL: an alert, which the ui slot shows itself
+	struct ui_window *chrome; // an AlertDialog's alert: around root, or alone
 	jweak java_window;
 	jobject held;  // global ref to it while added: the window manager holds a shown Dialog (WindowManagerGlobal)
 	jweak decor;   // the root's View
 	jweak owner;   // its context's Activity; NULL: none
 	struct ui_window_layout layout;
 	struct atl_window_frame frame;
+	struct atl_window_frame panel; // with a chrome around root: the frame and the chrome
 	bool requested; // added by a show, until a dismiss
 	bool hidden;    // Dialog.hide: still added
 	bool visible;   // as Java last heard it (Window.atlSetVisible)
@@ -89,11 +91,11 @@ static void push_roots(struct atl_app *app)
 		return;
 	size_t n = 0;
 	for (struct atl_subwindow *window = app->subwindows; window; window = window->next)
-		n += window->visible && window->root;
+		n += window->visible && (window->root || window->chrome);
 	struct ui_root *roots = n ? malloc(n * sizeof(*roots)) : NULL, *root = roots;
 	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
-		if (window->visible && window->root)
-			*root++ = (struct ui_root){window, window->root, window->layout};
+		if (window->visible && (window->root || window->chrome))
+			*root++ = (struct ui_root){window, window->root, window->chrome, window->layout};
 	}
 	ui_window_set_roots(app->window, roots, n);
 	free(roots);
@@ -139,13 +141,12 @@ void windows_token_visible(JNIEnv *env, struct atl_app *app, jobject activity, b
 	windows_update(env, app);
 }
 
-JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow(JNIEnv *env, jobject this, jlong root, jobject owner)
+JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow(JNIEnv *env, jobject this, jobject owner)
 {
 	struct atl_subwindow *window = calloc(1, sizeof(*window));
 	window->app = atl_app_of_window(env, this);
 	if (!window->app) // a Context of a package no host runs: the app whose main thread makes the window
 		window->app = atl_app_current();
-	window->root = _PTR(root);
 	window->java_window = (*env)->NewWeakGlobalRef(env, this);
 	jobject decor = _GET_OBJ_FIELD(this, "decorView", "Landroid/view/ViewGroup;");
 	window->decor = (*env)->NewWeakGlobalRef(env, decor);
@@ -156,6 +157,25 @@ JNIEXPORT jlong JNICALL Java_android_view_Window_nativeAddSubwindow(JNIEnv *env,
 		last = &(*last)->next;
 	*last = window;
 	return _INTPTR(window);
+}
+
+// at a show: an AlertDialog's content decides whether its decor is drawn, inside its alert's panel
+JNIEXPORT void JNICALL Java_android_view_Window_nativeSetSubwindowRoot(JNIEnv *env, jobject this, jlong ptr, jlong root, jlong chrome)
+{
+	struct atl_subwindow *window = _PTR(ptr);
+	window->root = _PTR(root);
+	window->chrome = _PTR(chrome);
+}
+
+void windows_chrome_changed(struct ui_window *chrome)
+{
+	struct atl_app *app = ui_window_app(chrome);
+	for (struct atl_subwindow *window = app ? app->subwindows : NULL; window; window = window->next) {
+		if (window->chrome == chrome && window->root && window->visible) {
+			push_roots(app);
+			return;
+		}
+	}
 }
 
 JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeShowSubwindow(JNIEnv *env, jobject this, jlong ptr)
@@ -275,8 +295,32 @@ static int window_spec(int size, int available)
 	return size >= 0 ? size | MEASURE_SPEC_EXACTLY : size == -1 ? available | MEASURE_SPEC_EXACTLY : available | MEASURE_SPEC_AT_MOST;
 }
 
+// a panel alert: the chrome sets the width, the root fills it inside the chrome at its own height
+static void place_panel(struct atl_subwindow *window, int screen_width, int screen_height)
+{
+	struct atl_ref *root = (struct atl_ref *)window->decor;
+	const struct ui_window_layout *layout = &window->layout;
+	struct ui_chrome chrome;
+	ui_dialog_chrome(window->chrome, screen_width, screen_height, &chrome);
+	int width = chrome.width - chrome.left - chrome.right;
+	int room = chrome.max_height - chrome.top - chrome.bottom;
+	atl_upcall_view_measure(root, (width > 0 ? width : 0) | MEASURE_SPEC_EXACTLY, (room > 0 ? room : 0) | MEASURE_SPEC_AT_MOST);
+	int height = atl_upcall_view_get_measured(root, true);
+	int panel_width = chrome.width, panel_height = chrome.top + height + chrome.bottom;
+	int left = gravity_apply(layout->gravity, &panel_width, screen_width, layout->x);
+	int top = gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &panel_height, screen_height, layout->y);
+	window->panel = (struct atl_window_frame){left, top, chrome.width, panel_height};
+	window->frame = (struct atl_window_frame){left + chrome.left, top + chrome.top, width, height};
+}
+
 void windows_place(struct atl_subwindow *window, int screen_width, int screen_height, struct atl_window_frame *frame)
 {
+	if (window->chrome) {
+		place_panel(window, screen_width, screen_height);
+		*frame = window->frame;
+		call_window(get_jni_env(), window, handle_cache.window.atlSetFrame, frame->left, frame->top);
+		return;
+	}
 	struct atl_ref *root = (struct atl_ref *)window->decor;
 	const struct ui_window_layout *layout = &window->layout;
 	atl_upcall_view_measure(root, window_spec(layout->width, screen_width), window_spec(layout->height, screen_height));
@@ -301,16 +345,30 @@ const struct atl_window_frame *windows_frame(const struct atl_subwindow *window)
 	return &window->frame;
 }
 
+const struct atl_window_frame *windows_panel(const struct atl_subwindow *window)
+{
+	return window->chrome ? &window->panel : &window->frame;
+}
+
+static bool frame_holds(const struct atl_window_frame *frame, float x, float y)
+{
+	return x >= frame->left && x < frame->left + frame->width && y >= frame->top && y < frame->top + frame->height;
+}
+
 const struct ui_root *windows_touch_target(const struct ui_root *roots, size_t n, float x, float y)
 {
 	for (size_t i = n; i-- > 0;) {
 		int flags = roots[i].layout.flags;
-		if (flags & UI_WINDOW_NOT_TOUCHABLE)
+		if (!roots[i].view || flags & UI_WINDOW_NOT_TOUCHABLE)
 			continue;
-		const struct atl_window_frame *frame = &roots[i].window->frame;
-		bool inside = x >= frame->left && x < frame->left + frame->width && y >= frame->top && y < frame->top + frame->height;
+		bool inside = frame_holds(windows_panel(roots[i].window), x, y);
 		if (inside || !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)))
 			return &roots[i];
 	}
 	return NULL;
+}
+
+bool windows_in_chrome(const struct atl_subwindow *window, float x, float y)
+{
+	return window->chrome && frame_holds(&window->panel, x, y) && !frame_holds(&window->frame, x, y);
 }

@@ -20,6 +20,10 @@ void headless_touch(struct ui_window *window, enum headless_touch what, int id, 
 void headless_tap(struct ui_window *window, const char *label);
 /* The view-tree dump of the window and its shown dialogs (ui_window_dump), now. */
 void headless_dump(struct ui_window *window);
+struct atl_app;
+/* A tap on the button or row whose label is label of app's last shown alert; prints "answer:
+ * <label>" or "answer: no <label>". */
+void headless_answer(struct atl_app *app, const char *label);
 /* down: KeyEvent.ACTION_DOWN, else ACTION_UP; unicode: the character it types, or 0. */
 void headless_key(struct ui_window *window, int down, int code, int meta, int unicode);
 

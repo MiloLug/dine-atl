@@ -53,6 +53,21 @@ public class ControlsActivity extends Activity {
 		locked.setEnabled(false);
 		column.addView(locked);
 
+		// wrapped, so the column doesn't stretch it: its height and width are the text plus the
+		// background's padding
+		Button framed = new Button(this);
+		framed.setText("framed");
+		framed.setBackgroundResource(R.drawable.framed);
+		framed.setOnClickListener(clickLogger("framed"));
+		column.addView(framed, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+		// a colour gives no padding: the toolkit's own spacing stays
+		Button colored = new Button(this);
+		colored.setText("colored");
+		colored.setBackgroundColor(0xff3a5a4a);
+		colored.setOnClickListener(clickLogger("colored"));
+		column.addView(colored, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
 		CheckBox check = new CheckBox(this);
 		check.setText("check");
 		check.setOnCheckedChangeListener(checkedLogger("check"));

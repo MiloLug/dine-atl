@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- stack: every layer fills the bounds; the padding is the per-edge largest -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android" android:paddingMode="stack">
+	<item android:drawable="@drawable/inset"/>
+	<item android:id="@+id/inner" android:drawable="@drawable/padshape"/>
+</layer-list>

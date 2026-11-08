@@ -12,5 +12,8 @@
 		<activity android:name=".ContentActivity"/>
 		<activity android:name=".StackActivity"/>
 		<activity android:name=".CoverActivity"/>
+		<activity android:name=".ViewActivity"/>
+		<activity android:name=".ChoiceActivity"/>
+		<activity android:name=".ProgressActivity"/>
 	</application>
 </manifest>

@@ -68,6 +68,13 @@ public class ImageView extends View {
 		a.recycle();
 	}
 
+	@Override
+	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+		setMeasuredDimension(atlAtLeast(getMeasuredWidth(), getSuggestedMinimumWidth(), widthMeasureSpec),
+		                     atlAtLeast(getMeasuredHeight(), getSuggestedMinimumHeight(), heightMeasureSpec));
+	}
+
 	public void setImageResource(final int resid) {
 		if (this.getResources().getString(resid).endsWith(".xml")) {
 			setImageDrawable(getContext().getDrawable(resid));

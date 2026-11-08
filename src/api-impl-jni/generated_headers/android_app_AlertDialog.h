@@ -9,13 +9,25 @@ extern "C" {
 #endif
 #undef android_app_AlertDialog_RESULT_CANCEL
 #define android_app_AlertDialog_RESULT_CANCEL -2147483648L
+#undef android_app_AlertDialog_CHECK_NONE
+#define android_app_AlertDialog_CHECK_NONE 0L
+#undef android_app_AlertDialog_CHECK_SINGLE
+#define android_app_AlertDialog_CHECK_SINGLE 1L
+#undef android_app_AlertDialog_CHECK_MULTI
+#define android_app_AlertDialog_CHECK_MULTI 2L
+#undef android_app_AlertDialog_PROGRESS_NONE
+#define android_app_AlertDialog_PROGRESS_NONE 0L
+#undef android_app_AlertDialog_PROGRESS_SPINNER
+#define android_app_AlertDialog_PROGRESS_SPINNER 1L
+#undef android_app_AlertDialog_PROGRESS_BAR
+#define android_app_AlertDialog_PROGRESS_BAR 2L
 /*
  * Class:     android_app_AlertDialog
  * Method:    nativeShowAlert
- * Signature: (JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[ZZ)V
+ * Signature: (JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;I[ZIZIIZZZ[Ljava/lang/String;[ZZ)V
  */
 JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert
-  (JNIEnv *, jobject, jlong, jstring, jstring, jobjectArray, jobjectArray, jbooleanArray, jboolean);
+  (JNIEnv *, jobject, jlong, jstring, jstring, jobjectArray, jint, jbooleanArray, jint, jboolean, jint, jint, jboolean, jboolean, jboolean, jobjectArray, jbooleanArray, jboolean);
 
 /*
  * Class:     android_app_AlertDialog
@@ -24,6 +36,14 @@ JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeShowAlert
  */
 JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetButton
   (JNIEnv *, jobject, jlong, jint, jstring, jboolean);
+
+/*
+ * Class:     android_app_AlertDialog
+ * Method:    nativeSetProgress
+ * Signature: (JIIZZ)V
+ */
+JNIEXPORT void JNICALL Java_android_app_AlertDialog_nativeSetProgress
+  (JNIEnv *, jobject, jlong, jint, jint, jboolean, jboolean);
 
 #ifdef __cplusplus
 }

@@ -27,6 +27,7 @@ public interface DialogInterface {
 		void onCancel(DialogInterface dialog);
 	}
 	public interface OnMultiChoiceClickListener {
+		void onClick(DialogInterface dialog, int which, boolean isChecked);
 	}
 	public interface OnKeyListener {
 		boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event);

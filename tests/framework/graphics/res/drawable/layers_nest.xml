@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nest: the colour layer sits inside padshape's padding -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+	<item android:drawable="@drawable/padshape"/>
+	<item android:id="@+id/inner" android:drawable="@color/idle"/>
+</layer-list>

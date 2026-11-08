@@ -47,6 +47,11 @@ import org.xmlpull.v1.XmlPullParserException;
  * @attr ref android.R.styleable#LayerDrawableItem_id
  */
 public class LayerDrawable extends Drawable implements Drawable.Callback {
+	/** Padding mode: each layer is inset by the padding of the layers below it. */
+	public static final int PADDING_MODE_NEST = 0;
+	/** Padding mode: every layer fills the bounds; the padding is the largest of the layers'. */
+	public static final int PADDING_MODE_STACK = 1;
+
 	LayerState mLayerState;
 
 	//private int mOpacityOverride = PixelFormat.UNKNOWN;
@@ -123,6 +128,15 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 		//mOpacityOverride = a.getInt(com.android.internal.R.styleable.LayerDrawable_opacity, PixelFormat.UNKNOWN);
 
 		//setAutoMirrored(a.getBoolean(com.android.internal.R.styleable.LayerDrawable_autoMirrored, false));
+
+		final LayerState state = mLayerState;
+		state.mPaddingMode = a.getInteger(com.android.internal.R.styleable.LayerDrawable_paddingMode, state.mPaddingMode);
+		state.mPaddingLeft = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingLeft, state.mPaddingLeft);
+		state.mPaddingTop = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingTop, state.mPaddingTop);
+		state.mPaddingRight = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingRight, state.mPaddingRight);
+		state.mPaddingBottom = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingBottom, state.mPaddingBottom);
+		state.mPaddingStart = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingStart, state.mPaddingStart);
+		state.mPaddingEnd = a.getDimensionPixelOffset(com.android.internal.R.styleable.LayerDrawable_paddingEnd, state.mPaddingEnd);
 
 		a.recycle();
 
@@ -369,23 +383,36 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 
 	@Override
 	public boolean getPadding(Rect padding) {
-		// Arbitrarily get the padding from the first image.
-		// Technically we should maybe do something more intelligent,
-		// like take the max padding of all the images.
-		padding.left = 0;
-		padding.top = 0;
-		padding.right = 0;
-		padding.bottom = 0;
-		final ChildDrawable[] array = mLayerState.mChildren;
-		final int N = mLayerState.mNum;
+		final LayerState state = mLayerState;
+		final boolean nest = state.mPaddingMode == PADDING_MODE_NEST;
+		padding.set(0, 0, 0, 0);
+		final ChildDrawable[] array = state.mChildren;
+		final int N = state.mNum;
 		for (int i = 0; i < N; i++) {
 			reapplyPadding(i, array[i]);
-			padding.left += mPaddingL[i];
-			padding.top += mPaddingT[i];
-			padding.right += mPaddingR[i];
-			padding.bottom += mPaddingB[i];
+			if (nest) {
+				padding.left += mPaddingL[i];
+				padding.top += mPaddingT[i];
+				padding.right += mPaddingR[i];
+				padding.bottom += mPaddingB[i];
+			} else {
+				padding.left = Math.max(padding.left, mPaddingL[i]);
+				padding.top = Math.max(padding.top, mPaddingT[i]);
+				padding.right = Math.max(padding.right, mPaddingR[i]);
+				padding.bottom = Math.max(padding.bottom, mPaddingB[i]);
+			}
 		}
-		return true;
+		final int paddingL = state.mPaddingStart >= 0 ? state.mPaddingStart : state.mPaddingLeft;
+		final int paddingR = state.mPaddingEnd >= 0 ? state.mPaddingEnd : state.mPaddingRight;
+		if (paddingL >= 0)
+			padding.left = paddingL;
+		if (state.mPaddingTop >= 0)
+			padding.top = state.mPaddingTop;
+		if (paddingR >= 0)
+			padding.right = paddingR;
+		if (state.mPaddingBottom >= 0)
+			padding.bottom = state.mPaddingBottom;
+		return padding.left != 0 || padding.top != 0 || padding.right != 0 || padding.bottom != 0;
 	}
 
 	@Override
@@ -525,6 +552,7 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 
 	@Override
 	protected void onBoundsChange(Rect bounds) {
+		final boolean nest = mLayerState.mPaddingMode == PADDING_MODE_NEST;
 		final ChildDrawable[] array = mLayerState.mChildren;
 		final int N = mLayerState.mNum;
 		int padL = 0, padT = 0, padR = 0, padB = 0;
@@ -534,45 +562,59 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 			                      bounds.top + r.mInsetT + padT,
 			                      bounds.right - r.mInsetR - padR,
 			                      bounds.bottom - r.mInsetB - padB);
-			padL += mPaddingL[i];
-			padR += mPaddingR[i];
-			padT += mPaddingT[i];
-			padB += mPaddingB[i];
+			if (nest) {
+				reapplyPadding(i, r);
+				padL += mPaddingL[i];
+				padR += mPaddingR[i];
+				padT += mPaddingT[i];
+				padB += mPaddingB[i];
+			}
 		}
 	}
 
+	// a layer without an intrinsic size gets no insets or padding
 	@Override
 	public int getIntrinsicWidth() {
+		final boolean nest = mLayerState.mPaddingMode == PADDING_MODE_NEST;
 		int width = -1;
 		final ChildDrawable[] array = mLayerState.mChildren;
 		final int N = mLayerState.mNum;
 		int padL = 0, padR = 0;
 		for (int i = 0; i < N; i++) {
 			final ChildDrawable r = array[i];
-			int w = r.mDrawable.getIntrinsicWidth() + r.mInsetL + r.mInsetR + padL + padR;
+			final int minWidth = r.mDrawable.getIntrinsicWidth();
+			final int w = minWidth < 0 ? -1 : minWidth + r.mInsetL + r.mInsetR + padL + padR;
 			if (w > width) {
 				width = w;
 			}
-			padL += mPaddingL[i];
-			padR += mPaddingR[i];
+			if (nest) {
+				reapplyPadding(i, r);
+				padL += mPaddingL[i];
+				padR += mPaddingR[i];
+			}
 		}
 		return width;
 	}
 
 	@Override
 	public int getIntrinsicHeight() {
+		final boolean nest = mLayerState.mPaddingMode == PADDING_MODE_NEST;
 		int height = -1;
 		final ChildDrawable[] array = mLayerState.mChildren;
 		final int N = mLayerState.mNum;
 		int padT = 0, padB = 0;
 		for (int i = 0; i < N; i++) {
 			final ChildDrawable r = array[i];
-			int h = r.mDrawable.getIntrinsicHeight() + r.mInsetT + r.mInsetB + +padT + padB;
+			final int minHeight = r.mDrawable.getIntrinsicHeight();
+			final int h = minHeight < 0 ? -1 : minHeight + r.mInsetT + r.mInsetB + padT + padB;
 			if (h > height) {
 				height = h;
 			}
-			padT += mPaddingT[i];
-			padB += mPaddingB[i];
+			if (nest) {
+				reapplyPadding(i, r);
+				padT += mPaddingT[i];
+				padB += mPaddingB[i];
+			}
 		}
 		return height;
 	}
@@ -644,7 +686,13 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 
 	public void setLayerGravity(int index, int gravity) {}
 
-	public void setPaddingMode(int paddingMode) {}
+	public void setPaddingMode(int mode) {
+		mLayerState.mPaddingMode = mode;
+	}
+
+	public int getPaddingMode() {
+		return mLayerState.mPaddingMode;
+	}
 
 	static class ChildDrawable {
 		public Drawable mDrawable;
@@ -669,6 +717,11 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 		private boolean mCanConstantState;
 
 		private boolean mAutoMirrored;
+
+		int mPaddingMode = PADDING_MODE_NEST;
+		// the layer-list's own padding, -1 where unset
+		int mPaddingLeft = -1, mPaddingTop = -1, mPaddingRight = -1, mPaddingBottom = -1;
+		int mPaddingStart = -1, mPaddingEnd = -1;
 
 		LayerState(LayerState orig, LayerDrawable owner, Resources res) {
 			if (orig != null) {
@@ -708,6 +761,13 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
 				mStateful = orig.mStateful;
 				mCheckedConstantState = mCanConstantState = true;
 				mAutoMirrored = orig.mAutoMirrored;
+				mPaddingMode = orig.mPaddingMode;
+				mPaddingLeft = orig.mPaddingLeft;
+				mPaddingTop = orig.mPaddingTop;
+				mPaddingRight = orig.mPaddingRight;
+				mPaddingBottom = orig.mPaddingBottom;
+				mPaddingStart = orig.mPaddingStart;
+				mPaddingEnd = orig.mPaddingEnd;
 			} else {
 				mNum = 0;
 				mChildren = null;

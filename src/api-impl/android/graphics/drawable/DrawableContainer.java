@@ -67,6 +67,19 @@ public class DrawableContainer extends Drawable implements Drawable.Callback {
 
 	/* Copyright (C) 2006 The Android Open Source Project */
 	@Override
+	public boolean getPadding(Rect padding) {
+		final Rect r = state.getConstantPadding();
+		if (r != null) {
+			padding.set(r);
+			return (r.left | r.top | r.bottom | r.right) != 0;
+		}
+		if (currDrawable != null)
+			return currDrawable.getPadding(padding);
+		return super.getPadding(padding);
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	@Override
 	public Drawable mutate() {
 		if (!mutated && super.mutate() == this) {
 			final DrawableContainerState clone = cloneConstantState();
@@ -112,6 +125,9 @@ public class DrawableContainer extends Drawable implements Drawable.Callback {
 		private SparseArray<ConstantState> futures;
 		private boolean checkedConstantState;
 		private boolean canConstantState;
+		private boolean variablePadding;
+		private boolean checkedPadding;
+		private Rect constantPadding;
 
 		public DrawableContainerState(DrawableContainerState orig, DrawableContainer owner, Resources res) {
 			this.owner = owner;
@@ -119,6 +135,9 @@ public class DrawableContainer extends Drawable implements Drawable.Callback {
 			if (orig != null) {
 				checkedConstantState = true;
 				canConstantState = true;
+				variablePadding = orig.variablePadding;
+				checkedPadding = orig.checkedPadding;
+				constantPadding = orig.constantPadding != null ? new Rect(orig.constantPadding) : null;
 				drawables = new Drawable[orig.drawables.length];
 				childCount = orig.childCount;
 				futures = orig.futures != null ? orig.futures.clone() : new SparseArray<>(childCount);
@@ -178,7 +197,41 @@ public class DrawableContainer extends Drawable implements Drawable.Callback {
 			drawables[pos] = dr;
 			childCount++;
 			checkedConstantState = false;
+			checkedPadding = false;
+			constantPadding = null;
 			return pos;
+		}
+
+		// true: the padding follows the shown child; false: the largest of all children's, per edge
+		public final void setVariablePadding(boolean variable) {
+			variablePadding = variable;
+		}
+
+		/* Copyright (C) 2006 The Android Open Source Project */
+		public final Rect getConstantPadding() {
+			if (variablePadding)
+				return null;
+			if (constantPadding != null || checkedPadding)
+				return constantPadding;
+			createAllFutures();
+			Rect r = null;
+			final Rect t = new Rect();
+			for (int i = 0; i < childCount; i++) {
+				if (drawables[i].getPadding(t)) {
+					if (r == null)
+						r = new Rect(0, 0, 0, 0);
+					if (t.left > r.left)
+						r.left = t.left;
+					if (t.top > r.top)
+						r.top = t.top;
+					if (t.right > r.right)
+						r.right = t.right;
+					if (t.bottom > r.bottom)
+						r.bottom = t.bottom;
+				}
+			}
+			checkedPadding = true;
+			return (constantPadding = r);
 		}
 
 		public void growArray(int oldSize, int newSize) {

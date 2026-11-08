@@ -60,6 +60,8 @@ static gboolean place_child(GtkOverlay *overlay, GtkWidget *child, GdkRectangle 
 		return FALSE;
 	struct atl_window_frame frame;
 	windows_place(subwindow, width, height, &frame);
+	if (g_object_get_data(G_OBJECT(child), "atl-panel")) // the alert's panel around the root
+		frame = *windows_panel(subwindow);
 	*allocation = (GdkRectangle){frame.left, frame.top, frame.width, frame.height};
 	return TRUE;
 }
@@ -93,10 +95,18 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, s
 	GtkOverlay *overlay = window_overlay(GTK_WINDOW(window));
 	GPtrArray *widgets = g_ptr_array_new_with_free_func(g_object_unref);
 	for (size_t i = 0; i < n; i++) {
+		if (!list[i].view) // an alert: its own GtkWindow
+			continue;
 		GtkWidget *wrapper = view_wrapper(list[i].view);
 		g_object_set_data(G_OBJECT(wrapper), "atl-subwindow", list[i].window);
 		if (list[i].layout.flags & UI_WINDOW_DIM_BEHIND && list[i].layout.dim_amount > 0)
 			g_ptr_array_add(widgets, g_object_ref(dim_of(wrapper, list[i].layout.dim_amount)));
+		GtkWidget *panel = list[i].chrome ? dialog_panel(list[i].chrome) : NULL;
+		if (panel) {
+			g_object_set_data(G_OBJECT(panel), "atl-subwindow", list[i].window);
+			g_object_set_data(G_OBJECT(panel), "atl-panel", GINT_TO_POINTER(TRUE));
+			g_ptr_array_add(widgets, g_object_ref(panel));
+		}
 		g_ptr_array_add(widgets, g_object_ref(wrapper));
 	}
 	struct roots *old = get_roots(overlay);
@@ -108,7 +118,7 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, s
 		bool stays = false;
 		for (guint j = 0; j < widgets->len; j++)
 			stays |= g_ptr_array_index(widgets, j) == widget;
-		if (!stays && !g_object_get_data(G_OBJECT(widget), "atl-dim"))
+		if (!stays && !g_object_get_data(G_OBJECT(widget), "atl-dim") && !g_object_get_data(G_OBJECT(widget), "atl-panel"))
 			input_root_removed(widget);
 		gtk_overlay_remove_overlay(overlay, widget);
 	}

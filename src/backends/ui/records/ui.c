@@ -60,8 +60,10 @@ static void lay_out(struct ui_window *window)
 		atl_upcall_view_measure(root->ref, config->width | MEASURE_SPEC_EXACTLY, config->height | MEASURE_SPEC_EXACTLY);
 		atl_upcall_view_layout(root->ref, config->width, config->height);
 	}
-	for (size_t i = 0; i < window->n_roots; i++)
-		lay_out_root(&window->roots[i], config->width, config->height);
+	for (size_t i = 0; i < window->n_roots; i++) {
+		if (window->roots[i].view)
+			lay_out_root(&window->roots[i], config->width, config->height);
+	}
 	if (!root)
 		return;
 
@@ -133,8 +135,10 @@ static void draw_frame(struct ui_window *window)
 	struct timespec start, end;
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	int drawn = window->shown ? draw_tree(window->shown) : 0;
-	for (size_t i = 0; i < window->n_roots; i++)
-		drawn += draw_tree(window->roots[i].view);
+	for (size_t i = 0; i < window->n_roots; i++) {
+		if (window->roots[i].view)
+			drawn += draw_tree(window->roots[i].view);
+	}
 	clock_gettime(CLOCK_MONOTONIC, &end);
 	if (drawn)
 		records_test_frame_drawn(&start, &end);
@@ -198,9 +202,10 @@ static const struct ui_root *root_of(const struct ui_window *window, const struc
 void records_touch(struct ui_window *window, const struct atl_touch *touch)
 {
 	if (touch->action == ATL_ACTION_DOWN) {
-		const struct ui_root *target = windows_touch_target(window->roots, window->n_roots, touch->pointers[0].x, touch->pointers[0].y);
-		window->touched = target ? target->view : NULL;
-		window->touch_dropped = false;
+		float x = touch->pointers[0].x, y = touch->pointers[0].y;
+		const struct ui_root *target = windows_touch_target(window->roots, window->n_roots, x, y);
+		window->touch_dropped = target && windows_in_chrome(target->window, x, y); // the chrome's, no view's
+		window->touched = target && !window->touch_dropped ? target->view : NULL;
 	}
 	struct ui_view *target = window->touched;
 	bool ends = touch->action == ATL_ACTION_UP || touch->action == ATL_ACTION_CANCEL;
@@ -237,8 +242,6 @@ static void cancel_touch(void *data)
 
 void ui_window_set_roots(struct ui_window *window, const struct ui_root *roots, size_t n)
 {
-	if (!records_shows_roots())
-		return;
 	bool touched_stays = false;
 	for (size_t i = 0; i < n; i++)
 		touched_stays |= roots[i].view == window->touched;
@@ -252,6 +255,7 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *roots, 
 	free(window->roots);
 	window->roots = n ? memcpy(malloc(n * sizeof(*roots)), roots, n * sizeof(*roots)) : NULL;
 	window->n_roots = n;
+	records_roots_changed(window);
 	schedule_layout(window);
 }
 
@@ -555,7 +559,7 @@ struct measure_key {
 	float size;
 	int style, min_lines, max_lines, max_width;
 	enum ui_button button;
-	bool is_button, has_background, edit, multiline, selectable;
+	bool is_button, has_background, padded, edit, multiline, selectable;
 };
 
 struct measured {
@@ -575,6 +579,7 @@ static struct measure_key measure_key(const struct ui_view *view, int max_width)
 	    .text = view->text, .hint = view->edit ? view->edit_config.hint : NULL, .runs = view->runs, .n_runs = view->n_runs, .size = view->text_size,
 	    .style = view->text_style, .min_lines = view->min_lines, .max_lines = view->max_lines, .max_width = max_width,
 	    .button = view->button, .is_button = view->is_button, .has_background = view->has_background,
+	    .padded = view->padding_left || view->padding_top || view->padding_right || view->padding_bottom,
 	    .edit = view->edit, .multiline = view->edit_config.multiline, .selectable = view->selectable};
 }
 
@@ -588,7 +593,7 @@ static bool measure_key_equal(const struct measure_key *a, const struct measure_
 	return same_text(a->text, b->text) && same_text(a->hint, b->hint) && a->n_runs == b->n_runs
 	       && (!a->n_runs || !memcmp(a->runs, b->runs, a->n_runs * sizeof(*a->runs))) && a->size == b->size && a->style == b->style
 	       && a->min_lines == b->min_lines && a->max_lines == b->max_lines && a->max_width == b->max_width
-	       && a->button == b->button && a->is_button == b->is_button && a->has_background == b->has_background
+	       && a->button == b->button && a->is_button == b->is_button && a->has_background == b->has_background && a->padded == b->padded
 	       && a->edit == b->edit && a->multiline == b->multiline && a->selectable == b->selectable;
 }
 
@@ -600,7 +605,7 @@ static size_t measure_slot(const struct measure_key *key)
 	for (const char *c = key->hint ? key->hint : ""; *c; c++)
 		hash = (hash ^ (uint8_t)*c) * 1099511628211u;
 	int numbers[] = {(int)(key->size * 64), (int)key->n_runs, key->style, key->min_lines, key->max_lines, key->max_width, key->button,
-	                 key->is_button << 4 | key->has_background << 3 | key->edit << 2 | key->multiline << 1 | key->selectable};
+	                 key->is_button << 5 | key->has_background << 4 | key->padded << 3 | key->edit << 2 | key->multiline << 1 | key->selectable};
 	for (size_t i = 0; i < sizeof(numbers) / sizeof(*numbers); i++)
 		hash = (hash ^ (uint32_t)numbers[i]) * 1099511628211u;
 	return hash % MEASURE_SLOTS;
@@ -851,4 +856,39 @@ void records_edit_report(struct ui_view *view, const struct atl_edit_report *rep
 		return;
 	records_edit_set(view, report->text, report->start, report->end);
 	atl_upcall_edit_report(view->ref, report);
+}
+
+static char *dup(const char *chars)
+{
+	return chars ? strdup(chars) : NULL;
+}
+
+void records_alert_clear(struct ui_alert *alert)
+{
+	free((char *)alert->title);
+	free((char *)alert->message);
+	for (int i = 0; i < alert->n_items; i++)
+		free((char *)alert->items[i]);
+	free((char **)alert->items);
+	free((bool *)alert->checked);
+	for (int i = 0; i < 3; i++)
+		free((char *)alert->buttons[i]);
+	memset(alert, 0, sizeof(*alert));
+}
+
+void records_alert_copy(struct ui_alert *copy, const struct ui_alert *alert)
+{
+	*copy = *alert;
+	copy->title = dup(alert->title);
+	copy->message = dup(alert->message);
+	if (alert->items) {
+		char **items = calloc(alert->n_items, sizeof(*items));
+		for (int i = 0; i < alert->n_items; i++)
+			items[i] = dup(alert->items[i]);
+		copy->items = (const char *const *)items;
+	}
+	if (alert->checked)
+		copy->checked = memcpy(calloc(alert->n_items ? alert->n_items : 1, sizeof(bool)), alert->checked, alert->n_items * sizeof(bool));
+	for (int i = 0; i < 3; i++)
+		copy->buttons[i] = dup(alert->buttons[i]);
 }

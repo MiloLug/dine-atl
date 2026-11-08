@@ -2,17 +2,21 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
 
 #include "../records/records.h"
+#import "dialog.h"
+#import "panel.h"
 #import "queue.h"
 
-/* Alerts as UIAlertControllers over the topmost presented view controller; items make an action
- * sheet. The ui calls queue on the Android main thread with the views' changes, taps hop back through
- * loop_main_post. Windows over the activity (a Dialog's content view) show nothing yet. */
+/* Plain alerts as UIAlertControllers over the topmost presented view controller; items make an
+ * action sheet. A panel alert is an ATLPanelView that view.m puts around its window's root. The ui
+ * calls queue on the Android main thread with the views' changes, taps hop back through
+ * loop_main_post. */
 
 /* A dialog's UIKit side; UIKit's thread only once shown. The blocks hold it, so a tap on an alert
  * still dismissing after ui_dialog_free reads a NULL ref, not freed memory. The alert is built from
@@ -26,6 +30,9 @@
 	NSString *buttons[3]; // nil: none or hidden
 	bool disabled[3];
 	bool cancelable;
+	bool panel;                    // an ATLPanelView, not a UIAlertController
+	ATLPanelView *panelView;
+	bool covered;                  // a newer window over the activities is shown: no controller
 	bool wanted;                   // shown and not closed: an alert UIKit dismissed on a tap comes back
 	bool presenting;               // a present is on its way: posted or waiting for a transition
 	bool stale;                    // the model changed in a way the presented alert can't show
@@ -39,6 +46,14 @@
 
 struct ui_dialog_state {
 	void *dialog; // an ATLDialog, retained
+	// Android main thread: the shown alert as changed since, for ui_dialog_chrome
+	struct ui_alert alert;
+	unsigned changes;
+	struct {
+		int avail_width, avail_height;
+		unsigned changes;
+		struct ui_chrome chrome;
+	} measured;
 };
 
 static ATLDialog *get_dialog(struct ui_window *window)
@@ -90,6 +105,18 @@ static void give_answer(void *data)
 	}
 }
 
+static void post_answer(ATLDialog *dialog, int which)
+{
+	if (!dialog->ref)
+		return;
+	struct answer *answer = malloc(sizeof(*answer));
+	*answer = (struct answer){(void *)CFBridgingRetain(dialog), dialog->ref, which};
+	if (!loop_main_post(atl_app_loop(dialog->app), give_answer, answer)) {
+		CFRelease(answer->dialog);
+		free(answer);
+	}
+}
+
 static UIAlertAction *action(ATLDialog *dialog, UIAlertController *controller, NSString *title, UIAlertActionStyle style, int which)
 {
 	__weak UIAlertController *weak_controller = controller;
@@ -98,14 +125,7 @@ static UIAlertAction *action(ATLDialog *dialog, UIAlertController *controller, N
 		if (dialog->controller == weak_controller)
 			dialog->controller = nil;
 		log_line("closed");
-		if (!dialog->ref)
-			return;
-		struct answer *answer = malloc(sizeof(*answer));
-		*answer = (struct answer){(void *)CFBridgingRetain(dialog), dialog->ref, which};
-		if (!loop_main_post(atl_app_loop(dialog->app), give_answer, answer)) {
-			CFRelease(answer->dialog);
-			free(answer);
-		}
+		post_answer(dialog, which);
 	}];
 }
 
@@ -151,7 +171,8 @@ static void rebuild(ATLDialog *dialog);
 
 static void present(ATLDialog *dialog, bool animated)
 {
-	if (!dialog->wanted || dialog->controller) { // closed before it could show, or shown again meanwhile
+	// closed before it could show, shown again meanwhile, or not a controller's now
+	if (!dialog->wanted || dialog->controller || dialog->panel || dialog->covered) {
 		dialog->presenting = false;
 		return;
 	}
@@ -207,14 +228,48 @@ static NSString *string(const char *chars)
 	return chars ? [NSString stringWithUTF8String:chars] : nil;
 }
 
-// an undrawn window must not take touches: records keeps them out until M6b3 draws them
-bool records_shows_roots(void)
+// UIKit's thread: a controller that shows no more goes without an answer
+static void dismiss_controller(ATLDialog *dialog)
 {
-	return false;
+	UIAlertController *controller = dialog->controller;
+	dialog->controller = nil;
+	if (controller.presentingViewController && !controller.isBeingDismissed)
+		[controller dismissViewControllerAnimated:NO completion:nil];
+}
+
+static void show_panel(struct ui_window *window, const struct ui_alert *alert)
+{
+	ATLDialog *dialog = get_dialog(window);
+	struct ui_alert *copy = malloc(sizeof(*copy));
+	records_alert_copy(copy, alert);
+	uikit_enqueue(window->app, ^{
+		dialog->panel = true;
+		dialog->wanted = true;
+		dismiss_controller(dialog);
+		if (!dialog->panelView) {
+			dialog->panelView = [ATLPanelView new];
+			dialog->panelView.action = ^(int which) {
+				post_answer(dialog, which);
+			};
+		}
+		[dialog->panelView atlSetAlert:copy];
+		records_alert_clear(copy);
+		free(copy);
+	});
 }
 
 void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 {
+	struct ui_dialog_state *state = window->dialog;
+	records_alert_clear(&state->alert);
+	records_alert_copy(&state->alert, alert);
+	state->changes++;
+	if (alert->panel) {
+		@autoreleasepool {
+			show_panel(window, alert);
+		}
+		return;
+	}
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
 		NSString *title = string(alert->title);
@@ -240,6 +295,7 @@ void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 				dialog->disabled[i] = flags.disabled[i];
 			}
 			dialog->cancelable = cancelable;
+			dialog->panel = false;
 			dialog->wanted = true;
 			UIAlertController *controller = dialog->controller;
 			if (!controller)
@@ -254,14 +310,23 @@ void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 
 void ui_dialog_set_button(struct ui_window *window, int which, const char *label_chars, bool enabled)
 {
+	struct ui_alert *shown = &window->dialog->alert;
+	int i = -1 - which;
+	free((char *)shown->buttons[i]);
+	shown->buttons[i] = label_chars ? strdup(label_chars) : NULL;
+	shown->disabled[i] = !enabled;
+	window->dialog->changes++;
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
 		NSString *label = string(label_chars);
-		int i = -1 - which;
 		uikit_enqueue(window->app, ^{
 			bool relabeled = (label == nil) != (dialog->buttons[i] == nil) || (label && ![label isEqualToString:dialog->buttons[i]]);
 			dialog->buttons[i] = label;
 			dialog->disabled[i] = !enabled;
+			if (dialog->panel) {
+				[dialog->panelView atlSetButton:i label:label enabled:enabled];
+				return;
+			}
 			UIAlertController *controller = dialog->controller;
 			if (!controller || controller.isBeingDismissed) // the model is what a present builds from
 				return;
@@ -307,6 +372,7 @@ void ui_dialog_free(struct ui_window *window)
 		ATLDialog *dialog = CFBridgingRelease(window->dialog->dialog);
 		struct atl_app *app = window->app;
 		records_observations_orphan(window);
+		records_alert_clear(&window->dialog->alert);
 		free(window->dialog);
 		free(window);
 		uikit_enqueue(app, ^{
@@ -314,6 +380,8 @@ void ui_dialog_free(struct ui_window *window)
 			dialog->ref = NULL;
 			dialog->wanted = false;
 			dialog->controller = nil;
+			dialog->panelView.action = nil; // it holds the dialog
+			dialog->panelView = nil;
 			// answers posted from this thread before stay ahead of it and still use the ref
 			loop_main_post(atl_app_loop(app), free_ref, ref);
 		});
@@ -321,3 +389,81 @@ void ui_dialog_free(struct ui_window *window)
 }
 
 void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel) {}
+
+void ui_dialog_set_progress(struct ui_window *window, int value, int max, bool indeterminate)
+{
+	struct ui_alert *shown = &window->dialog->alert;
+	if (shown->indeterminate != indeterminate) // a spinner in place of the bar, or back
+		window->dialog->changes++;
+	shown->value = value;
+	shown->max = max;
+	shown->indeterminate = indeterminate;
+	@autoreleasepool {
+		ATLDialog *dialog = get_dialog(window);
+		uikit_enqueue(window->app, ^{
+			[dialog->panelView atlSetProgress:value max:max indeterminate:indeterminate];
+		});
+	}
+}
+
+static CGFloat scale(void)
+{
+	return atl_screen_get()->density_dpi / 160.;
+}
+
+// measured on a panel of its own, as text is: the shown one may still wait for queued changes
+void ui_dialog_chrome(struct ui_window *window, int avail_width, int avail_height, struct ui_chrome *chrome)
+{
+	struct ui_dialog_state *state = window->dialog;
+	if (state->measured.changes == state->changes && state->measured.avail_width == avail_width && state->measured.avail_height == avail_height) {
+		*chrome = state->measured.chrome;
+		return;
+	}
+	CGFloat s = scale();
+	CGFloat width = panel_width(avail_width / s), max_height = avail_height / s - 2 * panel_margin;
+	const struct ui_alert *alert = &state->alert;
+	__block CGFloat header, footer;
+	@autoreleasepool {
+		dispatch_sync(dispatch_get_main_queue(), ^{
+			static ATLPanelView *scratch;
+			if (!scratch)
+				scratch = [ATLPanelView new];
+			[scratch atlSetAlert:alert];
+			footer = [scratch atlFooterHeightForWidth:width];
+			header = [scratch atlHeaderHeightForWidth:width cap:panel_header_cap(max_height, footer, alert->content)];
+		});
+	}
+	*chrome = (struct ui_chrome){
+		.width = round(width * s),
+		.max_height = round(max_height * s),
+		.left = round(panel_side * s),
+		.top = ceil(header * s),
+		.right = round(panel_side * s),
+		.bottom = ceil(footer * s),
+	};
+	state->measured.avail_width = avail_width;
+	state->measured.avail_height = avail_height;
+	state->measured.changes = state->changes;
+	state->measured.chrome = *chrome;
+}
+
+ATLDialog *uikit_dialog_of(struct ui_window *window)
+{
+	return get_dialog(window);
+}
+
+UIView *uikit_dialog_panel(ATLDialog *dialog)
+{
+	return dialog->panel ? dialog->panelView : nil;
+}
+
+void uikit_dialog_set_covered(ATLDialog *dialog, bool covered)
+{
+	if (dialog->covered == covered)
+		return;
+	dialog->covered = covered;
+	if (covered)
+		dismiss_controller(dialog);
+	else if (dialog->wanted && !dialog->panel && !dialog->controller)
+		request_present(dialog, false);
+}

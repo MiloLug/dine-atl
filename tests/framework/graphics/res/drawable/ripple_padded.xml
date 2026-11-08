@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a ripple stacks its layers: the per-edge largest padding -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/pressed">
+	<item android:drawable="@drawable/inset"/>
+	<item android:drawable="@drawable/padshape"/>
+</ripple>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- paddingLeft wins on its edge only; the other edges keep the background's padding -->
+<View xmlns:android="http://schemas.android.com/apk/res/android" android:background="@drawable/inset" android:paddingLeft="7px"/>

@@ -60,7 +60,8 @@ struct atl_subwindow;
 /* A window over the activities as the backend shows it; windows_place (shared/windows.h) places it. */
 struct ui_root {
 	struct atl_subwindow *window;
-	struct ui_view *view; // its root: the decor view
+	struct ui_view *view;     // its root: the decor view; NULL: an alert the backend shows by itself
+	struct ui_window *chrome; // an AlertDialog's alert (ui_dialog_new), drawn around view, else NULL
 	struct ui_window_layout layout;
 };
 /* The windows shown over the shown activity, bottom first; replaces the last list. */
@@ -103,24 +104,55 @@ void ui_window_set_frame(struct ui_window *window, const struct ui_frame *frame)
 void ui_window_dump(struct ui_window *window, FILE *out);
 #endif
 
+enum ui_alert_check {
+	UI_ALERT_CHECK_NONE,   // an item closes the alert
+	UI_ALERT_CHECK_SINGLE, // an item takes the check; the alert stays
+	UI_ALERT_CHECK_MULTI,  // an item's check toggles; the alert stays
+};
+enum ui_alert_progress {
+	UI_ALERT_PROGRESS_NONE,
+	UI_ALERT_PROGRESS_SPINNER,
+	UI_ALERT_PROGRESS_BAR,
+};
 /* AlertDialog's content, valid only during the call; NULL or 0 when absent. */
 struct ui_alert {
 	const char *title;
 	const char *message;
 	const char *const *items;
 	int n_items;
+	enum ui_alert_check check;
+	const bool *checked; // per item, with a check
+	enum ui_alert_progress progress;
+	bool indeterminate;
+	int value, max;      // the bar's
+	/* A panel: the alert goes around its window's root (ui_root.chrome), drawn with the windows over
+	 * the activity; else the backend shows it by itself. content: the root has Android views, which
+	 * keep a share of the height beside long rows. light: the root's theme is light. */
+	bool panel, content, light;
 	const char *buttons[3]; // positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
 	bool disabled[3];
 	bool cancelable;
+};
+/* A panel's chrome around its root, px: the panel is width wide, the root goes in at left, top and
+ * is width - left - right wide; panel and root together stay within max_height. */
+struct ui_chrome {
+	int width, max_height;
+	int left, top, right, bottom;
 };
 /* The result of a cancel (back, a tap outside, a Cancel action), next to buttons and items. */
 #define UI_DIALOG_CANCEL INT32_MIN
 
 /* An AlertDialog's native alert in app (its Context's); a Dialog with a content view is a window
- * over the activities (ui_window_set_roots). Results go to atl_upcall_dialog_result; the alert
- * closes only through ui_dialog_close. */
+ * over the activities (ui_window_set_roots), and a panel alert is drawn around one. Results go to
+ * atl_upcall_dialog_result; the alert closes only through ui_dialog_close. */
 struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref);
+/* Shows the alert, or a shown one's new content. */
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert);
+/* The shown panel's chrome for a window that may take avail_width by avail_height px. Android main
+ * thread, in a layout pass. */
+void ui_dialog_chrome(struct ui_window *dialog, int avail_width, int avail_height, struct ui_chrome *chrome);
+/* The shown alert's progress bar moved. */
+void ui_dialog_set_progress(struct ui_window *dialog, int value, int max, bool indeterminate);
 /* A button of the shown alert changed (which: DialogInterface.BUTTON_*; label NULL: hidden). A result
  * that leaves the dialog drawn means it stays shown: a backend whose toolkit closed it shows it again. */
 void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label, bool enabled);

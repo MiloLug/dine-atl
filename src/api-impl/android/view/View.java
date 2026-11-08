@@ -1121,36 +1121,38 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		int paddingStart = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingStart, -1);
 		int paddingEnd = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingEnd, -1);
 
+		// an edge without an attribute keeps the background's padding (AOSP)
+		int padL = paddingLeft, padT = paddingTop, padR = paddingRight, padB = paddingBottom;
 		if (padding >= 0) {
-			paddingLeft = padding;
-			paddingTop = padding;
-			paddingRight = padding;
-			paddingBottom = padding;
+			padL = padding;
+			padT = padding;
+			padR = padding;
+			padB = padding;
 		} else {
 			if (paddingVertical >= 0) {
-				paddingTop = paddingVertical;
-				paddingBottom = paddingVertical;
+				padT = paddingVertical;
+				padB = paddingVertical;
 			} else {
-				paddingTop = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingTop, 0);
-				paddingBottom = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingBottom, 0);
+				padT = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingTop, padT);
+				padB = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingBottom, padB);
 			}
 
 			if (paddingHorizontal >= 0) {
-				paddingLeft = paddingHorizontal;
-				paddingRight = paddingHorizontal;
+				padL = paddingHorizontal;
+				padR = paddingHorizontal;
 			} else {
-				paddingLeft = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingLeft, 0);
-				paddingRight = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingRight, 0);
+				padL = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingLeft, padL);
+				padR = a.getDimensionPixelSize(com.android.internal.R.styleable.View_paddingRight, padR);
 
 				if (paddingStart >= 0)
-					paddingLeft = paddingStart;
+					padL = paddingStart;
 
 				if (paddingEnd >= 0)
-					paddingRight = paddingEnd;
+					padR = paddingEnd;
 			}
 		}
 
-		native_setPadding(widget, paddingLeft, paddingTop, paddingRight, paddingBottom);
+		internalSetPadding(padL, padT, padR, padB);
 
 		if (a.hasValue(com.android.internal.R.styleable.View_tag))
 			tag = a.getText(com.android.internal.R.styleable.View_tag);
@@ -2038,9 +2040,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	protected native void native_setBackgroundColor(long widget, int color);
 	public void setBackgroundColor(int color) {
-		background = new ColorDrawable(color);
-		backgroundIsColor = true;
-		native_setBackgroundColor(widget, color);
+		setBackgroundDrawable(new ColorDrawable(color));
 	}
 
 	native void native_setVisibility(long widget, int visibility, float alpha, boolean sensitive);
@@ -2064,11 +2064,21 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	public void setPadding(int left, int top, int right, int bottom) {
+		internalSetPadding(left, top, right, bottom);
+	}
+
+	// the toolkit gets the values even unchanged: on gtk they replace the widget's theme padding
+	private void internalSetPadding(int left, int top, int right, int bottom) {
+		boolean changed = paddingLeft != left || paddingTop != top || paddingRight != right || paddingBottom != bottom;
 		paddingLeft = left;
 		paddingTop = top;
 		paddingRight = right;
 		paddingBottom = bottom;
 		native_setPadding(widget, left, top, right, bottom);
+		if (changed) {
+			requestLayout();
+			invalidate();
+		}
 	}
 	public native void native_setPadding(long widget, int left, int top, int right, int bottom);
 
@@ -2318,10 +2328,23 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	}
 
 	protected int getSuggestedMinimumHeight() {
-		return getMinimumHeight();
+		return background == null ? getMinimumHeight() : Math.max(getMinimumHeight(), background.getMinimumHeight());
 	}
+
 	protected int getSuggestedMinimumWidth() {
-		return getMinimumWidth();
+		return background == null ? getMinimumWidth() : Math.max(getMinimumWidth(), background.getMinimumWidth());
+	}
+
+	// a toolkit-measured size, at least the suggested minimum unless the spec is exact (AOSP's
+	// TextView and ImageView measure)
+	protected static int atlAtLeast(int size, int minimum, int measureSpec) {
+		int mode = MeasureSpec.getMode(measureSpec);
+		if (mode == MeasureSpec.EXACTLY)
+			return size;
+		size = Math.max(size, minimum);
+		if (mode == MeasureSpec.AT_MOST)
+			size = Math.min(size, MeasureSpec.getSize(measureSpec));
+		return size;
 	}
 
 	/**
@@ -2513,9 +2536,29 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		invalidate();
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: a padded background replaces the view's
+	 * padding, and a new minimum size lays the view out again */
 	public void setBackgroundDrawable(Drawable backgroundDrawable) {
+		if (backgroundDrawable == background)
+			return;
+		boolean requestLayout = false;
+		if (background != null)
+			background.setCallback(null);
+		if (backgroundDrawable != null) {
+			Rect padding = new Rect();
+			if (backgroundDrawable.getPadding(padding))
+				internalSetPadding(padding.left, padding.top, padding.right, padding.bottom);
+			if (background == null
+			    || background.getMinimumHeight() != backgroundDrawable.getMinimumHeight()
+			    || background.getMinimumWidth() != backgroundDrawable.getMinimumWidth())
+				requestLayout = true;
+		} else {
+			requestLayout = true;
+		}
 		this.background = backgroundDrawable;
 		backgroundIsColor = backgroundDrawable instanceof ColorDrawable;
+		if (requestLayout)
+			requestLayout();
 		if (backgroundIsColor) {
 			native_setBackgroundColor(widget, ((ColorDrawable)backgroundDrawable).getColor());
 			return;
@@ -2878,7 +2921,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		postInvalidate();
 	}
 
-	public void setPaddingRelative(int start, int top, int end, int bottom) {}
+	// left to right only: getLayoutDirection is always LTR
+	public void setPaddingRelative(int start, int top, int end, int bottom) {
+		setPadding(start, top, end, bottom);
+	}
 
 	boolean attachedToWindow;
 	// kept from attach to detach: a view detached from its parent first (detachViewFromParent) has no root

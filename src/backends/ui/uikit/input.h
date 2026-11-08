@@ -8,6 +8,9 @@
 
 void input_touches(NSSet<UITouch *> *touches, UIEvent *event, UITouchPhase phase);
 void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down);
+/* A tap at point in view's coordinates, posted as a touch's DOWN and UP (accessibility's activate);
+ * none while a finger is down. */
+void input_tap(UIView *view, CGPoint point);
 
 struct atl_app;
 struct ui_window;

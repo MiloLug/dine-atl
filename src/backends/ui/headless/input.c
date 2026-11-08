@@ -218,6 +218,8 @@ static void on_tap(void *data)
 	float x, y;
 	bool found = false;
 	for (size_t i = window->n_roots; i-- > 0 && !found;) {
+		if (!window->roots[i].view) // a plain alert: answer, not tap
+			continue;
 		const struct atl_window_frame *frame = windows_frame(window->roots[i].window);
 		found = find_text(window->roots[i].view, tap->label, frame->left, frame->top, &x, &y);
 	}

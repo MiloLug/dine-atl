@@ -55,7 +55,7 @@ endif
 
 test_hooks = get_option('test_hooks')
 if test_hooks
-  add_project_arguments('-DATL_TEST_HOOKS', language: 'c')
+  add_project_arguments('-DATL_TEST_HOOKS', language: ui_backend == 'uikit' ? ['c', 'objc'] : 'c')
 endif
 
 # Matrix: desktop links the graphene gtk4 uses; other builds the wrap without GObject, so no glib.
@@ -298,7 +298,7 @@ records_srcs = ['src/backends/ui/records/ui.c'] + (test_hooks ? ['src/backends/u
 if ui_backend == 'headless'
   backend_libs += static_library('atl_ui_headless', records_srcs + ['src/backends/ui/headless/dialog.c', 'src/backends/ui/headless/edit.c', 'src/backends/ui/headless/input.c', 'src/backends/ui/headless/views.c'])
 elif ui_backend == 'uikit'
-  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/view.m'])
+  backend_libs += static_library('atl_ui_uikit', records_srcs + ['src/backends/ui/uikit/dialog.m', 'src/backends/ui/uikit/input.m', 'src/backends/ui/uikit/keys.m', 'src/backends/ui/uikit/panel.m', 'src/backends/ui/uikit/view.m'])
 else
   backend_libs += static_library('atl_ui_gtk', [
                                    'src/api-impl-jni/views/AndroidLayout.c',

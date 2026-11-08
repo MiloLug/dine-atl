@@ -659,20 +659,20 @@ public class TextView extends View {
 			setMaxLines(Integer.MAX_VALUE);
 	}
 
-	// the toolkit's size, within maxHeight and minHeight unless the spec is exact
+	// the toolkit's size, within maxHeight and minHeight, then at least the suggested minimum
+	// (AOSP's getDesiredHeight order: a background's minimum wins over maxHeight)
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-		if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY || (maxMode != PIXELS && minMode != PIXELS))
-			return;
 		int height = getMeasuredHeight();
-		if (maxMode == PIXELS)
-			height = Math.min(height, maximum);
-		if (minMode == PIXELS)
-			height = Math.max(height, minimum);
-		if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.AT_MOST)
-			height = Math.min(height, MeasureSpec.getSize(heightMeasureSpec));
-		setMeasuredDimension(getMeasuredWidth(), height);
+		if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.EXACTLY) {
+			if (maxMode == PIXELS)
+				height = Math.min(height, maximum);
+			if (minMode == PIXELS)
+				height = Math.max(height, minimum);
+		}
+		setMeasuredDimension(atlAtLeast(getMeasuredWidth(), getSuggestedMinimumWidth(), widthMeasureSpec),
+		                     atlAtLeast(height, getSuggestedMinimumHeight(), heightMeasureSpec));
 	}
 
 	public void setMinWidth(int minWidth) {}

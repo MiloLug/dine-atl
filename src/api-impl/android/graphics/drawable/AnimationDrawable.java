@@ -239,6 +239,8 @@ public class AnimationDrawable extends DrawableContainer implements Runnable, An
 
 		mAnimationState.mOneShot = a.getBoolean(
 		    com.android.internal.R.styleable.AnimationDrawable_oneshot, false);
+		mAnimationState.setVariablePadding(a.getBoolean(
+		    com.android.internal.R.styleable.AnimationDrawable_variablePadding, false));
 
 		a.recycle();
 

@@ -2,10 +2,14 @@ package dev.dine.framework.windows;
 
 import android.app.Dialog;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.SystemClock;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.TextView;
 import java.util.ArrayList;
@@ -331,5 +335,55 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 		});
 		assertEquals(View.VISIBLE, got[0]);
 		assertNull(got[1]);
+	}
+
+	private int dp(int value) {
+		return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, activity.getResources().getDisplayMetrics()));
+	}
+
+	private static String padding(View view) {
+		return view.getPaddingLeft() + "," + view.getPaddingTop() + "," + view.getPaddingRight() + "," + view.getPaddingBottom();
+	}
+
+	// dialog_background_material insets its card 16dp: the window pads its content by as much
+	public void testCardPadsTheContent() throws InterruptedException {
+		Dialog dialog = shown();
+		View decor = dialog.getWindow().getDecorView();
+		View content = ((ViewGroup)decor).getChildAt(0);
+		for (int i = 0; i < 250 && content.getWidth() == 0; i++)
+			Thread.sleep(20);
+		int inset = dp(16);
+		assertEquals(inset + "," + inset + "," + inset + "," + inset, padding(decor));
+		assertEquals(inset, content.getLeft());
+		assertEquals(inset, content.getTop());
+		assertEquals(decor.getWidth() - inset, content.getRight());
+		dismiss(dialog);
+	}
+
+	// DecorView's: the window's padding is its background's
+	public void testColorBackgroundDropsThePadding() {
+		final Dialog dialog = shown();
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+			}
+		});
+		assertEquals("0,0,0,0", padding(dialog.getWindow().getDecorView()));
+		dismiss(dialog);
+	}
+
+	// the theme's background goes on once: one taken off stays off
+	public void testRemovedBackgroundStaysOff() {
+		final Dialog dialog = shown();
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog.getWindow().setBackgroundDrawable(null);
+				dialog.setContentView(new TextView(activity));
+			}
+		});
+		View decor = dialog.getWindow().getDecorView();
+		assertNull(decor.getBackground());
+		assertEquals("0,0,0,0", padding(decor));
+		dismiss(dialog);
 	}
 }

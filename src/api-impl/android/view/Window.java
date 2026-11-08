@@ -109,16 +109,23 @@ public class Window {
 	private long subwindow;
 	private boolean window_visible;
 
-	private native long nativeAddSubwindow(long decor, Object owner);
+	private native long nativeAddSubwindow(Object owner);
+	private native void nativeSetSubwindowRoot(long subwindow, long decor, long chrome);
 	private native boolean nativeShowSubwindow(long subwindow);
 	private native boolean nativeHideSubwindow(long subwindow, boolean remove);
 	private static native void nativeFreeSubwindow(long subwindow);
 	private static native Window nativeKeyWindow(Context context);
 
-	/** @hide */
-	public void atlAddSubwindow(Object owner, boolean root) {
-		subwindow = nativeAddSubwindow(root ? decorView.widget : 0, owner);
+	/** @hide its root and alert come with each show (atlSetSubwindowRoot) */
+	public void atlAddSubwindow(Object owner) {
+		subwindow = nativeAddSubwindow(owner);
 		layoutChanged();
+	}
+
+	/** @hide before a show: whether the decor is drawn, and an AlertDialog's alert (its ui-slot
+	 * dialog, else 0) drawn around it or alone */
+	public void atlSetSubwindowRoot(boolean root, long chrome) {
+		nativeSetSubwindowRoot(subwindow, root ? decorView.widget : 0, chrome);
 	}
 
 	/** @hide false: no live token (BadTokenException) */
@@ -238,8 +245,10 @@ public class Window {
 		this.callback = callback;
 	}
 
+	// the theme's background goes on once, as PhoneWindow's installDecor: a background the app or
+	// AlertDialog took off later stays off
 	public void setContentView(View view) {
-		if (decorView.getBackground() == null) {
+		if (!content_set && decorView.getBackground() == null) {
 			TypedArray ta = context.obtainStyledAttributes(new int[] {R.attr.windowBackground});
 			if (ta.hasValue(0))
 				setBackgroundDrawable(ta.getDrawable(0));
@@ -331,9 +340,13 @@ public class Window {
 	public void setBackgroundDrawable(Drawable drawable) {
 		// HACK: disable transparent background for WhatsApp dialogs
 		// For some unknown reason, the language picker in WhatsApp doesn't render the BottomSheet background currently.
-		if (!"com.whatsapp".equals(context.getPackageName()))
+		// a dialog's background is its own: only an activity's clears the app window's
+		if (subwindow == 0 && !"com.whatsapp".equals(context.getPackageName()))
 			clear_background(native_window);
 		decorView.setBackgroundDrawable(drawable);
+		// DecorView's: the window's padding is its background's, none without one
+		if (drawable == null || !drawable.getPadding(new Rect()))
+			decorView.setPadding(0, 0, 0, 0);
 	}
 
 	public void setAttributes(WindowManager.LayoutParams params) {

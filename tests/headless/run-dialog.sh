@@ -10,7 +10,9 @@
 # its button, then a second dialog canceled by a touch outside it; then StackActivity's
 # non-touch-modal dialog: a drag in it scrolls it, a tap outside it reaches the activity, it hides
 # while another activity covers its own, a hide during a gesture ends it with a CANCEL, and it goes
-# (WindowLeaked) when its activity finishes.
+# (WindowLeaked) when its activity finishes; then AlertDialog panels: ViewActivity's setView content
+# (dialog-view.viewtree) and ChoiceActivity's adapter list through -c.
+# ChoiceActivity's choice rows, ProgressActivity's progress and ViewActivity's OK run on both.
 # Usage: run-dialog.sh [--headless [--update]] <build dir> <dialog.apk>
 set -euo pipefail
 
@@ -31,11 +33,13 @@ trap 'rm -rf "$work"' EXIT
 
 fail() { echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 
-# run <name> <answers> [<activity>]: ATL's output in $work/<name>.log, the exit status in rc
+# run <name> <answers> [<activity>]: ATL's output in $work/<name>.log, the exit status in rc; no
+# answers: no ATL_DIALOG_ANSWERS
 run() {
   log="$work/$1.log"
   mkdir -p "$work/data-$1"
-  local env=(RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-$1" ATL_DIALOG_ANSWERS="$2")
+  local env=(RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-$1")
+  [[ -n $2 ]] && env+=(ATL_DIALOG_ANSWERS="$2")
   ((headless)) && env=(-u DISPLAY -u WAYLAND_DISPLAY "${env[@]}")
   rc=0
   (cd "$build" && env "${env[@]}" timeout 60 ./android-translation-layer "$apk" -l "dev/dine/dialog/${3:-MainActivity}" \
@@ -85,6 +89,42 @@ for answer in Yes Later; do
   [[ $rc == 1 ]] || fail "\"$answer\" on the keep alert: exit status $rc, want 1"
   grep -qF "dialog: no scripted answer for \"Keep test\" (next answer: $answer)" "$log" || fail "\"$answer\" was answered"
 done
+
+# AlertDialog's own choice rows: Blue opens a plain alert over the single choice list
+run choice 'Blue;Okay;OK;Salt;Pepper;OK;Skip' ChoiceActivity
+for line in "choice single shown 0" "choice single 2" "choice single ok 2" "choice multi 0 true" "choice multi 1 false" "choice multi ok 0" \
+            "choice adapter shown" "choice done"; do
+  grep -q "$line" "$log" || fail "no \"$line\" (exit status $rc)"
+done
+if ((headless)); then
+  grep -q '^dialog: show panel\( light\)\? title="Pick one" items="Red","Green","Blue" check=single checked=0 positive="OK" cancelable$' "$log" \
+    || fail "no single choice line"
+  grep -q '^dialog: show title="Blue is taken" positive="Okay" cancelable$' "$log" || fail "no plain alert over the choice"
+  grep -q '^dialog: show panel\( light\)\? title="Pick some" items="Salt","Pepper","Oil" check=multi checked=1 positive="OK" cancelable$' "$log" \
+    || fail "no multi choice line"
+  for line in 'dialog: row 2 checked' 'dialog: row 0 checked' 'dialog: row 1 unchecked'; do
+    grep -q "^$line$" "$log" || fail "no \"$line\""
+  done
+fi
+[[ $rc == 0 ]] || fail "exit status $rc"
+
+run progress '' ProgressActivity
+for line in "progress spinner shown true" "progress bar shown" "progress 5/10" "progress done"; do
+  grep -q "$line" "$log" || fail "no \"$line\" (exit status $rc)"
+done
+if ((headless)); then
+  grep -q '^dialog: show panel.* title="Wait" message="Spinning" progress=spinner indeterminate cancelable$' "$log" || fail "no spinner line"
+  grep -q '^dialog: show panel.* title="Loading" message="Please wait" progress=bar 0/10 cancelable$' "$log" || fail "no bar line"
+  grep -q '^dialog: progress 5/10$' "$log" || fail "no progress line"
+  grep -q '^dialog: show panel.* message="Almost" progress=bar 5/10 cancelable$' "$log" || fail "the new message didn't show"
+fi
+[[ $rc == 0 ]] || fail "exit status $rc"
+
+run view 'OK' ViewActivity
+for line in 'view shown' 'view ok ""' 'view dismissed'; do
+  grep -qF "$line" "$log" || fail "no '$line' (exit status $rc)"
+done
+[[ $rc == 0 ]] || fail "exit status $rc"
 
 if ((headless)); then
   log="$work/content.log"
@@ -178,6 +218,73 @@ if ((headless)); then
   done
   echo "tap finish" >&"${ATL[1]}"
   wait_for 'has leaked window'
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+
+  # ViewActivity's setView content in the alert's panel: the dump's panel around the root
+  # (dialog-view.viewtree), a tap on the chrome is no one's (no cancel), a tap on the content's
+  # button is the view's, the chrome's OK answers
+  log="$work/view-c.log"
+  mkdir -p "$work/data-view-c"
+  coproc ATL {
+    cd "$build"
+    exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-view-c" timeout 60 \
+      ./android-translation-layer -c "$apk" -l dev/dine/dialog/ViewActivity -X -Xint 2>&1
+  }
+  pid=$ATL_PID
+  : >"$log"
+  wait_for 'view shown'
+  echo dump >&"${ATL[1]}"
+  : >"$work/view.viewtree"
+  while IFS= read -r -t 30 line <&"${ATL[0]}"; do
+    printf '%s\n' "$line" >>"$log"
+    [[ $line == viewtree:* ]] && printf '%s\n' "$line" >>"$work/view.viewtree"
+    [[ $line == "viewtree: end" ]] && break
+  done
+  if ((update)); then
+    cp "$work/view.viewtree" "$here/dialog-view.viewtree"
+  else
+    diff -u "$here/dialog-view.viewtree" "$work/view.viewtree" || fail "view tree differs from dialog-view.viewtree"
+  fi
+  [[ $(grep '^viewtree: window dialog' "$work/view.viewtree") =~ panel\ ([0-9]+),([0-9]+)\  ]] || fail "no panel around the view"
+  px=$((BASH_REMATCH[1] + 4)) py=$((BASH_REMATCH[2] + 4))
+  printf 'touch down 0 %d %d\ntouch up 0 %d %d\n' $px $py $px $py >&"${ATL[1]}"
+  echo "tap Inner" >&"${ATL[1]}"
+  wait_for 'view inner click'
+  grep -q 'view dismissed' "$log" && fail "a tap on the chrome closed the dialog"
+  echo "answer OK" >&"${ATL[1]}"
+  for line in 'answer: OK' 'view ok ""' 'view dismissed'; do
+    wait_for "$line"
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+
+  # ChoiceActivity's adapter list: rows Android draws inside the panel take taps
+  log="$work/choice-c.log"
+  mkdir -p "$work/data-choice-c"
+  coproc ATL {
+    cd "$build"
+    exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-choice-c" timeout 60 \
+      ./android-translation-layer -c "$apk" -l dev/dine/dialog/ChoiceActivity -X -Xint 2>&1
+  }
+  pid=$ATL_PID
+  : >"$log"
+  wait_for '^dialog: show panel.* title="Pick one"'
+  # a tap finds no view under the plain alert, which has none
+  echo "answer Blue" >&"${ATL[1]}"
+  wait_for '^dialog: show title="Blue is taken"'
+  echo "tap nothing" >&"${ATL[1]}"
+  wait_for '^tap: no nothing$'
+  echo "answer Okay" >&"${ATL[1]}"
+  wait_for '^answer: Okay$'
+  echo "answer OK" >&"${ATL[1]}"
+  wait_for 'choice single ok 2'
+  echo "answer OK" >&"${ATL[1]}"
+  wait_for 'choice adapter shown'
+  echo "tap Pear" >&"${ATL[1]}"
+  for line in 'tap: Pear' 'choice adapter 1' 'choice done'; do
+    wait_for "$line"
+  done
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 fi

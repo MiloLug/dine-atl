@@ -1,0 +1,10 @@
+viewtree: android.widget.FrameLayout 0,0 960x540
+viewtree:   android.widget.FrameLayout 0,0 960x540
+viewtree: window dialog 356,249 248x34 panel 340,213 280x114
+viewtree:   android.widget.FrameLayout 0,0 248x34
+viewtree:     android.widget.LinearLayout 0,0 248x34
+viewtree:       android.widget.FrameLayout 0,0 248x34
+viewtree:         android.widget.LinearLayout 0,0 248x34
+viewtree:           android.widget.EditText 0,0 248x17 ""
+viewtree:           android.widget.Button 0,17 248x17 "Inner"
+viewtree: end

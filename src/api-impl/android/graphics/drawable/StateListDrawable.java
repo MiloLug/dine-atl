@@ -105,6 +105,7 @@ public class StateListDrawable extends DrawableContainer {
 	public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
 	    throws XmlPullParserException, IOException {
 		final TypedArray a = r.obtainAttributes(attrs, R.styleable.StateListDrawable);
+		mStateListState.setVariablePadding(a.getBoolean(R.styleable.StateListDrawable_variablePadding, false));
 		a.recycle();
 
 		inflateChildElements(r, parser, attrs, theme);
