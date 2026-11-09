@@ -21,7 +21,7 @@ static void monitor_size(GdkMonitor *monitor, struct ui_display *display)
 
 static void monitor_changed_cb(GdkSurface *surface, GdkMonitor *monitor, gpointer user_data)
 {
-	struct ui_display display = {.night = UI_DISPLAY_UNKNOWN};
+	struct ui_display display = {.night = UI_DISPLAY_UNKNOWN, .keys = UI_DISPLAY_UNKNOWN};
 	monitor_size(monitor, &display);
 	atl_upcall_display_changed(&display);
 }
@@ -54,6 +54,7 @@ void ui_display_get(struct ui_display *display)
 {
 	GdkDisplay *gdk_display = gdk_display_get_default();
 	monitor_size(g_list_model_get_item(gdk_display_get_monitors(gdk_display), 0), display);
+	display->keys = UI_DISPLAY_KEYS_HARD;
 	display->night = UI_DISPLAY_UNKNOWN;
 
 #ifdef XDP_TYPE_INPUT_CAPTURE_SESSION // libportal >= 0.8

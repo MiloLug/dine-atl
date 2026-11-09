@@ -27,11 +27,18 @@ void atl_display_apply(JNIEnv *env, jobject config, const struct ui_display *dis
 	if (display->night != UI_DISPLAY_UNKNOWN)
 		ui_mode = (ui_mode & ~/*UI_MODE_NIGHT_MASK*/ 0x30) | display->night;
 	_SET_INT_FIELD(config, "uiMode", (ui_mode & ~/*UI_MODE_TYPE_MASK*/ 0x0f) | /*UI_MODE_TYPE_NORMAL*/ 0x01);
+	// keyboardHidden: whether any keyboard, the soft one included, is available
+	if (display->keys != UI_DISPLAY_UNKNOWN) {
+		bool hard = display->keys == UI_DISPLAY_KEYS_HARD;
+		_SET_INT_FIELD(config, "keyboard", hard ? /*KEYBOARD_QWERTY*/ 2 : /*KEYBOARD_NOKEYS*/ 1);
+		_SET_INT_FIELD(config, "keyboardHidden", /*KEYBOARDHIDDEN_NO*/ 1);
+		_SET_INT_FIELD(config, "hardKeyboardHidden", hard ? /*HARDKEYBOARDHIDDEN_NO*/ 1 : /*HARDKEYBOARDHIDDEN_YES*/ 2);
+	}
 }
 
 JNIEXPORT void JNICALL Java_android_content_Context_native_1updateConfig(JNIEnv *env, jclass this, jobject config)
 {
-	struct ui_display display;
+	struct ui_display display = {.width = UI_DISPLAY_UNKNOWN, .height = UI_DISPLAY_UNKNOWN, .night = UI_DISPLAY_UNKNOWN, .keys = UI_DISPLAY_UNKNOWN};
 	ui_display_get(&display);
 	atl_display_apply(env, config, &display);
 }

@@ -29,6 +29,7 @@ void ui_display_get(struct ui_display *display)
 	display->width = config->width;
 	display->height = config->height;
 	display->night = config->night;
+	display->keys = UI_DISPLAY_KEYS_SOFT;
 }
 
 // a window over the activity as the window manager places it on the screen

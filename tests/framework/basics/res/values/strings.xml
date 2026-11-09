@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="level">from values</string>
+	<string name="keyboard">any</string>
+	<string name="keys">any</string>
 </resources>

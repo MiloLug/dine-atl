@@ -17,8 +17,11 @@ struct gfx_canvas;
 struct ui_display {
 	int width, height; // px
 	int night;         // Configuration.UI_MODE_NIGHT_* value
+	int keys;          // UI_DISPLAY_KEYS_*
 };
 #define UI_DISPLAY_UNKNOWN (-1) // for any ui_display field: the platform doesn't say
+#define UI_DISPLAY_KEYS_SOFT 1 // a soft keyboard, no keys
+#define UI_DISPLAY_KEYS_HARD 2 // an exposed hard QWERTY keyboard; no soft one shows
 
 void ui_display_get(struct ui_display *display);
 

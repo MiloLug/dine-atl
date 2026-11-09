@@ -33,4 +33,26 @@ public class InputMethodTest extends android.test.InstrumentationTestCase {
 		assertFalse("hidden twice", results[4]);
 		assertTrue("still served", results[5]);
 	}
+
+	// as AOSP's mInputShown, a show request follows Java's focus to another field
+	public void testRequestFollowsFocus() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), TextActivity.class);
+		final TextActivity activity = (TextActivity)getInstrumentation().startActivitySync(intent);
+		final boolean[] hid = new boolean[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				InputMethodManager imm = (InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+				EditText first = new EditText(activity);
+				EditText second = new EditText(activity);
+				activity.root.addView(first);
+				activity.root.addView(second);
+				first.requestFocus();
+				imm.showSoftInput(first, 0);
+				second.requestFocus();
+				hid[0] = imm.hideSoftInputFromWindow(second.getWindowToken(), 0);
+				activity.root.removeAllViews(); // the app's IMM outlives the test: no field stays served
+			}
+		});
+		assertTrue(hid[0]);
+	}
 }

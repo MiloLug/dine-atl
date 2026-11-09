@@ -613,6 +613,7 @@ JNIEXPORT void JNICALL Java_android_content_res_AssetManager_setConfiguration(
 		.density = density,
 		.keyboard = keyboard,
 		.navigation = navigation,
+		.inputFlags = keyboardHidden & /*MASK_KEYSHIDDEN*/ 0x03,
 		.screenWidth = screenWidth,
 		.screenHeight = screenHeight,
 		.smallestScreenWidthDp = smallestScreenWidthDp,

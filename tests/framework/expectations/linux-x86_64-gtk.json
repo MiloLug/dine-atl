@@ -1,6 +1,1 @@
-{
-  "dev.dine.framework.text.InputMethodTest#testShowAndHide": {
-    "expect": "fail",
-    "reason": "gtk shows no soft keyboard (ui_edit_set_keyboard returns false), so hideSoftInputFromWindow hides nothing"
-  }
-}
+{}

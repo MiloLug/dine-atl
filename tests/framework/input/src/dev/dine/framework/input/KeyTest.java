@@ -79,6 +79,31 @@ public class KeyTest extends android.test.InstrumentationTestCase {
 		assertEquals(1, activity.backs);
 	}
 
+	/* A shown soft keyboard takes the first Back and the request ends with it; with an exposed hard
+	 * keyboard none shows, Back reaches the app and the request stands, as on Android. */
+	public void testBackAfterShowSoftInput() {
+		final android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+		final android.widget.EditText[] edit = new android.widget.EditText[1];
+		onMain(new Runnable() {
+			public void run() {
+				edit[0] = new android.widget.EditText(activity);
+				activity.root.addView(edit[0], new FrameLayout.LayoutParams(100, 50));
+				edit[0].requestFocus();
+				imm.showSoftInput(edit[0], 0);
+			}
+		});
+		press(KeyEvent.KEYCODE_BACK, true);
+		final boolean[] hid = new boolean[1];
+		onMain(new Runnable() {
+			public void run() {
+				hid[0] = imm.hideSoftInputFromWindow(edit[0].getWindowToken(), 0);
+			}
+		});
+		boolean hard = activity.getResources().getConfiguration().hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO;
+		assertEquals("backs", hard ? 1 : 0, activity.backs);
+		assertEquals("a request after Back", hard, hid[0]);
+	}
+
 	public void testKeyListenerOfTheFocusedViewGoesFirst() {
 		final int[] heard = new int[1];
 		onMain(new Runnable() {

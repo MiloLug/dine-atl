@@ -9,11 +9,13 @@ import java.util.List;
 
 /* One keyboard per app (ATLLoadedApp.input_method): the EditText it types into follows Java's
  * focus between EditTexts while it shows; the toolkit's own focus changes come in through
- * atlToolkitFocus. */
+ * atlToolkitFocus. As in AOSP, a show request stands until a hide whether or not the toolkit shows
+ * a keyboard (gtk: none, a desktop has its own). */
 public class InputMethodManager {
 
 	private EditText served;
-	private boolean shown;
+	private boolean requested; // AOSP's mInputShown: answers hideSoftInputFromWindow and toggleSoftInput
+	private boolean shown;     // the toolkit's keyboard is up: Back hides it first
 
 	// gtk only: an IM context for a view with its own InputConnection, made on its first use
 	private long im_context;
@@ -27,7 +29,8 @@ public class InputMethodManager {
 	private ArrayList<InputMethodInfo> input_method_list = new ArrayList<InputMethodInfo>();
 
 	public boolean hideSoftInputFromWindow(IBinder windowToken, int flags) {
-		boolean hid = atlHideKeyboard();
+		boolean hid = requested;
+		hide();
 		if (activeView != null) {
 			nativeHideSoftInput(im_context);
 			activeView = null;
@@ -39,6 +42,7 @@ public class InputMethodManager {
 	public boolean showSoftInput(View view, int flags) {
 		if (view instanceof EditText) {
 			served = (EditText)view;
+			requested = true;
 			shown = served.atlSetKeyboard(true);
 			return true;
 		}
@@ -57,8 +61,8 @@ public class InputMethodManager {
 	}
 
 	public void toggleSoftInput(int showFlags, int hideFlags) {
-		if (shown)
-			atlHideKeyboard();
+		if (requested)
+			hide();
 		else if (served != null && served.isFocused())
 			showSoftInput(served, showFlags);
 	}
@@ -92,17 +96,23 @@ public class InputMethodManager {
 		return new InputMethodSubtype();
 	}
 
-	// true when a keyboard was shown and now hides; Java's focus stays
+	// Back's: true when the toolkit's keyboard was up and now hides, which ends the request; Java's focus stays
 	public boolean atlHideKeyboard() {
 		if (!shown)
 			return false;
 		shown = false;
+		requested = false;
 		served.atlSetKeyboard(false);
 		return true;
 	}
 
+	private void hide() {
+		requested = false;
+		atlHideKeyboard();
+	}
+
 	public void atlFocusIn(EditText view) {
-		if (shown && served != view) {
+		if (requested && served != view) {
 			served = view;
 			shown = view.atlSetKeyboard(true);
 		}
@@ -114,19 +124,22 @@ public class InputMethodManager {
 			@Override
 			public void run() {
 				if (served == view && !view.isFocused())
-					atlHideKeyboard();
+					hide();
 			}
 		});
 	}
 
-	// the toolkit gave its input target to the field (keyboard: whether one shows) or took it away
+	/* the toolkit gave its input target to the field (keyboard: whether one shows, a request only
+	 * then: gtk's focus also follows Java's requestFocus) or took it away */
 	public void atlToolkitFocus(EditText view, boolean focused, boolean keyboard) {
 		if (focused) {
 			served = view;
+			requested |= keyboard;
 			shown = keyboard;
 			if (!view.isFocused())
 				view.requestFocus();
-		} else if (served == view) {
+		} else if (served == view && shown) { // gtk's focus follows Java's: atlFocusOut ends its request
+			requested = false;
 			shown = false;
 		}
 	}
