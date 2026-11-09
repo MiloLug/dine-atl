@@ -14,6 +14,7 @@
 #include "../shared/app.h"
 #include "../shared/host_linux.h"
 #include "../shared/startup.h"
+#include "../backends/gfx/gsk/text.h"
 #include "../backends/host/gtk/host_gtk.h"
 #include "../backends/ui/gtk/gtk_ui.h"
 #include "../slots/ui.h"
@@ -261,6 +262,7 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 	jobject application_object;
 	struct atl_paths paths;
 
+	gsk_text_follow_gtk();
 	if (d->install_internal) {
 		atl_prepare(&paths, false);
 		JNIEnv *env = start_vm(&paths, d);

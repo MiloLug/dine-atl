@@ -699,8 +699,14 @@ public class TextView extends View {
 		return gravity;
 	}
 
-	public int getCompoundPaddingTop() { return 0; }
-	public int getCompoundPaddingBottom() { return 0; }
+	// AOSP's, with no drawable padding: setCompoundDrawablePadding keeps none
+	public int getCompoundPaddingTop() {
+		return getPaddingTop() + (drawableTop != null ? drawableTop.getBounds().height() : 0);
+	}
+
+	public int getCompoundPaddingBottom() {
+		return getPaddingBottom() + (drawableBottom != null ? drawableBottom.getBounds().height() : 0);
+	}
 
 	public CharSequence getText() {
 		return text;
@@ -710,7 +716,7 @@ public class TextView extends View {
 
 	private native void native_setCompoundDrawables(long widget, long left, long top, long right, long bottom);
 
-	// just to prevent garbage collection while native side uses it
+	// kept from the GC while the native side draws them; their bounds pad the text
 	private Drawable drawableLeft = null;
 	private Drawable drawableTop = null;
 	private Drawable drawableRight = null;
@@ -763,7 +769,10 @@ public class TextView extends View {
 		setCompoundDrawables(start, top, end, bottom);
 	}
 
-	public int getLineCount() { return 1; }
+	// AOSP has no layout before the first measure
+	public int getLineCount() {
+		return getWidth() == 0 && getMeasuredWidth() == 0 ? 0 : getLayout().getLineCount();
+	}
 
 	public URLSpan[] getUrls() { return new URLSpan[0]; }
 
@@ -800,12 +809,14 @@ public class TextView extends View {
 		SPANNABLE,
 	}
 
+	// inside the compound padding; before layout at the measured width, as AOSP builds it in onMeasure
 	public Layout getLayout() {
-		if (layout == null || layout_text_version != text_version || layout_width != getWidth()
+		int width = Math.max(0, (getWidth() != 0 ? getWidth() : getMeasuredWidth()) - getCompoundPaddingLeft() - getCompoundPaddingRight());
+		if (layout == null || layout_text_version != text_version || layout_width != width
 		    || layout_text_size != paint.getTextSize() || layout_typeface != paint.getTypeface()) {
-			layout = new BoringLayout(getText(), paint, getWidth(), Layout.Alignment.ALIGN_NORMAL, 1, 0, new BoringLayout.Metrics(), false);
+			layout = new BoringLayout(getText(), paint, width, Layout.Alignment.ALIGN_NORMAL, 1, 0, new BoringLayout.Metrics(), false);
 			layout_text_version = text_version;
-			layout_width = getWidth();
+			layout_width = width;
 			layout_text_size = paint.getTextSize();
 			layout_typeface = paint.getTypeface();
 		}
@@ -820,9 +831,13 @@ public class TextView extends View {
 		applySingleLine(singleLine);
 	}
 
-	public int getCompoundPaddingLeft() { return 0; }
+	public int getCompoundPaddingLeft() {
+		return getPaddingLeft() + (drawableLeft != null ? drawableLeft.getBounds().width() : 0);
+	}
 
-	public int getCompoundPaddingRight() { return 0; }
+	public int getCompoundPaddingRight() {
+		return getPaddingRight() + (drawableRight != null ? drawableRight.getBounds().width() : 0);
+	}
 
 	public void setHint(int resId) {
 		setHint(getContext().getResources().getText(resId));

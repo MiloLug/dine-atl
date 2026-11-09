@@ -5,34 +5,78 @@
 
 #include "src/api-impl-jni/graphics/AndroidPaint.h"
 #include "src/slots/gfx.h"
-#include "src/slots/loop.h"
 
 #include "text.h"
 
-extern GtkWidget *window;
+/* GTK's text settings as a label gets them: GTK's thread copies them, and every thread's own context
+ * takes the copy, so a Paint measures as the labels draw on any thread. Pango objects stay on their
+ * thread: each gets its own context from its own default font map (per thread since Pango 1.32.6). */
+static GMutex gtk_text_lock;
+static PangoFontDescription *gtk_font;
+static cairo_font_options_t *gtk_font_options;
+static gboolean gtk_round_glyphs;
+static int gtk_text_version; // atomic; 0: no copy yet
 
-static void context_free(gpointer context)
+static void take_gtk_text(void)
 {
-	g_object_unref(context);
+	GtkWidget *label = g_object_ref_sink(gtk_label_new(NULL));
+	PangoContext *gtk_context = gtk_widget_get_pango_context(label);
+	const cairo_font_options_t *options = pango_cairo_context_get_font_options(gtk_context);
+	g_mutex_lock(&gtk_text_lock);
+	if (gtk_font)
+		pango_font_description_free(gtk_font);
+	gtk_font = pango_font_description_copy(pango_context_get_font_description(gtk_context));
+	if (gtk_font_options)
+		cairo_font_options_destroy(gtk_font_options);
+	gtk_font_options = options ? cairo_font_options_copy(options) : NULL;
+	gtk_round_glyphs = pango_context_get_round_glyph_positions(gtk_context);
+	g_atomic_int_inc(&gtk_text_version);
+	g_mutex_unlock(&gtk_text_lock);
+	g_object_unref(label);
+}
+
+static void gtk_settings_changed(GtkSettings *settings, GParamSpec *pspec, gpointer data)
+{
+	take_gtk_text();
+}
+
+void gsk_text_follow_gtk(void)
+{
+	take_gtk_text();
+	g_signal_connect(gtk_settings_get_default(), "notify", G_CALLBACK(gtk_settings_changed), NULL);
+}
+
+struct thread_context {
+	PangoContext *context;
+	int version; // of the copy it took
+};
+
+static void context_free(gpointer data)
+{
+	struct thread_context *thread = data;
+	g_object_unref(thread->context);
+	g_free(thread);
 }
 
 static GPrivate thread_context = G_PRIVATE_INIT(context_free);
 
-/* The main thread measures as the window's widgets do. Pango objects stay on their thread: another
- * one gets its own context from its own default font map (per thread since Pango 1.32.6). */
 static PangoContext *context(void)
 {
-	if (window && loop_main_current())
-		return gtk_widget_get_pango_context(window);
-	PangoContext *context = g_private_get(&thread_context);
-	if (!context) {
-		context = pango_font_map_create_context(pango_cairo_font_map_get_default());
-		PangoFontDescription *sans = pango_font_description_from_string("Sans");
-		pango_context_set_font_description(context, sans);
-		pango_font_description_free(sans);
-		g_private_set(&thread_context, context);
+	struct thread_context *thread = g_private_get(&thread_context);
+	if (!thread) {
+		thread = g_new0(struct thread_context, 1);
+		thread->context = pango_font_map_create_context(pango_cairo_font_map_get_default());
+		g_private_set(&thread_context, thread);
 	}
-	return context;
+	if (thread->version != g_atomic_int_get(&gtk_text_version)) {
+		g_mutex_lock(&gtk_text_lock);
+		pango_context_set_font_description(thread->context, gtk_font);
+		pango_cairo_context_set_font_options(thread->context, gtk_font_options);
+		pango_context_set_round_glyph_positions(thread->context, gtk_round_glyphs);
+		thread->version = g_atomic_int_get(&gtk_text_version);
+		g_mutex_unlock(&gtk_text_lock);
+	}
+	return thread->context;
 }
 
 // lone surrogates become U+FFFD; byte_of[i] is unit i's first byte, a pair's second unit gets the
@@ -61,6 +105,11 @@ PangoLayout *gsk_text_layout(const struct gfx_paint *gfx_paint, const uint16_t *
 	const struct AndroidPaint *paint = (const struct AndroidPaint *)gfx_paint;
 	PangoLayout *layout = pango_layout_new(context());
 	pango_layout_set_font_description(layout, paint->font);
+	// tabular digits, as the labels have (ui/gtk/text.c): the feature changes other glyphs' widths too
+	PangoAttrList *attrs = pango_attr_list_new();
+	pango_attr_list_insert(attrs, pango_attr_font_features_new("tnum"));
+	pango_layout_set_attributes(layout, attrs);
+	pango_attr_list_unref(attrs);
 	int *bytes = byte_of ? byte_of : g_new(int, len + 1);
 	char *utf8 = to_utf8(text, len, bytes);
 	pango_layout_set_text(layout, utf8, -1);

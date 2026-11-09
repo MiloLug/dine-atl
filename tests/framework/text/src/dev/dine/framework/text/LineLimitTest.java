@@ -40,6 +40,30 @@ public class LineLimitTest extends android.test.InstrumentationTestCase {
 		assertTrue(capped < five);
 	}
 
+	// the cap counts lines at the text's own width, inside the padding
+	public void testMaxLinesInsidePadding() {
+		final int[] heights = new int[2];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				int unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+				TextView plain = new TextView(getInstrumentation().getTargetContext());
+				plain.setText("aaaa bbbb");
+				plain.setMaxLines(1);
+				plain.measure(unspecified, unspecified);
+				int width = plain.getMeasuredWidth() + 2;
+				plain.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), unspecified);
+				heights[0] = plain.getMeasuredHeight();
+				TextView padded = new TextView(getInstrumentation().getTargetContext());
+				padded.setText("aaaa bbbb");
+				padded.setMaxLines(1);
+				padded.setPadding(width / 4, 0, width / 4, 0);
+				padded.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), unspecified);
+				heights[1] = padded.getMeasuredHeight();
+			}
+		});
+		assertEquals(heights[0], heights[1]);
+	}
+
 	public void testMinLinesPads() {
 		assertEquals(heightOf("1\n2\n3", NONE), heightOf("1", new Limit() {
 			public void apply(TextView view) {

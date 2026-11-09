@@ -15,8 +15,10 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import java.util.IdentityHashMap;
 
@@ -265,6 +267,34 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 			}
 		});
 		mismatches.assertNone();
+	}
+
+	// a bold I's middle after a draw on white in black: the stem's inside, which only a fill paints
+	private static int glyphMiddle(Paint.Style style, Shader shader) {
+		Bitmap bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+		bitmap.eraseColor(0xffffffff);
+		Paint paint = new Paint();
+		paint.setColor(0xff000000);
+		paint.setTextSize(150);
+		paint.setTypeface(Typeface.DEFAULT_BOLD);
+		paint.setStyle(style);
+		paint.setStrokeWidth(2);
+		paint.setShader(shader);
+		Rect ink = new Rect();
+		paint.getTextBounds("I", 0, 1, ink);
+		canvasFor(bitmap).drawText("I", 20, 170, paint);
+		return pixel(bitmap, 20 + (int)ink.exactCenterX(), 170 + (int)ink.exactCenterY());
+	}
+
+	public void testStrokedText() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				mismatches.check("stroke", premultiplied(0xffffffff), glyphMiddle(Paint.Style.STROKE, null));
+				Shader gradient = new LinearGradient(0, 0, 200, 0, 0xff0000ff, 0xffff0000, Shader.TileMode.CLAMP);
+				mismatches.check("shaded stroke", premultiplied(0xffffffff), glyphMiddle(Paint.Style.STROKE, gradient));
+				mismatches.check("fill", premultiplied(0xff000000), glyphMiddle(Paint.Style.FILL, null));
+			}
+		});
 	}
 
 	/* The modes GSK has no blend mode for get their own tests: PLUS, and MODULATE of more than one

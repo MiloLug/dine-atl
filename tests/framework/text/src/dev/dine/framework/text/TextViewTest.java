@@ -234,6 +234,140 @@ public class TextViewTest extends android.test.InstrumentationTestCase {
 		}));
 	}
 
+	public void testLineCountFollowsText() {
+		assertEquals(3, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a\nb\nc");
+				view.layout(0, 0, 200, 50);
+				return view.getLineCount();
+			}
+		}));
+	}
+
+	// AOSP has no layout before the first measure
+	public void testLineCountBeforeMeasure() {
+		assertEquals(0, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a\nb\nc");
+				return view.getLineCount();
+			}
+		}));
+	}
+
+	// AOSP builds its layout in onMeasure; at width 0 each letter would be a line
+	public void testLineCountAfterMeasure() {
+		assertEquals(2, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("ab\ncd");
+				view.measure(android.view.View.MeasureSpec.makeMeasureSpec(100, android.view.View.MeasureSpec.EXACTLY),
+				             android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+				return view.getLineCount();
+			}
+		}));
+	}
+
+	// without an ellipsis AOSP's StaticLayout keeps the lines past maxLines
+	public void testLineCountIgnoresMaxLines() {
+		assertEquals(3, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a\nb\nc");
+				view.setMaxLines(1);
+				view.layout(0, 0, 200, 50);
+				return view.getLineCount();
+			}
+		}));
+	}
+
+	// a width the text just fits in
+	private static int fitting(TextView view, String text) {
+		return (int)Math.ceil(view.getPaint().measureText(text)) + 2;
+	}
+
+	public void testLineCountInsidePadding() {
+		assertEquals("1 2", onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("aaaa bbbb");
+				int width = fitting(view, "aaaa bbbb");
+				view.layout(0, 0, width, 50);
+				int plain = view.getLineCount();
+				view.setPadding(width / 4, 0, width / 4, 0);
+				return plain + " " + view.getLineCount();
+			}
+		}));
+	}
+
+	public void testLineCountBesideDrawable() {
+		int[] got = (int[])onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("aaaa bbbb");
+				int width = fitting(view, "aaaa bbbb");
+				view.layout(0, 0, width, 50);
+				android.graphics.drawable.ColorDrawable icon = new android.graphics.drawable.ColorDrawable(0xff000000);
+				icon.setBounds(0, 0, width / 2 - 3, 1);
+				view.setPadding(3, 0, 0, 0);
+				view.setCompoundDrawables(icon, null, null, null);
+				return new int[] {view.getCompoundPaddingLeft(), width / 2, view.getLineCount()};
+			}
+		});
+		assertEquals("compound padding", got[1], got[0]);
+		assertEquals("lines", 2, got[2]);
+	}
+
+	// [the label's width, ceil of a Paint's at paintSize]; the view's text is shown at viewSize
+	private int[] labelAndPaint(final CharSequence shown, final int viewSize, final int paintSize) {
+		return (int[])onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setTextSize(TypedValue.COMPLEX_UNIT_PX, viewSize);
+				view.setText(shown);
+				int unspecified = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+				view.measure(unspecified, unspecified);
+				android.text.TextPaint paint = new android.text.TextPaint(view.getPaint());
+				paint.setTextSize(paintSize);
+				return new int[] {view.getMeasuredWidth(), (int)Math.ceil(paint.measureText(shown.toString()))};
+			}
+		});
+	}
+
+	private static void assertClose(String what, int[] widths, int tolerance) {
+		assertTrue(what + ": label " + widths[0] + ", paint " + widths[1], Math.abs(widths[0] - widths[1]) <= tolerance);
+	}
+
+	public void testLabelTakesPx() {
+		assertClose("size", labelAndPaint("Translation", 40, 40), 2);
+	}
+
+	public void testSpanTakesPx() {
+		SpannableString span = new SpannableString("Translation");
+		span.setSpan(new android.text.style.AbsoluteSizeSpan(40), 0, span.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		assertClose("span", labelAndPaint(span, 10, 40), 2);
+	}
+
+	/* A Paint measures as the label draws, on the main thread and on another one. The text is long
+	 * enough that a context's glyph rounding moves its width past the tolerance. */
+	public void testPaintMeasuresAsLabelOnEveryThread() throws InterruptedException {
+		final String text = "The quick brown fox jumps over the lazy dog while five boxing wizards jump quickly and a sphinx of black quartz judges my vow";
+		int[] main = labelAndPaint(text, 14, 14);
+		assertClose("main", main, 1);
+		final float[] worker = new float[1];
+		Thread thread = new Thread(new Runnable() {
+			public void run() {
+				android.graphics.Paint paint = new android.graphics.Paint();
+				paint.setTextSize(14);
+				worker[0] = paint.measureText(text);
+			}
+		});
+		thread.start();
+		thread.join();
+		assertClose("worker", new int[] {main[0], (int)Math.ceil(worker[0])}, 1);
+	}
+
 	// listeners run after the change: the layout they read already has the new text
 	public void testWatcherSeesTheNewLayout() {
 		assertEquals("b bc", onMain(new OnMain() {

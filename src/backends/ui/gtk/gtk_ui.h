@@ -22,8 +22,6 @@ struct atl_touch;
 void window_touch_outside(GtkWindow *window, double x, double y, const struct atl_touch *down);
 /* A text node's label, next to its compound drawables in a box; NULL on other handles. */
 GtkLabel *text_get_label(GtkWidget *handle);
-/* A text node's height without the lines past ui_text_set_lines' max. */
-int text_cap_height(GtkWidget *handle, int for_width, int height);
 /* The box with a text node's label; handle: the node's handle holding it, NULL when it is the box. */
 GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *text);
 /* A push or toggle button draws GTK's border only while its view has no background of its own. */

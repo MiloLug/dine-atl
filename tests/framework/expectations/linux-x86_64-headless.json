@@ -1,6 +1,14 @@
 {
+  "dev.dine.framework.graphics.BlendModeTest#testStrokedText": {
+    "expect": "fail",
+    "reason": "headless draws no text into a Canvas(Bitmap) (ATL-46)"
+  },
   "dev.dine.framework.graphics.InkBoundsTest#testBoundsAreInk": {
     "expect": "fail",
     "reason": "headless measures in fixed metrics, which have no ink"
+  },
+  "dev.dine.framework.text.TextViewTest#testSpanTakesPx": {
+    "expect": "fail",
+    "reason": "headless measures a TextView without its spans' sizes (ATL-114)"
   }
 }

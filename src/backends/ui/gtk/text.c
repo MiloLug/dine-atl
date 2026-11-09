@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <math.h>
 
 #include "src/api-impl-jni/gtk_util.h"
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
@@ -17,6 +18,70 @@ GtkLabel *text_get_label(GtkWidget *handle)
 
 static void apply_attributes(GtkLabel *label);
 
+/* GtkLabel's own line limit counts per paragraph. The label's measure goes through this manager,
+ * which drops the lines past max at the width GTK gives the label; the box clips them. */
+G_DECLARE_FINAL_TYPE(TextCapLayout, text_cap_layout, ATL, TEXT_CAP_LAYOUT, GtkLayoutManager)
+
+struct _TextCapLayout {
+	GtkLayoutManager parent_instance;
+};
+
+G_DEFINE_FINAL_TYPE(TextCapLayout, text_cap_layout, GTK_TYPE_LAYOUT_MANAGER)
+
+static int cap_height(GtkLabel *label, int for_width, int height)
+{
+	int max = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-max-lines")) - 1;
+	if (max < 0)
+		return height;
+	PangoLayout *layout = pango_layout_copy(gtk_label_get_layout(label));
+	pango_layout_set_width(layout, for_width >= 0 ? for_width * PANGO_SCALE : -1);
+	if (pango_layout_get_line_count(layout) > max) {
+		PangoLayoutIter *iter = pango_layout_get_iter(layout);
+		for (int i = 0; i < max; i++)
+			pango_layout_iter_next_line(iter);
+		int cut, end;
+		pango_layout_iter_get_line_yrange(iter, &cut, &end);
+		pango_layout_iter_free(iter);
+		PangoRectangle logical;
+		pango_layout_get_extents(layout, NULL, &logical);
+		// rounded up, as GtkLabel rounds its layout's size
+		height -= PANGO_PIXELS_CEIL(logical.height) - PANGO_PIXELS_CEIL(cut);
+	}
+	g_object_unref(layout);
+	return height;
+}
+
+// a widget's manager replaces its class's measure, allocate and request mode: the label's own run here
+static void text_cap_layout_measure(GtkLayoutManager *manager, GtkWidget *widget, GtkOrientation orientation, int for_size,
+                                    int *min, int *nat, int *min_baseline, int *nat_baseline)
+{
+	GTK_WIDGET_GET_CLASS(widget)->measure(widget, orientation, for_size, min, nat, min_baseline, nat_baseline);
+	if (orientation == GTK_ORIENTATION_VERTICAL) {
+		*min = cap_height(GTK_LABEL(widget), for_size, *min);
+		*nat = cap_height(GTK_LABEL(widget), for_size, *nat);
+	}
+}
+
+static void text_cap_layout_allocate(GtkLayoutManager *manager, GtkWidget *widget, int width, int height, int baseline)
+{
+	GTK_WIDGET_GET_CLASS(widget)->size_allocate(widget, width, height, baseline);
+}
+
+static GtkSizeRequestMode text_cap_layout_get_request_mode(GtkLayoutManager *manager, GtkWidget *widget)
+{
+	return GTK_WIDGET_GET_CLASS(widget)->get_request_mode(widget);
+}
+
+static void text_cap_layout_class_init(TextCapLayoutClass *klass)
+{
+	GtkLayoutManagerClass *manager_class = GTK_LAYOUT_MANAGER_CLASS(klass);
+	manager_class->measure = text_cap_layout_measure;
+	manager_class->allocate = text_cap_layout_allocate;
+	manager_class->get_request_mode = text_cap_layout_get_request_mode;
+}
+
+static void text_cap_layout_init(TextCapLayout *self) {}
+
 GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *text)
 {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -25,6 +90,7 @@ GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *t
 	gtk_label_set_xalign(GTK_LABEL(label), 0.f);
 	gtk_label_set_yalign(GTK_LABEL(label), 0.f);
 	gtk_widget_set_hexpand(label, TRUE);
+	gtk_widget_set_layout_manager(label, g_object_new(text_cap_layout_get_type(), NULL));
 	gtk_box_append(GTK_BOX(box), label);
 	g_object_set_data(G_OBJECT(handle ?: box), "atl-label", label);
 	g_object_set_data_full(G_OBJECT(handle ?: box), "atl-class-name", g_strdup(class_name), g_free);
@@ -73,7 +139,7 @@ static void apply_attributes(GtkLabel *label)
 	pango_attr_list_insert(attrs, pango_attr_font_features_new("tnum"));
 	float *size = g_object_get_data(G_OBJECT(label), "atl-text-size");
 	if (size)
-		pango_attr_list_insert(attrs, pango_attr_size_new(*size * PANGO_SCALE));
+		pango_attr_list_insert(attrs, pango_attr_size_new_absolute(roundf(*size * PANGO_SCALE)));
 	GArray *runs = g_object_get_data(G_OBJECT(label), "atl-text-runs");
 	for (guint i = 0; runs && i < runs->len; i++) {
 		const struct byte_run *byte_run = &g_array_index(runs, struct byte_run, i);
@@ -88,7 +154,7 @@ static void apply_attributes(GtkLabel *label)
 			add(attrs, pango_attr_background_alpha_new((run->background >> 24) * 257), start, end);
 		}
 		if (run->set & UI_RUN_SIZE)
-			add(attrs, pango_attr_size_new(run->size * PANGO_SCALE), start, end);
+			add(attrs, pango_attr_size_new_absolute(roundf(run->size * PANGO_SCALE)), start, end);
 		if (run->set & UI_RUN_STYLE) {
 			add(attrs, pango_attr_weight_new(run->style & UI_TEXT_BOLD ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL), start, end);
 			add(attrs, pango_attr_style_new(run->style & UI_TEXT_ITALIC ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL), start, end);
@@ -189,33 +255,7 @@ static void apply_min_lines(GtkLabel *label)
 	gtk_widget_set_size_request(GTK_WIDGET(label), -1, min > 0 ? lines_height(label, min) : -1);
 }
 
-/* GtkLabel's own line limit counts per paragraph: the measured height drops the lines past max,
- * which the box clips. The label's width is taken as the whole for_width. */
-int text_cap_height(GtkWidget *handle, int for_width, int height)
-{
-	GtkLabel *label = text_get_label(handle);
-	int max = label ? GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-max-lines")) - 1 : -1;
-	if (max < 0)
-		return height;
-	PangoLayout *layout = pango_layout_copy(gtk_label_get_layout(label));
-	pango_layout_set_width(layout, for_width >= 0 ? for_width * PANGO_SCALE : -1);
-	if (pango_layout_get_line_count(layout) > max) {
-		PangoLayoutIter *iter = pango_layout_get_iter(layout);
-		for (int i = 0; i < max; i++)
-			pango_layout_iter_next_line(iter);
-		int cut, end;
-		pango_layout_iter_get_line_yrange(iter, &cut, &end);
-		pango_layout_iter_free(iter);
-		PangoRectangle logical;
-		pango_layout_get_extents(layout, NULL, &logical);
-		// rounded up, as GtkLabel rounds its layout's size
-		height -= PANGO_PIXELS_CEIL(logical.height) - PANGO_PIXELS_CEIL(cut);
-	}
-	g_object_unref(layout);
-	return height;
-}
-
-// the size set, else the label's font's; points, as ui_text_set_size's size attribute takes it
+// the size set, else the label's font's: GTK resolves it to px
 float ui_text_get_size(struct ui_view *view)
 {
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
@@ -237,6 +277,7 @@ void ui_text_set_lines(struct ui_view *view, int min, int max)
 	gtk_widget_set_overflow(GTK_WIDGET(view), max >= 0 ? GTK_OVERFLOW_HIDDEN : GTK_OVERFLOW_VISIBLE);
 	g_object_set_data(G_OBJECT(label), "atl-min-lines", GINT_TO_POINTER(min));
 	apply_min_lines(label);
+	gtk_widget_queue_resize(GTK_WIDGET(label)); // GTK keeps the label's measures
 }
 
 void ui_text_set_size(struct ui_view *view, float size)

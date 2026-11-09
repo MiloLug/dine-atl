@@ -828,6 +828,7 @@ void gfx_canvas_draw_bitmap(struct gfx_canvas *canvas, struct gfx_bitmap *bitmap
 
 struct text_draw {
 	PangoLayout *layout;
+	GskPath *outline; // the glyphs' outline at the origin, for a stroke
 	graphene_point_t origin;
 };
 
@@ -839,21 +840,40 @@ static void append_layout(GtkSnapshot *snapshot, const struct text_draw *text, c
 	gtk_snapshot_restore(snapshot);
 }
 
-// filled whatever the paint's style: GSK has no stroked text
+// glyphs fill as GSK draws text (hinted); a stroke follows their outline, as a path's does
 static void draw_text(GtkSnapshot *snapshot, const struct gsk_draw *draw, enum gsk_part part)
 {
 	const struct text_draw *text = draw->data;
 	const struct AndroidPaint *paint = draw->paint;
 	if (part == GSK_SOURCE) {
 		append_source(snapshot, paint, draw->bounds);
-	} else if (part == GSK_CONTENT && paint->shader) { // the glyphs as the mask of the shader's colors
-		gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
-		append_layout(snapshot, text, &WHITE);
-		gtk_snapshot_pop(snapshot);
-		append_source(snapshot, paint, draw->bounds);
-		gtk_snapshot_pop(snapshot);
+	} else if (part == GSK_CONTENT && paint->shader) {
+		if (paint->is_fill) { // the glyphs as the mask of the shader's colors
+			gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
+			append_layout(snapshot, text, &WHITE);
+			gtk_snapshot_pop(snapshot);
+			append_source(snapshot, paint, draw->bounds);
+			gtk_snapshot_pop(snapshot);
+		}
+		if (paint->is_stroke) { // the source in canvas coordinates, inside the stroke at the origin
+			gtk_snapshot_save(snapshot);
+			gtk_snapshot_translate(snapshot, &text->origin);
+			gtk_snapshot_push_stroke(snapshot, text->outline, paint->gsk_stroke);
+			gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(-text->origin.x, -text->origin.y));
+			append_source(snapshot, paint, draw->bounds);
+			gtk_snapshot_pop(snapshot);
+			gtk_snapshot_restore(snapshot);
+		}
 	} else {
-		append_layout(snapshot, text, part == GSK_COVERAGE ? &WHITE : &paint->color);
+		const GdkRGBA *color = part == GSK_COVERAGE ? &WHITE : &paint->color;
+		if (paint->is_fill)
+			append_layout(snapshot, text, color);
+		if (paint->is_stroke) {
+			gtk_snapshot_save(snapshot);
+			gtk_snapshot_translate(snapshot, &text->origin);
+			gtk_snapshot_append_stroke(snapshot, text->outline, paint->gsk_stroke, color);
+			gtk_snapshot_restore(snapshot);
+		}
 	}
 }
 
@@ -872,7 +892,18 @@ void gfx_canvas_draw_text(struct gfx_canvas *canvas, const uint16_t *text, size_
 	pango_extents_to_pixels(&logical, NULL);
 	graphene_rect_t bounds, logical_bounds = GRAPHENE_RECT_INIT(x + logical.x, y + logical.y, logical.width, logical.height);
 	graphene_rect_union(&GRAPHENE_RECT_INIT(x + ink.x, y + ink.y, ink.width, ink.height), &logical_bounds, &bounds);
-	paint_draw(GTK_SNAPSHOT(canvas), paint, &bounds, draw_text, &(struct text_draw){layout, GRAPHENE_POINT_INIT(x, y)});
+	GskPath *outline = NULL;
+	if (paint->is_stroke) {
+		GskPathBuilder *builder = gsk_path_builder_new();
+		gsk_path_builder_add_layout(builder, layout);
+		outline = gsk_path_builder_free_to_path(builder);
+		graphene_rect_t stroke;
+		if (gsk_path_get_stroke_bounds(outline, paint->gsk_stroke, &stroke))
+			graphene_rect_union(&bounds, graphene_rect_offset(&stroke, x, y), &bounds);
+	}
+	paint_draw(GTK_SNAPSHOT(canvas), paint, &bounds, draw_text, &(struct text_draw){layout, outline, GRAPHENE_POINT_INIT(x, y)});
+	if (outline)
+		gsk_path_unref(outline);
 	g_object_unref(layout);
 }
 
