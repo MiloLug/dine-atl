@@ -58,6 +58,12 @@ public class TextView extends View {
 	private ArrayList<TextWatcher> listeners;
 	private ChangeWatcher changeWatcher;
 	private TextPaint paint = new TextPaint();
+	boolean single_line; // AOSP's mSingleLine
+	private int text_version; // bumped before the listeners of a change run
+	private Layout layout;
+	private int layout_text_version, layout_width;
+	private float layout_text_size;
+	private Typeface layout_typeface;
 	private boolean include_padding = false;
 	private int break_strategy = 0 /*BREAK_STRATEGY_SIMPLE*/;
 	private int hyphenation_frequency = 0 /*HYPHENATION_FREQUENCY_NONE*/;
@@ -207,6 +213,7 @@ public class TextView extends View {
 			((Spannable)old).removeSpan(changeWatcher);
 		buffer_type = type;
 		this.text = text;
+		text_version++;
 		if (text instanceof Spannable) {
 			Spannable sp = (Spannable)text;
 			for (ChangeWatcher watcher : sp.getSpans(0, sp.length(), ChangeWatcher.class))
@@ -305,6 +312,7 @@ public class TextView extends View {
 		}
 
 		public void onTextChanged(CharSequence buffer, int start, int before, int after) {
+			text_version++;
 			sendOnTextChanged(buffer, start, before, after);
 		}
 
@@ -653,6 +661,7 @@ public class TextView extends View {
 	/* Copyright (C) 2006 The Android Open Source Project */
 	// applySingleLine without the transformation and horizontal scrolling
 	void applySingleLine(boolean singleLine) {
+		single_line = singleLine;
 		if (singleLine)
 			setLines(1);
 		else
@@ -792,7 +801,15 @@ public class TextView extends View {
 	}
 
 	public Layout getLayout() {
-		return new BoringLayout(getText(), getPaint(), getWidth(), Layout.Alignment.ALIGN_NORMAL, 1, 0, new BoringLayout.Metrics(), false);
+		if (layout == null || layout_text_version != text_version || layout_width != getWidth()
+		    || layout_text_size != paint.getTextSize() || layout_typeface != paint.getTypeface()) {
+			layout = new BoringLayout(getText(), paint, getWidth(), Layout.Alignment.ALIGN_NORMAL, 1, 0, new BoringLayout.Metrics(), false);
+			layout_text_version = text_version;
+			layout_width = getWidth();
+			layout_text_size = paint.getTextSize();
+			layout_typeface = paint.getTypeface();
+		}
+		return layout;
 	}
 
 	public int getCurrentTextColor() {

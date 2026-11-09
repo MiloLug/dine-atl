@@ -5,8 +5,10 @@ Install, query and removal through the package registry on the headless build:
 check runs in a prefix of its own (`DINE_PREFIX`).
 
 - `fixtures/`: the APKs the checks install, built by `tests/harness/apk.py`; `package.py`'s
-  `FIXTURES` names each variant (version code, renamed package, signing key). `ext` has no launcher
-  activity and requests the feature `dine.test.extension`; `driver` is an installer app.
+  `FIXTURES` names each variant (version code, renamed package, signing key, strings replaced in the
+  manifest). `ext` has no launcher activity and requests the feature `dine.test.extension`; `driver`
+  is an installer app; `plain` is `app` with its own provider authority, `provdup` is `app` renamed
+  with `app`'s authority kept.
 - `keys/`: two test keystores (`a.p12`, `b.p12`, password `dine-test`), our own; fixtures are
   v1-signed with them, since ATL reads no v2 or v3 signature block.
 - Rows `cli:*`: installs, uninstalls and runs through the CLI, graded on exit codes, the registry's

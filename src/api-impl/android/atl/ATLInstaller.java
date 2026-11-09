@@ -1,6 +1,7 @@
 package android.atl;
 
 import android.content.pm.PackageInstaller;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
 import android.content.pm.Signature;
 import android.os.Process;
@@ -46,11 +47,17 @@ public final class ATLInstaller {
 		public final int status; // PackageInstaller.STATUS_*
 		public final String packageName;
 		public final String message;
+		public final int legacyStatus; // PackageManager.INSTALL_*, for EXTRA_INSTALL_RESULT
 		public final int uid;
 		public final boolean replaced;
 
 		Result(int status, String packageName, String message, int uid, boolean replaced) {
+			this(status, legacyStatus(status), packageName, message, uid, replaced);
+		}
+
+		private Result(int status, int legacyStatus, String packageName, String message, int uid, boolean replaced) {
 			this.status = status;
+			this.legacyStatus = legacyStatus;
 			this.packageName = packageName;
 			this.message = message;
 			this.uid = uid;
@@ -59,6 +66,24 @@ public final class ATLInstaller {
 
 		static Result failure(int status, String packageName, String message) {
 			return new Result(status, packageName, message, -1, false);
+		}
+
+		static Result failure(int status, int legacyStatus, String packageName, String message) {
+			return new Result(status, legacyStatus, packageName, message, -1, false);
+		}
+
+		// the default per status; a failure with a more precise code passes its own
+		private static int legacyStatus(int status) {
+			switch (status) {
+				case PackageInstaller.STATUS_SUCCESS:
+					return PackageManager.INSTALL_SUCCEEDED;
+				case PackageInstaller.STATUS_FAILURE_CONFLICT:
+					return PackageManager.INSTALL_FAILED_UPDATE_INCOMPATIBLE;
+				case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
+					return PackageManager.INSTALL_FAILED_VERSION_DOWNGRADE;
+				default:
+					return PackageManager.INSTALL_FAILED_INTERNAL_ERROR;
+			}
 		}
 	}
 
@@ -130,7 +155,8 @@ public final class ATLInstaller {
 
 	/**
 	 * Moves the staged APKs into apps/<pkg>/ and writes the row in one transaction, then deletes the
-	 * replaced version. An app-started install keeps Android's rules: the same signer, no downgrade.
+	 * replaced version. Every install refuses a provider authority another package holds; an
+	 * app-started one also keeps Android's rules: the same signer, no downgrade.
 	 */
 	public static Result commit(Staged staged, boolean appStarted, boolean allowFakeSignature, String installer) {
 		ATLRegistry registry = ATLRegistry.get();
@@ -158,6 +184,19 @@ public final class ATLInstaller {
 					if (pkg.mVersionCode < old.versionCode)
 						return failed(staged, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, name,
 						              "version " + pkg.mVersionCode + " is older than the installed " + old.versionCode);
+				}
+				// Android's rule: one package per authority; an update keeps its own
+				for (PackageParser.Provider provider : pkg.providers) {
+					if (provider.info.authority == null)
+						continue;
+					for (String authority : provider.info.authority.split(";")) {
+						String holder = registry.authorityHolder(authority, name);
+						if (holder != null) {
+							abandon(staged);
+							return Result.failure(PackageInstaller.STATUS_FAILURE_CONFLICT, PackageManager.INSTALL_FAILED_CONFLICTING_PROVIDER,
+							                      name, "provider authority " + authority + " is held by " + holder);
+						}
+					}
 				}
 				long serial = registry.nextSerial();
 				File pkgDir = new File(registry.apps, name);

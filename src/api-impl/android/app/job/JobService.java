@@ -18,13 +18,17 @@ public abstract class JobService extends Service {
 			new Handler(getMainLooper()).postDelayed(new Runnable() {
 				@Override
 				public void run() {
+					if (get_atl_loaded_app().pending_jobs.get(params.jobInfo.getId()) != params.jobInfo) // cancelled or replaced
+						return;
 					params.jobInfo.running = true;
 					boolean result = onStartJob(params);
+					if (!result)
+						params.jobInfo.running = false;
 					Slog.i(TAG, "onStartJob() returned " + result);
 				}
 			}, needsReschedule ? params.jobInfo.initialBackoffMillis : params.jobInfo.periodicMillis);
 		} else {
-			get_atl_loaded_app().pending_jobs.remove(params.jobInfo.getId());
+			get_atl_loaded_app().pending_jobs.remove(params.jobInfo.getId(), params.jobInfo);
 		}
 	}
 }

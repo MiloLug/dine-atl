@@ -12,7 +12,7 @@ public class JobInfo {
 	private PersistableBundle extras;
 	long periodicMillis;
 	private int id;
-	boolean running;
+	volatile boolean running; // jobFinished may come from any thread
 	long minLatencyMillis;
 
 	public JobInfo() {}

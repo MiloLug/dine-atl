@@ -3,6 +3,8 @@ package dev.dine.framework.text;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.text.Editable;
+import android.text.Layout;
+import android.text.TextWatcher;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -10,6 +12,7 @@ import android.text.style.StyleSpan;
 import android.text.style.UnderlineSpan;
 import android.os.SystemClock;
 import android.util.TypedValue;
+import android.widget.EditText;
 import android.widget.TextView;
 
 @SuppressWarnings("deprecation")
@@ -156,5 +159,100 @@ public class TextViewTest extends android.test.InstrumentationTestCase {
 			SystemClock.sleep(20);
 		width[1] = view[0].getWidth();
 		assertTrue(width[0] + " then " + width[1], width[1] > width[0]);
+	}
+
+	private interface OnMain {
+		Object run();
+	}
+
+	private Object onMain(final OnMain body) {
+		final Object[] result = new Object[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				result[0] = body.run();
+			}
+		});
+		return result[0];
+	}
+
+	public void testLayoutIsKept() {
+		assertEquals(Boolean.TRUE, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a");
+				return view.getLayout() == view.getLayout();
+			}
+		}));
+	}
+
+	public void testLayoutFollowsSetText() {
+		assertEquals("b", onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a");
+				view.getLayout();
+				view.setText("b");
+				return view.getLayout().getText().toString();
+			}
+		}));
+	}
+
+	public void testLayoutFollowsAnEdit() {
+		assertEquals("ab", onMain(new OnMain() {
+			public Object run() {
+				EditText edit = new EditText(context());
+				edit.setText("a");
+				edit.getLayout();
+				edit.getText().append("b");
+				return edit.getLayout().getText().toString();
+			}
+		}));
+	}
+
+	public void testLayoutFollowsTextSize() {
+		assertEquals(Boolean.TRUE, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a");
+				Layout before = view.getLayout();
+				view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.getTextSize() * 2);
+				return before != view.getLayout();
+			}
+		}));
+	}
+
+	public void testLayoutFollowsWidth() {
+		assertEquals(200, onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setText("a");
+				view.layout(0, 0, 100, 50);
+				view.getLayout();
+				view.layout(0, 0, 200, 50);
+				return view.getLayout().getWidth();
+			}
+		}));
+	}
+
+	// listeners run after the change: the layout they read already has the new text
+	public void testWatcherSeesTheNewLayout() {
+		assertEquals("b bc", onMain(new OnMain() {
+			public Object run() {
+				final StringBuilder seen = new StringBuilder();
+				final EditText edit = new EditText(context());
+				edit.setText("a");
+				edit.getLayout();
+				edit.addTextChangedListener(new TextWatcher() {
+					public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+					public void onTextChanged(CharSequence s, int start, int before, int count) {}
+					public void afterTextChanged(Editable s) {
+						seen.append(seen.length() == 0 ? "" : " ").append(edit.getLayout().getText());
+					}
+				});
+				edit.setText("b");
+				edit.getText().append("c");
+				return seen.toString();
+			}
+		}));
 	}
 }

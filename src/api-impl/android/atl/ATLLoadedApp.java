@@ -66,7 +66,7 @@ public final class ATLLoadedApp {
 	public final Map<IntentFilter, BroadcastReceiver> receivers = new ConcurrentHashMap<>();
 	public final Map<String, SharedPreferences> shared_prefs = new HashMap<>();
 	public final HashMap<String, ATLProvider> providers = new HashMap<>(); // by authority
-	public final Map<Integer, JobInfo> pending_jobs = new HashMap<>();
+	public final Map<Integer, JobInfo> pending_jobs = new ConcurrentHashMap<>(); // scheduled and cancelled on any thread, run on main
 	public final IdentityHashMap<Class<? extends JobService>, JobService> job_services = new IdentityHashMap<>();
 	public final HashMap<String, Constructor<? extends View>> view_constructors = new HashMap<>(); // by class name
 	public final InputMethodManager input_method = new InputMethodManager();

@@ -41,17 +41,15 @@ public class JobScheduler {
 
 	public int schedule(JobInfo job) {
 		Slog.i(TAG, "JobScheduler.schedule() called with job: " + job);
-		if (pendingJobs().containsKey(job.getId()))
+		if (pendingJobs().putIfAbsent(job.getId(), job) != null)
 			return 1; //RESULT_SUCCESS
-		pendingJobs().put(job.getId(), job);
 		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
 			@Override
 			public void run() {
+				if (pendingJobs().get(job.getId()) != job) // cancelled or replaced
+					return;
 				try {
-					String className = job.getService().getClassName();
-					Class<? extends JobService> cls = context.get_atl_loaded_app()
-					                                      .loadClass(className)
-					                                      .asSubclass(JobService.class);
+					Class<? extends JobService> cls = serviceClass(job);
 					if (!runningServices().containsKey(cls)) {
 						JobService service = cls.getConstructor().newInstance();
 						ATLLoadedApp atlLoadedApp = context.get_atl_loaded_app();
@@ -62,6 +60,8 @@ public class JobScheduler {
 					}
 					job.running = true;
 					boolean result = runningServices().get(cls).onStartJob(new JobParameters(job));
+					if (!result)
+						job.running = false;
 					Slog.i(TAG, "onStartJob() returned " + result);
 				} catch (ReflectiveOperationException e) {
 					e.printStackTrace();
@@ -71,13 +71,25 @@ public class JobScheduler {
 		return 1; //RESULT_SUCCESS
 	}
 
+	private Class<? extends JobService> serviceClass(JobInfo job) throws ClassNotFoundException {
+		return context.get_atl_loaded_app().loadClass(job.getService().getClassName()).asSubclass(JobService.class);
+	}
+
 	public void cancel(int id) {
 		JobInfo job = pendingJobs().remove(id);
-		if (job != null && job.running) {
+		if (job != null) {
+			// on main, behind a start already under way
 			new Handler(context.getMainLooper()).post(new Runnable() {
 				@Override
 				public void run() {
-					JobService service = runningServices().get(job.getService().getClass());
+					if (!job.running)
+						return;
+					JobService service;
+					try {
+						service = runningServices().get(serviceClass(job));
+					} catch (ClassNotFoundException e) {
+						return;
+					}
 					if (service != null) {
 						JobParameters params = new JobParameters(job);
 						service.onStopJob(params);

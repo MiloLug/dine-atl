@@ -256,7 +256,6 @@ public class EditText extends TextView {
 	/* Copyright (C) 2006 The Android Open Source Project */
 	@Override
 	public void setKeyListener(KeyListener input) {
-		boolean singleLine = !isMultilineInputType(inputType);
 		setKeyListenerOnly(input);
 		if (input != null) {
 			try {
@@ -264,7 +263,7 @@ public class EditText extends TextView {
 			} catch (IncompatibleClassChangeError e) {
 				inputType = EditorInfo.TYPE_CLASS_TEXT;
 			}
-			setInputTypeSingleLine(singleLine);
+			setInputTypeSingleLine(single_line);
 		} else {
 			inputType = EditorInfo.TYPE_NULL;
 		}
@@ -304,11 +303,11 @@ public class EditText extends TextView {
 	@Override
 	public void setInputType(int type) {
 		boolean wasPassword = isPasswordInputType(inputType);
-		boolean wasMultiline = isMultilineInputType(inputType);
 		inputType = type;
 		setKeyListenerOnly(keyListenerFor(type));
-		if (isMultilineInputType(type) != wasMultiline)
-			applySingleLine(!isMultilineInputType(type));
+		boolean singleLine = !isMultilineInputType(type);
+		if (singleLine != single_line)
+			applySingleLine(singleLine);
 		if (isPasswordInputType(type))
 			setTransformationMethod(PasswordTransformationMethod.getInstance());
 		else if (wasPassword && getTransformationMethod() == PasswordTransformationMethod.getInstance())

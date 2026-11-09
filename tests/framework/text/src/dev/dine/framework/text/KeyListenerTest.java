@@ -4,7 +4,11 @@ import android.content.Context;
 import android.text.InputType;
 import android.text.Selection;
 import android.text.method.DialerKeyListener;
+import android.text.Editable;
 import android.text.method.DigitsKeyListener;
+import android.text.method.KeyListener;
+import android.view.KeyEvent;
+import android.view.View;
 import android.widget.EditText;
 
 /* A number or phone field's key listener filters what the toolkit reports (atlEdited), after the
@@ -86,6 +90,33 @@ public class KeyListenerTest extends android.test.InstrumentationTestCase {
 			public Object run(EditText edit) {
 				edit.setKeyListener(DigitsKeyListener.getInstance("abc"));
 				return typed(edit, "abcd") + " " + edit.getInputType();
+			}
+		}));
+	}
+
+	// a key listener changes the input type's class, not whether the field is single-line
+	public void testNumberAfterDigitsListenerIsSingleLine() {
+		assertEquals(1, onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setKeyListener(DigitsKeyListener.getInstance("0123456789"));
+				edit.setInputType(InputType.TYPE_CLASS_NUMBER);
+				return edit.getMaxLines();
+			}
+		}));
+	}
+
+	public void testTextListenerAfterDigitsKeepsMultiLine() {
+		assertEquals(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE, onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setKeyListener(DigitsKeyListener.getInstance("0123456789"));
+				edit.setKeyListener(new KeyListener() {
+					public int getInputType() { return InputType.TYPE_CLASS_TEXT; }
+					public boolean onKeyDown(View view, Editable text, int keyCode, KeyEvent event) { return false; }
+					public boolean onKeyUp(View view, Editable text, int keyCode, KeyEvent event) { return false; }
+					public boolean onKeyOther(View view, Editable text, KeyEvent event) { return false; }
+					public void clearMetaKeyState(View view, Editable content, int states) {}
+				});
+				return edit.getInputType();
 			}
 		}));
 	}

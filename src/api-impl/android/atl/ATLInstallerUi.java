@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -23,11 +24,6 @@ import java.io.InputStream;
 public final class ATLInstallerUi {
 	private static final String TAG = "ATLInstallerUi";
 	private static final int RESULT_FIRST_USER = 1;
-	// PackageManager's legacy codes for EXTRA_INSTALL_RESULT
-	private static final int INSTALL_SUCCEEDED = 1;
-	private static final int INSTALL_FAILED_UPDATE_INCOMPATIBLE = -7;
-	private static final int INSTALL_FAILED_VERSION_DOWNGRADE = -25;
-	private static final int INSTALL_FAILED_INTERNAL_ERROR = -110;
 
 	private ATLInstallerUi() {}
 
@@ -124,7 +120,7 @@ public final class ATLInstallerUi {
 			staged = ATLInstaller.stageDir(dir, new String[] {"base.apk"});
 		} catch (IOException | RuntimeException e) {
 			Slog.w(TAG, "can't install " + intent.getData(), e);
-			result(resultTo, requestCode, RESULT_FIRST_USER, INSTALL_FAILED_INTERNAL_ERROR);
+			result(resultTo, requestCode, RESULT_FIRST_USER, PackageManager.INSTALL_FAILED_INTERNAL_ERROR);
 			return;
 		}
 		confirm(context, staged, (install, allowFakeSignature) -> {
@@ -135,10 +131,10 @@ public final class ATLInstallerUi {
 			}
 			ATLInstaller.Result result = ATLInstaller.commit(staged, true, allowFakeSignature, context.getPackageName());
 			if (result.status == PackageInstaller.STATUS_SUCCESS) {
-				result(resultTo, requestCode, Activity.RESULT_OK, INSTALL_SUCCEEDED);
+				result(resultTo, requestCode, Activity.RESULT_OK, result.legacyStatus);
 				announce(context, result, false);
 			} else {
-				result(resultTo, requestCode, RESULT_FIRST_USER, legacyCode(result.status));
+				result(resultTo, requestCode, RESULT_FIRST_USER, result.legacyStatus);
 			}
 		});
 	}
@@ -164,17 +160,6 @@ public final class ATLInstallerUi {
 		if (uri.getScheme() == null || "file".equals(uri.getScheme()))
 			return new FileInputStream(uri.getPath());
 		return context.getContentResolver().openInputStream(uri);
-	}
-
-	private static int legacyCode(int status) {
-		switch (status) {
-			case PackageInstaller.STATUS_FAILURE_CONFLICT:
-				return INSTALL_FAILED_UPDATE_INCOMPATIBLE;
-			case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
-				return INSTALL_FAILED_VERSION_DOWNGRADE;
-			default:
-				return INSTALL_FAILED_INTERNAL_ERROR;
-		}
 	}
 
 	private static void result(Activity resultTo, int requestCode, int resultCode, Integer installResult) {

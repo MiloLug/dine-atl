@@ -253,6 +253,13 @@ public final class ATLRegistry {
 		return names;
 	}
 
+	/** The package other than exceptPkg that holds the authority, or null. */
+	String authorityHolder(String authority, String exceptPkg) {
+		try (Cursor c = db.rawQuery("SELECT pkg FROM authorities WHERE authority = ? AND pkg <> ?", new String[] {authority, exceptPkg})) {
+			return c.moveToFirst() ? c.getString(0) : null;
+		}
+	}
+
 	public synchronized String packageForAuthority(String authority) {
 		try (Cursor c = db.rawQuery("SELECT pkg FROM authorities WHERE authority = ?", new String[] {authority})) {
 			return c.moveToFirst() ? c.getString(0) : null;
