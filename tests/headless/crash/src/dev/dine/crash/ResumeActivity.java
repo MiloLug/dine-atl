@@ -6,6 +6,7 @@ public class ResumeActivity extends Activity {
 	@Override
 	protected void onResume() {
 		super.onResume();
+		CreateActivity.logCheckJni();
 		throw new IllegalStateException("crash in onResume");
 	}
 }

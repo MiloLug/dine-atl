@@ -9,6 +9,7 @@ public class PostActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		CreateActivity.logCheckJni();
 		new Handler(Looper.getMainLooper()).post(() -> {
 			throw new IllegalStateException("crash in a posted Runnable");
 		});

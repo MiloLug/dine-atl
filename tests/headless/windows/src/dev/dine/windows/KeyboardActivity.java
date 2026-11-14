@@ -11,19 +11,22 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 
-/* A field at the screen's bottom, focused from the start, under a keyboard the host reports as the
- * IME inset. Each layout that changes what the content sees logs "keyboard: <name> ime <px> nav <px>
- * size <w>x<h> field <y>": the bottom IME and navigation bar insets it gets, its size and the
- * field's top in the window. With scroll the field sits in a ScrollView, 140 px above the display's
- * bottom (400 px down on the headless one). */
+/* A field focused from the start, under a keyboard the host reports as the IME inset. Each layout
+ * that changes what the content sees logs "keyboard: <name> ime <px> nav <px> size <w>x<h> field
+ * <y>": the bottom IME and navigation bar insets it gets, its size and the field's top in the
+ * window. BOTTOM: the field at the window's bottom; SCROLL: in a ScrollView, 140 px above the
+ * display's bottom (400 px down on the headless one); TOP: at the window's top, clear of the
+ * keyboard. */
 public abstract class KeyboardActivity extends Activity {
+	static final int BOTTOM = 0, SCROLL = 1, TOP = 2;
+
 	private final String name;
-	private final boolean scroll;
+	private final int layout;
 	private String last;
 
-	KeyboardActivity(String name, boolean scroll) {
+	KeyboardActivity(String name, int layout) {
 		this.name = name;
-		this.scroll = scroll;
+		this.layout = layout;
 	}
 
 	@Override
@@ -34,7 +37,7 @@ public abstract class KeyboardActivity extends Activity {
 		LinearLayout column = new LinearLayout(this);
 		column.setOrientation(LinearLayout.VERTICAL);
 		final View root;
-		if (scroll) {
+		if (layout == SCROLL) {
 			int down = getResources().getDisplayMetrics().heightPixels - 140;
 			column.addView(new View(this), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, down));
 			column.addView(field, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -43,7 +46,7 @@ public abstract class KeyboardActivity extends Activity {
 			root = scroller;
 		} else {
 			column.addView(new View(this), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-			column.addView(field, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+			column.addView(field, layout == TOP ? 0 : 1, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 			root = column;
 		}
 		setContentView(root);

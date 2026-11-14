@@ -1,8 +1,8 @@
 package dev.dine.windows;
 
-// its manifest entry sets the soft input mode
+// adjustResize in its manifest entry
 public class ResizeActivity extends KeyboardActivity {
 	public ResizeActivity() {
-		super("resize", true);
+		super("resize", SCROLL);
 	}
 }

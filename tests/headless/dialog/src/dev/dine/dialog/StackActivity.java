@@ -16,7 +16,8 @@ import android.widget.TextView;
 
 /* A non-touch-modal dialog over the activity: a drag scrolls its list, a touch outside reaches the
  * activity, "next" covers it with another activity, a DOWN on "hider" hides it mid-gesture,
- * "finish" ends the activity under it. */
+ * "finish" ends the activity under it. The hider and the activity's root log every touch they get:
+ * the rest of a gesture the hide ended must reach neither. */
 public class StackActivity extends Activity {
 	private static final String TAG = "stack";
 
@@ -32,6 +33,12 @@ public class StackActivity extends Activity {
 			}
 		});
 		root.addView(under, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+		root.setOnTouchListener(new View.OnTouchListener() {
+			public boolean onTouch(View v, MotionEvent event) {
+				Log.i(TAG, "stack root touch " + event.getActionMasked());
+				return false;
+			}
+		});
 		setContentView(root);
 
 		final Dialog dialog = new Dialog(this);
@@ -74,6 +81,8 @@ public class StackActivity extends Activity {
 							Log.i(TAG, "stack shown again");
 						}
 					}, 100);
+				} else {
+					Log.i(TAG, "stack hider touch " + event.getActionMasked());
 				}
 				return true;
 			}

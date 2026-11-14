@@ -3,37 +3,37 @@
 # host's -c touch and key lines in the headless build; rows are found by their text in the view-tree
 # dump. A tap clicks and the selector follows the pressed state; a press on "share a" changes only its
 # own background, though "share b" loads the same selector resource; a hold long-clicks without a click;
-# the first Tab leaves touch mode and focuses the first row, the next one moves on, Enter clicks it;
-# a drag scrolls (headless stands in for the toolkit's pan: the touch is canceled) and the "x" row's
-# gesture exclusion follows the scroll and then the translation T gives it; a drag far past the end
-# stops at Java's end, padding included; ESC is Back on the task root. The checked lines must come in
-# order: one that must not come is caught by the next ones.
+# the first Tab leaves touch mode and focuses the first row, the next ones move on, Enter clicks "one";
+# a drag from "one" scrolls (headless stands in for the toolkit's pan: the row's touch is canceled)
+# and the "x" row's gesture exclusion follows the scroll and then the translation T gives it; a drag
+# far past the end stops at Java's end, padding included; ESC is Back on the task root. The checked
+# lines must come in order: one that must not come is caught by the next ones.
 # Usage: run-widgets.sh <headless build dir> <widgets.apk>
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
+log="$work/log"
+: >"$log"
 
 cd "$build"
 coproc ATL {
-  exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
+  exec env "${headless_env[@]}" ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
     ./android-translation-layer -c "$apk" -l dev/dine/widgets/MainActivity -X -Xint 2>&1
 }
-pid=$ATL_PID
-: >"$work/log"
-
-fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
+session
 
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
 origin_x=() origin_y=()
 dump_re='^viewtree: ( *)[^ ]+ (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
 while :; do
-  IFS= read -r -t 30 line <&"${ATL[0]}" || fail "no view-tree dump"
-  printf '%s\n' "$line" >>"$work/log"
+  IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
+  printf '%s\n' "$line" >>"$log"
   [[ $line == "viewtree: end" ]] && break
   [[ $line =~ $dump_re ]] || continue
   depth=$((${#BASH_REMATCH[1]} / 2))
@@ -59,11 +59,11 @@ done
 end=$((content_h + 16 - scroll_h)) # the APK's 16 dp bottom padding
 center() { echo "$((x[$1] + w[$1] / 2)) $((y[$1] + h[$1] / 2))"; }
 
-# the next checked line into REPLY, without the log prefix
+# the next checked line, or a dump's end, into REPLY, without the log prefix
 next() {
-  local line re='(widgets (click|longclick|selector|shared|scroll|focus|key) .*|^host: (exclusion|task) .*)'
-  while IFS= read -r -t 30 line <&"${ATL[0]}"; do
-    printf '%s\n' "$line" >>"$work/log"
+  local line re='(widgets (click|longclick|selector|shared|scroll|focus|key|cancel) .*|^host: (exclusion|task) .*|^viewtree: end$)'
+  while IFS= read -r -t 30 line <&"$atl_out"; do
+    printf '%s\n' "$line" >>"$log"
     if [[ $line =~ $re ]]; then
       REPLY=${BASH_REMATCH[1]}
       return 0
@@ -78,11 +78,6 @@ expect() {
     next
     [[ $REPLY == "$want" ]] || fail "got \"$REPLY\", want \"$want\""
   done
-}
-
-send() {
-  printf '> %s\n' "$1" >>"$work/log"
-  printf '%s\n' "$1" >&"${ATL[1]}"
 }
 
 key() { send "key down $1"; send "key up $1"; }
@@ -114,20 +109,23 @@ send "touch up 0 $hold_x $hold_y"
 key 61 # Tab
 expect "widgets focus tap true"
 key 61
-expect "widgets focus tap false" "widgets focus one true"
+expect "widgets focus tap false" "widgets focus hold true"
+key 61
+expect "widgets focus hold false" "widgets focus one true"
 key 66 # Enter
 expect "widgets click one"
 
-read -r row_x row_y <<<"$(center x)"
-send "touch down 0 $row_x $row_y"
-send "touch move 0 $row_x $((row_y - 50))"
-send "touch move 0 $row_x $((row_y - 150))"
-send "touch up 0 $row_x $((row_y - 150))"
-expect "widgets focus one false" "widgets scroll 0 50" "$(exclusion -50)" "widgets scroll 0 150" "$(exclusion -150)"
+read -r one_x one_y <<<"$(center one)"
+send "touch down 0 $one_x $one_y"
+send "touch move 0 $one_x $((one_y - 50))"
+send "touch move 0 $one_x $((one_y - 150))"
+send "touch up 0 $one_x $((one_y - 150))"
+expect "widgets focus one false" "widgets cancel one" "widgets scroll 0 50" "$(exclusion -50)" "widgets scroll 0 150" "$(exclusion -150)"
 
 key 48 # T
 expect "widgets key 48" "$(exclusion -110)"
 
+read -r row_x row_y <<<"$(center x)"
 send "touch down 0 $row_x $((row_y - 150))"
 send "touch move 0 $row_x $((row_y - 5150))"
 send "touch up 0 $row_x $((row_y - 5150))"
@@ -136,6 +134,8 @@ expect "widgets scroll 0 $end" "widgets scroll end" "host: exclusion left - righ
 key 111 # Escape
 expect "host: task back app"
 
-kill "$pid" 2>/dev/null || true
-wait "$pid" 2>/dev/null || true
+# a checked line after the last expected one fails here: ATL answers a dump first
+send dump
+expect "viewtree: end"
+end_session
 echo "PASS"

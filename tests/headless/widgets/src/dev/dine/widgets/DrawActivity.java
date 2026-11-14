@@ -313,6 +313,16 @@ public class DrawActivity extends Activity {
 		Log.i(TAG, "widgets bitmap pixel " + Integer.toHexString(bitmap.getPixel(1, 1)) + " " + Integer.toHexString(bitmap.getPixel(0, 0)));
 	}
 
+	// the display list names a bitmap by its size only: the decoded PNG's four quarters
+	private void logPhotoPixels() {
+		Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
+		StringBuilder pixels = new StringBuilder();
+		for (int y = 16; y < 64; y += 32)
+			for (int x = 16; x < 64; x += 32)
+				pixels.append(' ').append(Integer.toHexString(photo.getPixel(x, y)));
+		Log.i(TAG, "widgets photo pixels" + pixels);
+	}
+
 	private static final int SOURCE = 0xccff8040, OPAQUE = 0xff3366cc, TRANSLUCENT = 0x80336699;
 
 	private static Shader solid(int color) {
@@ -460,11 +470,13 @@ public class DrawActivity extends Activity {
 		white.setColor(0xffffffff);
 		new Canvas(coverage).drawCircle(4, 4, 2.6f, white);
 		float[] d = premultiplied(OPAQUE), b = premultiplied(want(0, BlendMode.MODULATE));
+		boolean partial = false;
 		for (int y = 0; y < 8; y++) {
 			for (int x = 0; x < 8; x++) {
 				float c = (coverage.getPixel(x, y) >>> 24) / 255f;
 				if (c == 0 || c == 1)
 					continue;
+				partial = true;
 				float[] got = premultiplied(edge.getPixel(x, y));
 				for (int i = 0; i < 4; i++)
 					if (Math.abs(got[i] - (d[i] * (1 - c) + b[i] * c)) > 4) {
@@ -474,6 +486,8 @@ public class DrawActivity extends Activity {
 					}
 			}
 		}
+		if (!partial) // nothing was compared
+			wrong.append(" edge none");
 		Log.i(TAG, "widgets layers" + (wrong.length() > 0 ? wrong : " ok"));
 
 		Bitmap big = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
@@ -509,6 +523,7 @@ public class DrawActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		logBitmapPixel();
+		logPhotoPixels();
 		logPixels();
 		logBlends();
 		logLayerBlends();

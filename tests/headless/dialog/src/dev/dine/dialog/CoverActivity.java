@@ -1,18 +1,26 @@
 package dev.dine.dialog;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.TextView;
+import android.view.View;
+import android.widget.Button;
 
-// covers StackActivity and its dialog until Back
+/* Covers StackActivity and its dialog until Back. Started first, its button puts a StackActivity
+ * over it: when that one finishes, its leaked dialog must not stay over this activity. */
 public class CoverActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		TextView text = new TextView(this);
-		text.setText("cover");
-		setContentView(text);
+		Button cover = new Button(this);
+		cover.setText("cover");
+		cover.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				startActivity(new Intent(CoverActivity.this, StackActivity.class));
+			}
+		});
+		setContentView(cover);
 	}
 
 	@Override

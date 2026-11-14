@@ -4,19 +4,17 @@
 # uiMode's night bits, 32 (UI_MODE_NIGHT_YES) dark and 16 (_NO) light.
 # - ConfigActivity covers uiMode in its manifest: the Application's callbacks, the activity and its
 #   view hear each change, and its tint resolves to the values-night color and back; the change
-#   prunes the drawables it holds from both caches;
-# - PlainConfigActivity doesn't: only the Application hears it, ATL logs that the activity keeps its
-#   configuration.
+#   prunes the drawables it holds from both caches, so they load again in the new color;
+# - PlainConfigActivity doesn't: only the Application hears each change, ATL logs that the activity
+#   keeps its configuration, and its own onConfigurationChanged never logs.
 # Usage: run-config.sh <headless build dir> <windows.apk>
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-pid=
-
-fail() { [[ -n $pid ]] && kill "$pid" 2>/dev/null; echo "FAIL: $*"; echo "log: $log"; trap - EXIT; exit 1; }
 
 start() {
   log="$work/$1.log"
@@ -24,20 +22,18 @@ start() {
   : >"$log"
   coproc ATL {
     cd "$build"
-    exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 DINE_PREFIX="$work/data-$1" timeout 60 \
+    exec env "${headless_env[@]}" DINE_PREFIX="$work/data-$1" timeout 60 \
       ./android-translation-layer -c "$apk" -l "dev/dine/windows/$1" -X -Xint 2>&1
   }
-  pid=$ATL_PID
-  exec {atl_out}<&"${ATL[0]}" {atl_in}>&"${ATL[1]}"
+  session
 }
 
+# a line of the kind expect checks, late, fails here: ATL answers a dump after the last change
 stop() {
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-  exec {atl_out}<&- {atl_in}>&-
+  send dump
+  read_dump 'config: |keeps its configuration$'
+  end_session
 }
-
-send() { echo "$1" >&"$atl_in"; }
 
 # expect <line>...: the next "config:" or "keeps its configuration" lines are exactly them, in order
 expect() {
@@ -58,15 +54,18 @@ night=32 day=16 # Configuration.UI_MODE_NIGHT_YES, _NO
 start ConfigActivity
 expect "activity created color #ff112233"
 send "night 1"
-expect "application night $night" "activity night $night color #ffaabbcc" "view night $night"
+expect "application night $night" "activity night $night color #ffaabbcc" "drawables box #ffaabbcc tint #ffaabbcc" "view night $night"
 send "night 0"
-expect "application night $day" "activity night $day color #ff112233" "view night $day"
+expect "application night $day" "activity night $day color #ff112233" "drawables box #ff112233 tint #ff112233" "view night $day"
 stop
 
 start PlainConfigActivity
 expect "plain created"
+keeps="dev.dine.windows.PlainConfigActivity doesn't handle uiMode; keeps its configuration"
 send "night 1"
-expect "application night $night" "dev.dine.windows.PlainConfigActivity doesn't handle uiMode; keeps its configuration"
+expect "application night $night" "$keeps"
+send "night 0" # the activity's own "config: plain night" for the first change would come before these
+expect "application night $day" "$keeps"
 stop
 
 echo PASS

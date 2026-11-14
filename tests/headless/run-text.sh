@@ -8,21 +8,21 @@
 # Usage: run-text.sh <headless build dir> <widgets.apk>
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
+log="$work/log"
+: >"$log"
 
 cd "$build"
 coproc ATL {
-  exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
+  exec env "${headless_env[@]}" ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
     ./android-translation-layer -c "$apk" -l dev/dine/widgets/TextActivity -X -Xint 2>&1
 }
-pid=$ATL_PID
-: >"$work/log"
-
-fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
+session
 
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
@@ -31,8 +31,8 @@ fields=(name notes pin enter capped)
 field=0
 dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
 while :; do
-  IFS= read -r -t 30 line <&"${ATL[0]}" || fail "no view-tree dump"
-  printf '%s\n' "$line" >>"$work/log"
+  IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
+  printf '%s\n' "$line" >>"$log"
   [[ $line == "viewtree: end" ]] && break
   [[ $line =~ $dump_re ]] || continue
   depth=$((${#BASH_REMATCH[1]} / 2))
@@ -54,11 +54,11 @@ for control in name notes pin enter capped fill show size; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
 
-# the next checked line into REPLY, without the log prefix
+# the next checked line, or a dump's end, into REPLY, without the log prefix
 next() {
-  local line re='(text (before|on|after|focus|action|show|name|notes|pin|enter|capped) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*)'
-  while IFS= read -r -t 30 line <&"${ATL[0]}"; do
-    printf '%s\n' "$line" >>"$work/log"
+  local line re='(text (before|on|after|focus|action|show|name|notes|pin|enter|capped) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*|^viewtree: end$)'
+  while IFS= read -r -t 30 line <&"$atl_out"; do
+    printf '%s\n' "$line" >>"$log"
     if [[ $line =~ $re ]]; then
       REPLY=${BASH_REMATCH[1]}
       return 0
@@ -73,11 +73,6 @@ expect() {
     next
     [[ $REPLY == "$want" ]] || fail "got \"$REPLY\", want \"$want\""
   done
-}
-
-send() {
-  printf '> %s\n' "$1" >>"$work/log"
-  printf '%s\n' "$1" >&"${ATL[1]}"
 }
 
 center() { echo "$((x[$1] + w[$1] / 2)) $((y[$1] + h[$1] / 2))"; }
@@ -184,14 +179,28 @@ expect 'edit: "a\nb" 3,3' 'text notes "a\nb"'
 send "text action"
 expect 'edit: "a\nb\n" 4,4' 'text notes "a\nb\n"'
 
-# focus moves with the keyboard up: the keyboard follows; Back hides it first, then goes back
+# focus moves with the keyboard up: the keyboard follows; the toolkit takes the keyboard away (as
+# uikit does when its field loses focus): the next Back goes back at once
 tap name
 expect "text focus notes false" "text focus name true" "$(keyboard off notes)" "$(keyboard on name)"
-send "back"
+send "text dismiss"
 expect "$(keyboard off name)"
 send "back"
 expect "host: task back app"
+send "front"
+expect "host: task front host"
 
-kill "$pid" 2>/dev/null || true
-wait "$pid" 2>/dev/null || true
+# Back hides the keyboard first: the activity, still in front, answers a tap; then it goes back
+tap name
+expect "$(keyboard on name)"
+send "back"
+expect "$(keyboard off name)"
+capped_height
+send "back"
+expect "host: task back app"
+
+# a checked line after the last expected one fails here: ATL answers a dump first
+send dump
+expect "viewtree: end"
+end_session
 echo "PASS"

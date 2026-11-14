@@ -81,7 +81,7 @@ public class LayoutTest extends android.test.InstrumentationTestCase {
 	}
 
 	// a parent's layout pass leaves an unmoved child unchanged (AbsListView relays out on changed)
-	public void testParentPassKeepsAnUnmovedChildUnchanged() {
+	public void testParentPassKeepsAnUnmovedChildUnchanged() throws InterruptedException {
 		final WindowActivity activity = start();
 		final Probe[] probe = new Probe[1];
 		getInstrumentation().runOnMainSync(new Runnable() {
@@ -91,19 +91,25 @@ public class LayoutTest extends android.test.InstrumentationTestCase {
 			}
 		});
 		getInstrumentation().waitForIdleSync();
+		// gtk lays out on its own frame, after the looper is idle: poll as CTS's PollingCheck does
+		for (int i = 0; i < 250 && probe[0].getWidth() == 0; i++)
+			Thread.sleep(20);
 		getInstrumentation().runOnMainSync(new Runnable() {
 			public void run() {
 				probe[0].calls.clear();
 				activity.root.requestLayout();
 			}
 		});
-		getInstrumentation().waitForIdleSync();
 		final List<String> calls = new ArrayList<>();
-		getInstrumentation().runOnMainSync(new Runnable() {
-			public void run() {
-				calls.addAll(probe[0].calls);
-			}
-		});
+		for (int i = 0; i < 250 && calls.isEmpty(); i++) {
+			Thread.sleep(20);
+			getInstrumentation().runOnMainSync(new Runnable() {
+				public void run() {
+					calls.addAll(probe[0].calls);
+				}
+			});
+		}
+		assertFalse("the parent's pass never reached the child", calls.isEmpty());
 		for (String call : calls)
 			assertFalse(calls.toString(), call.startsWith("onLayout true"));
 	}

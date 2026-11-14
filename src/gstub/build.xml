@@ -3,10 +3,20 @@
 
 	<target name="compile">
 		<mkdir dir="${build}"/>
+		<mkdir dir="${build}.h"/>
 		<depend srcdir="${srcdir}" destdir="${build}" cache="${build}/.depend"/>
 		<javac srcdir="${srcdir}" includes="${includes}" destdir="${build}" includeantruntime="false" debug="true">
 			<compilerarg line="${javaargs}"/>
+			<compilerarg value="-h"/>
+			<compilerarg file="${build}.h"/>
 		</javac>
+		<!-- the ATL builds share ${headers}: a header is written only when its text changed, so one
+		     build's Java step leaves the other build's objects newer than their headers -->
+		<copy todir="${headers}" overwrite="true">
+			<fileset dir="${build}.h">
+				<different targetdir="${headers}" ignoreFileTimes="true"/>
+			</fileset>
+		</copy>
 	</target>
 
 	<target name="dist" depends="compile">

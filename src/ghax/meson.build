@@ -7,8 +7,9 @@ java_args = [
 	'-source', '1.8', '-target', '1.8',
 	'-encoding', 'UTF-8',
 	'-Xlint:-deprecation', # we implement deprecated APIs
-	'-h', join_paths(dir_base, 'src/api-impl-jni/generated_headers')
 ]
+# javac -h's output; the ant build writes there only the headers whose text changed
+jni_headers = join_paths(dir_base, 'src/api-impl-jni/generated_headers')
 
 ant = find_program('ant', required: false)
 
@@ -22,6 +23,7 @@ if ant.found()
 									   '-Dincludes=' + ','.join(srcs),
 									   '-Djarfile=@OUTPUT@',
 									   '-Dbuild=@PRIVATE_DIR@',
+									   '-Dheaders=' + jni_headers,
 									   '-Djavaargs=' + ' '.join(java_args + ['-classpath', hax_jar.full_path()]),
 							 ],
 							 depends: [hax_jar],
@@ -30,5 +32,5 @@ if ant.found()
 else
 	ghax_jar = jar('ghax', srcs,
 				   link_with: [hax_jar],
-				   java_args: java_args,)
+				   java_args: java_args + ['-h', jni_headers],)
 endif

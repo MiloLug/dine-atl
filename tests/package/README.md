@@ -19,6 +19,7 @@ check runs in a prefix of its own (`DINE_PREFIX`).
   scenario, its dialogs answered in order by `ATL_DIALOG_ANSWERS`.
 - On the phone, the dev build's atl screen has an `installer` tile: `driver` installs `ext` through a
   session and confirms from its Application context, the dialog answered by hand or `dbg ui tap`.
-- `expectations/linux-x86_64-headless.json`: rows expected to fail (`--update-expectations`).
+- `expectations/linux-x86_64-headless.json`: rows expected to fail; `.tests.txt` beside it: the rows a
+  whole run executes (the superproject's `tests/harness/README.md` "Baselines").
 
 Not covered yet: multidex, per-ABI native libs, broken zips, v2 and v3 signatures.

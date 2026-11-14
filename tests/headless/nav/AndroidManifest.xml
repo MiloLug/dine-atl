@@ -10,5 +10,7 @@
 		</activity>
 		<activity android:name=".SecondActivity"/>
 		<activity android:name=".ImmersiveActivity"/>
+		<activity android:name=".ResultActivity"/>
+		<activity android:name=".AnswerActivity"/>
 	</application>
 </manifest>

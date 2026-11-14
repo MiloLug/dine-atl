@@ -9,6 +9,7 @@
 # java.library.path to ./, so this runs from the build dir.
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
@@ -24,28 +25,28 @@ done
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
+log="$work/log"
 
 cd "$build"
 coproc ATL {
-  exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ATL_DUMP_VIEWTREE=1 \
+  exec env "${headless_env[@]}" ATL_DUMP_VIEWTREE=1 \
     DINE_PREFIX="$work/data" timeout 120 ./android-translation-layer "${density[@]}" "$apk" \
     -l com/example/demo_application/MainActivity -X -Xint -X -verbose:jni 2>&1
 }
-pid=$ATL_PID
-: >"$work/log"
-while IFS= read -r line <&"${ATL[0]}"; do
-  printf '%s\n' "$line" >>"$work/log"
+session
+: >"$log"
+while IFS= read -r line <&"$atl_out"; do
+  printf '%s\n' "$line" >>"$log"
   [[ $line == "viewtree: end" ]] && break
 done
-kill "$pid" 2>/dev/null || true
-wait "$pid" 2>/dev/null || true
 
-fail() { echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
-grep -q "Added shared library \"$build/libtranslation_layer_main.so\"\|Added shared library \"./libtranslation_layer_main.so\"" "$work/log" \
+grep -q "Added shared library \"$build/libtranslation_layer_main.so\"\|Added shared library \"./libtranslation_layer_main.so\"" "$log" \
   || fail "the headless libtranslation_layer_main.so didn't load"
-grep -q -- "- onResume - yay!" "$work/log" || fail "no onResume"
-grep -qx 'window: frame #ff1a1b20' "$work/log" || fail "no window: frame #ff1a1b20"
-grep '^viewtree:' "$work/log" >"$work/viewtree" || fail "no view-tree dump"
+grep -q -- "- onResume - yay!" "$log" || fail "no onResume"
+grep -qx 'window: frame #ff1a1b20' "$log" || fail "no window: frame #ff1a1b20"
+grep -qx 'viewtree: end' "$log" || fail "no whole view-tree dump"
+grep '^viewtree:' "$log" >"$work/viewtree"
+end_session
 
 if [[ $update ]]; then
   cp "$work/viewtree" "$expected"

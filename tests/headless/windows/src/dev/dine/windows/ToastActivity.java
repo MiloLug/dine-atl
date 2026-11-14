@@ -34,6 +34,7 @@ public class ToastActivity extends Activity {
 		});
 		Toast toast = new Toast(this);
 		toast.setView(custom);
+		toast.setDuration(Toast.LENGTH_LONG); // room for run-windows.sh's dump of its window
 		toast.show();
 		Toast.makeText(this, "last", Toast.LENGTH_LONG).show();
 		Log.i(TAG, "toast activity created");

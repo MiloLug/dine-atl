@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
@@ -124,8 +125,18 @@ public class MainActivity extends Activity {
 				return true;
 			}
 		});
+		hold.setOnClickListener(clickLogger("hold")); // must not run after the long click
 
-		row(rows, "one", 48).setOnClickListener(clickLogger("one"));
+		TextView one = row(rows, "one", 48);
+		one.setOnClickListener(clickLogger("one"));
+		// a pan that starts on it ends its gesture
+		one.setOnTouchListener(new View.OnTouchListener() {
+			public boolean onTouch(View v, MotionEvent event) {
+				if (event.getActionMasked() == MotionEvent.ACTION_CANCEL)
+					Log.i(TAG, "widgets cancel one");
+				return false;
+			}
+		});
 
 		excluded = row(rows, "x", 40);
 		excluded.setBackgroundColor(0xFF2196F3);

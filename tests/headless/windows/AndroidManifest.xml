@@ -17,6 +17,10 @@
 		<activity android:name=".PanActivity" android:windowSoftInputMode="adjustPan"/>
 		<activity android:name=".ResizeActivity" android:windowSoftInputMode="adjustResize"/>
 		<activity android:name=".UnspecifiedActivity"/>
+		<activity android:name=".PanScrollActivity" android:windowSoftInputMode="adjustPan"/>
+		<activity android:name=".ResizePlainActivity" android:windowSoftInputMode="adjustResize"/>
+		<activity android:name=".UnspecifiedPlainActivity"/>
+		<activity android:name=".PanTopActivity" android:windowSoftInputMode="adjustPan"/>
 		<activity android:name=".ConfigActivity" android:configChanges="uiMode"/>
 		<activity android:name=".PlainConfigActivity"/>
 	</application>

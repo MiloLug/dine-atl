@@ -7,33 +7,34 @@
 # Button, the disabled "locked" takes no click, a CheckBox and a Switch toggle, a RadioButton checks
 # and unchecks the group's other one but never itself, a ToggleButton shows its on text, the
 # ImageButton clicks, Tab then Enter clicks the focused first button, ESC is Back on the task root.
-# The checked lines must come in order: one that must not come is caught by the next ones.
+# The toggled text must also reach the toolkit: a dump shows it. The checked lines must come in
+# order: one that must not come is caught by the next ones.
 # Usage: run-controls.sh <headless build dir> <widgets.apk>
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 build="$(cd "$1" && pwd)"
 apk="$(realpath "$2")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/data"
+log="$work/log"
+: >"$log"
 
 cd "$build"
 coproc ATL {
-  exec env -u DISPLAY -u WAYLAND_DISPLAY RUN_FROM_BUILDDIR=1 ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
+  exec env "${headless_env[@]}" ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
     ./android-translation-layer -c "$apk" -l dev/dine/widgets/ControlsActivity -X -Xint 2>&1
 }
-pid=$ATL_PID
-: >"$work/log"
-
-fail() { kill "$pid" 2>/dev/null || true; echo "FAIL: $*"; echo "log: $work/log"; trap - EXIT; exit 1; }
+session
 
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h runs
 origin_x=() origin_y=()
 dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
 while :; do
-  IFS= read -r -t 30 line <&"${ATL[0]}" || fail "no view-tree dump"
-  printf '%s\n' "$line" >>"$work/log"
+  IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
+  printf '%s\n' "$line" >>"$log"
   [[ $line == "viewtree: end" ]] && break
   [[ $line == "textruns: 0-4 bold;" ]] && bold_run=1
   [[ $line =~ controls\ superscript\ shift\ (-?[0-9]+) ]] && up_shift=${BASH_REMATCH[1]}
@@ -61,11 +62,11 @@ done
 [[ ${runs["twice up"]:-} == "textruns: 0-5 40px; 6-8 shift $up_shift;" ]] || fail "twice up runs: ${runs["twice up"]:-none}"
 [[ ${runs[later]:-} == "textruns: 0-5 bold;" ]] || fail "later runs: ${runs[later]:-none}"
 
-# the next checked line into REPLY, without the log prefix
+# the next checked line, or a dump's end, into REPLY, without the log prefix
 next() {
-  local line re='(controls (click|checked|radio) .*|^host: task .*)'
-  while IFS= read -r -t 30 line <&"${ATL[0]}"; do
-    printf '%s\n' "$line" >>"$work/log"
+  local line re='(controls (click|checked|radio) .*|^host: task .*|^viewtree: end$)'
+  while IFS= read -r -t 30 line <&"$atl_out"; do
+    printf '%s\n' "$line" >>"$log"
     if [[ $line =~ $re ]]; then
       REPLY=${BASH_REMATCH[1]}
       return 0
@@ -80,11 +81,6 @@ expect() {
     next
     [[ $REPLY == "$want" ]] || fail "got \"$REPLY\", want \"$want\""
   done
-}
-
-send() {
-  printf '> %s\n' "$1" >>"$work/log"
-  printf '%s\n' "$1" >&"${ATL[1]}"
 }
 
 tap() {
@@ -115,6 +111,9 @@ expect "controls checked switch true"
 
 tap "lamp off"
 expect "controls click toggle lamp on"
+send dump
+read_dump 'controls (click|checked|radio) |^host: task '
+printf '%s\n' "${dump[@]}" | grep -q '^viewtree: *android.widget.ToggleButton .* "lamp on"$' || fail "the toolkit's ToggleButton doesn't show \"lamp on\""
 
 tap image
 expect "controls click image"
@@ -126,6 +125,8 @@ expect "controls click push"
 key 111 # Escape
 expect "host: task back app"
 
-kill "$pid" 2>/dev/null || true
-wait "$pid" 2>/dev/null || true
+# a checked line after the last expected one fails here: ATL answers a dump first
+send dump
+expect "viewtree: end"
+end_session
 echo "PASS"

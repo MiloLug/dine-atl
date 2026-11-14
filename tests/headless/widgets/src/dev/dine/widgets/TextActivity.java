@@ -16,7 +16,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/* Text fields near the top of the screen (no keyboard avoidance yet), for run-text.sh on headless,
+/* Text fields near the top of the screen, for run-text.sh on headless,
  * smoke atl-text on iOS and checks by hand on gtk. Logged text escapes newlines and non-ASCII. */
 public class TextActivity extends Activity {
 	private static final String TAG = "edits";

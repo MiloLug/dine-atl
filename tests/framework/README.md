@@ -16,6 +16,8 @@ for the shared run.
   (`[<package>] `), and a run that aborts, finds no tests or leaves a test unfinished fails
   `suite:<name>`. A finished run ends its app; the VM exits 0 after the last app.
 - `expectations/linux-x86_64-headless.json` and `linux-x86_64-gtk.json` list each build's tests
-  expected to fail (`--update-expectations`, with `--gtk` for the gtk file, rewrites it).
+  expected to fail, and the `.tests.txt` beside each the tests a whole run executes. The rules,
+  and what `--update-expectations` records, are in the superproject's `tests/harness/README.md`
+  "Baselines".
 - Runs set `MALLOC_PERTURB_`: freed memory is filled, which makes a use-after-free more likely to
   fail a test.

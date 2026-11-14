@@ -1,8 +1,8 @@
 package dev.dine.windows;
 
-// its manifest entry sets the soft input mode
+// no soft input mode in its manifest entry: its ScrollView decides
 public class UnspecifiedActivity extends KeyboardActivity {
 	public UnspecifiedActivity() {
-		super("unspecified", true);
+		super("unspecified", SCROLL);
 	}
 }

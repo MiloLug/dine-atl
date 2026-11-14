@@ -1,8 +1,8 @@
 package dev.dine.windows;
 
-// its manifest entry sets the soft input mode
+// adjustPan in its manifest entry
 public class PanActivity extends KeyboardActivity {
 	public PanActivity() {
-		super("pan", false);
+		super("pan", BOTTOM);
 	}
 }
