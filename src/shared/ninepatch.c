@@ -82,10 +82,6 @@ struct gfx_ninepatch *ninepatch_parse(const void *chunk_data, size_t size)
 		ninepatch->y_divs[i] = get32(p);
 	for (int i = 0; i < ninepatch->n_colors; i++, p += 4)
 		ninepatch->colors[i] = get32(p);
-	ninepatch->padding_left = get32(chunk + PADDING);
-	ninepatch->padding_right = get32(chunk + PADDING + 4);
-	ninepatch->padding_top = get32(chunk + PADDING + 8);
-	ninepatch->padding_bottom = get32(chunk + PADDING + 12);
 	return ninepatch;
 }
 

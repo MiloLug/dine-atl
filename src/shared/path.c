@@ -138,10 +138,11 @@ static void arc_segments(struct gfx_path *path, float cx, float cy, float rx, fl
 	}
 }
 
-void path_arc_to(struct gfx_path *path, float left, float top, float right, float bottom, float start, float sweep, bool force_move_to)
+// an arc of up to a whole turn; false when the oval is inverted and nothing was added
+static bool arc(struct gfx_path *path, float left, float top, float right, float bottom, float start, float sweep, bool force_move_to)
 {
 	if (right < left || bottom < top)
-		return;
+		return false;
 	sweep = fmaxf(-360, fminf(360, sweep));
 	float cx = (left + right) / 2, cy = (top + bottom) / 2, rx = (right - left) / 2, ry = (bottom - top) / 2;
 	double a = start * M_PI / 180;
@@ -154,14 +155,20 @@ void path_arc_to(struct gfx_path *path, float left, float top, float right, floa
 		if (last_x != x || last_y != y || path->verbs[path->n_verbs - 1] == PATH_CLOSE)
 			path_line_to(path, x, y);
 	}
-	if (sweep && rx && ry)
+	if (sweep && (rx || ry)) // a flat oval's arc is the line to its end point
 		arc_segments(path, cx, cy, rx, ry, a, sweep * M_PI / 180);
+	return true;
+}
+
+void path_arc_to(struct gfx_path *path, float left, float top, float right, float bottom, float start, float sweep, bool force_move_to)
+{
+	// SkPath::arcTo goes from the start's direction to the end's: a whole turn is the start point alone
+	arc(path, left, top, right, bottom, start, fmodf(sweep, 360), force_move_to);
 }
 
 void path_add_arc(struct gfx_path *path, float left, float top, float right, float bottom, float start, float sweep)
 {
-	path_arc_to(path, left, top, right, bottom, start, sweep, true);
-	if (fabsf(sweep) >= 360)
+	if (arc(path, left, top, right, bottom, start, sweep, true) && fabsf(sweep) >= 360)
 		path_close(path);
 }
 
@@ -182,23 +189,33 @@ void path_add_rect(struct gfx_path *path, float left, float top, float right, fl
 
 void path_add_oval(struct gfx_path *path, float left, float top, float right, float bottom, bool ccw)
 {
-	path_arc_to(path, left, top, right, bottom, 0, ccw ? -360 : 360, true);
-	path_close(path);
+	if (arc(path, left, top, right, bottom, 0, ccw ? -360 : 360, true))
+		path_close(path);
+}
+
+void path_fit_round_rect_radii(float width, float height, float r[8])
+{
+	for (int i = 0; i < 8; i++)
+		r[i] = fmaxf(r[i], 0);
+	// radii that don't fit a side shrink, all by one factor
+	float scale = 1;
+	const float sums[4][2] = {{r[0] + r[2], width}, {r[4] + r[6], width}, {r[1] + r[7], height}, {r[3] + r[5], height}};
+	for (int i = 0; i < 4; i++)
+		if (sums[i][0] > sums[i][1])
+			scale = fminf(scale, sums[i][1] / sums[i][0]);
+	for (int i = 0; i < 8; i += 2) {
+		// a corner with one radius of 0 is square
+		bool square = !r[i] || !r[i + 1];
+		r[i] = square ? 0 : r[i] * scale;
+		r[i + 1] = square ? 0 : r[i + 1] * scale;
+	}
 }
 
 void path_add_round_rect(struct gfx_path *path, float left, float top, float right, float bottom, const float radii[8], bool ccw)
 {
 	float r[8];
-	for (int i = 0; i < 8; i++)
-		r[i] = fmaxf(radii[i], 0);
-	// SkRRect's: radii that don't fit a side shrink, all by one factor
-	float width = right - left, height = bottom - top, scale = 1;
-	const float sums[4][2] = {{r[0] + r[2], width}, {r[4] + r[6], width}, {r[1] + r[7], height}, {r[3] + r[5], height}};
-	for (int i = 0; i < 4; i++)
-		if (sums[i][0] > sums[i][1])
-			scale = fminf(scale, sums[i][1] / sums[i][0]);
-	for (int i = 0; i < 8; i++)
-		r[i] *= scale;
+	memcpy(r, radii, sizeof(r));
+	path_fit_round_rect_radii(right - left, bottom - top, r);
 	// each corner's oval and the angle where a clockwise walk enters it
 	const float corners[4][5] = {
 		{right - 2 * r[2], top, right, top + 2 * r[3], -90},           // top right
@@ -209,7 +226,7 @@ void path_add_round_rect(struct gfx_path *path, float left, float top, float rig
 	path_move_to(path, left + r[0], top);
 	for (int i = 0; i < 4; i++) {
 		const float *c = corners[ccw ? 3 - i : i];
-		path_arc_to(path, c[0], c[1], c[2], c[3], ccw ? c[4] + 90 : c[4], ccw ? -90 : 90, false);
+		arc(path, c[0], c[1], c[2], c[3], ccw ? c[4] + 90 : c[4], ccw ? -90 : 90, false);
 	}
 	path_close(path);
 }

@@ -187,4 +187,33 @@ public class BitmapTest extends android.test.InstrumentationTestCase {
 		drawable.draw(new Canvas(target));
 		assertEquals(0xffff0000, target.getPixel(1, 1));
 	}
+
+	// images hold premultiplied words: a translucent pixel comes back from a PNG as it went in
+	public void testTranslucentPixelSurvivesAPng() throws Exception {
+		Bitmap bitmap = Bitmap.createBitmap(2, 1, Bitmap.Config.ARGB_8888);
+		bitmap.setPixel(0, 0, 0x80406080);
+		bitmap.setPixel(1, 0, 0xff102030);
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out));
+		byte[] png = out.toByteArray();
+		Bitmap back = BitmapFactory.decodeByteArray(png, 0, png.length);
+		int want = bitmap.getPixel(0, 0), got = back.getPixel(0, 0);
+		for (int shift = 0; shift < 32; shift += 8)
+			assertTrue(Integer.toHexString(got) + ", want " + Integer.toHexString(want),
+			           Math.abs((want >> shift & 0xff) - (got >> shift & 0xff)) <= 2);
+		assertEquals(0x80, got >>> 24);
+		assertEquals(Integer.toHexString(0xff102030), Integer.toHexString(back.getPixel(1, 0)));
+	}
+
+	// a negative stride lays the rows out bottom up
+	public void testPixelsWithANegativeStride() {
+		Bitmap bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
+		int[] rows = {0xff000003, 0xff000004, 0xff000001, 0xff000002};
+		bitmap.setPixels(rows, 2, -2, 0, 0, 2, 2);
+		assertEquals(Integer.toHexString(0xff000001), Integer.toHexString(bitmap.getPixel(0, 0)));
+		assertEquals(Integer.toHexString(0xff000004), Integer.toHexString(bitmap.getPixel(1, 1)));
+		int[] back = new int[4];
+		bitmap.getPixels(back, 2, -2, 0, 0, 2, 2);
+		assertTrue(Arrays.toString(back), Arrays.equals(rows, back));
+	}
 }

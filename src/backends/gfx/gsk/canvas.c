@@ -323,6 +323,15 @@ static void paint_draw(GtkSnapshot *snapshot, const struct AndroidPaint *paint, 
 		solid.color = c.a > 0 ? (GdkRGBA){c.r / c.a, c.g / c.a, c.b / c.a, c.a} : (GdkRGBA){0};
 		paint = &solid;
 	}
+	// SkPaint's fill-and-stroke covers the union once: both passes opaque, faded as one
+	if (paint->is_fill && paint->is_stroke && !paint->shader && paint->color.alpha < 1 && paint->blend == GFX_BLEND_SRC_OVER) {
+		struct AndroidPaint opaque = *paint;
+		opaque.color.alpha = 1;
+		gtk_snapshot_push_opacity(snapshot, paint->color.alpha);
+		gsk_composite(snapshot, opaque.blend, &(struct gsk_draw){fn, data, &opaque, bounds}, &opaque.color);
+		gtk_snapshot_pop(snapshot);
+		return;
+	}
 	gsk_composite(snapshot, paint->blend, &(struct gsk_draw){fn, data, paint, bounds}, paint->shader ? NULL : &paint->color);
 }
 
@@ -652,9 +661,11 @@ void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, floa
 
 void gfx_canvas_draw_round_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float rx, float ry, const struct gfx_paint *gfx_paint)
 {
+	float r[8] = {rx, ry, rx, ry, rx, ry, rx, ry};
+	path_fit_round_rect_radii(right - left, bottom - top, r); // GSK draws the radii it is given
 	GskRoundedRect rect = {
 		.bounds = GRAPHENE_RECT_INIT(left, top, right - left, bottom - top),
-		.corner = {{rx, ry}, {rx, ry}, {rx, ry}, {rx, ry}},
+		.corner = {{r[0], r[1]}, {r[2], r[3]}, {r[4], r[5]}, {r[6], r[7]}},
 	};
 	paint_round_rect(GTK_SNAPSHOT(canvas), &rect, (const struct AndroidPaint *)gfx_paint);
 }

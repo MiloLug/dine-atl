@@ -3,6 +3,7 @@ package dev.dine.framework.graphics;
 import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Region;
 import junit.framework.TestCase;
 
 public class PathTest extends TestCase {
@@ -152,5 +153,47 @@ public class PathTest extends TestCase {
 		assertBounds(path, 5, 5, 15, 5);
 		path.setLastPoint(20, 8);
 		assertBounds(path, 5, 5, 20, 8);
+	}
+
+	private static RectF bounds(Path path) {
+		RectF bounds = new RectF();
+		path.computeBounds(bounds, true);
+		return bounds;
+	}
+
+	// SkRRect squares a corner that has one radius of 0
+	public void testRoundRectWithOneZeroRadiusIsTheRect() {
+		Path path = new Path();
+		path.addRoundRect(new RectF(0, 0, 40, 20), 8, 0, Path.Direction.CW);
+		Region region = new Region();
+		region.setPath(path, new Region(0, 0, 40, 20));
+		assertEquals(new Region(0, 0, 40, 20), region);
+	}
+
+	// SkPath::arcTo takes the sweep mod 360: a full turn adds the start point only
+	public void testArcToTakesItsSweepModulo360() {
+		Path quarter = new Path();
+		quarter.arcTo(new RectF(0, 0, 20, 20), 0, 450, true);
+		RectF b = bounds(quarter);
+		assertEquals(10f, b.left, 0.01f);
+		assertEquals(10f, b.top, 0.01f);
+		assertEquals(20f, b.right, 0.01f);
+		assertEquals(20f, b.bottom, 0.01f);
+		Path turn = new Path();
+		turn.arcTo(new RectF(0, 0, 20, 20), 0, 360, true);
+		assertEquals(new RectF(20, 10, 20, 10), bounds(turn));
+	}
+
+	// an oval that adds nothing leaves the contour before it open
+	public void testAnInvertedOvalDoesNotCloseTheContourBeforeIt() {
+		Path path = new Path();
+		path.moveTo(0, 0);
+		path.lineTo(10, 0);
+		path.lineTo(10, 10);
+		path.addCircle(5, 5, -1, Path.Direction.CW);
+		path.lineTo(0, 20); // goes on from 10,10; after a close it would start at 0,0
+		Region region = new Region();
+		region.setPath(path, new Region(0, 0, 20, 20));
+		assertTrue(region.contains(2, 12));
 	}
 }

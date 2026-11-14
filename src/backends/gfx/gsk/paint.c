@@ -93,18 +93,15 @@ enum gfx_paint_style gfx_paint_get_style(const struct gfx_paint *gfx_paint)
 
 void gfx_paint_set_stroke_width(struct gfx_paint *gfx_paint, float width)
 {
-	/* TODO: width of 0 means "single pixel width, no matter what",
-	 * meanwile width of 1 should care about scaling;
-	 * The problem is, 0 is not a valid value for gsk_stroke_set_line_width,
-	 * so at least change it to 1 for now */
-	if (width == 0)
-		width = 1;
-	gsk_stroke_set_line_width(((struct AndroidPaint *)gfx_paint)->gsk_stroke, width);
+	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
+	paint->stroke_width = width;
+	// 0 is no width for gsk_stroke_set_line_width; a hairline should also stay one pixel under a scale
+	gsk_stroke_set_line_width(paint->gsk_stroke, width > 0 ? width : 1);
 }
 
 float gfx_paint_get_stroke_width(const struct gfx_paint *gfx_paint)
 {
-	return gsk_stroke_get_line_width(((const struct AndroidPaint *)gfx_paint)->gsk_stroke);
+	return ((const struct AndroidPaint *)gfx_paint)->stroke_width;
 }
 
 // GskLineCap and GskLineJoin share Android's ordinals

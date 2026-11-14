@@ -234,10 +234,8 @@ static void rasterize(struct region *dst, const struct edges *edges, struct regi
 			bool in = (even_odd ? winding & 1 : winding != 0) != inverse;
 			float end = i < n ? crossings[i].x : INFINITY;
 			if (in && end > start) {
-				int left = start == -INFINITY ? area.left : round_edge(start);
-				int right = end == INFINITY ? area.right : round_edge(end);
-				left = left < area.left ? area.left : left;
-				right = right > area.right ? area.right : right;
+				// clamped as floats: an edge may lie beyond an int's range
+				int left = round_edge(fmaxf(start, area.left)), right = round_edge(fminf(end, area.right));
 				if (right > left) {
 					if (n_spans && spans[n_spans * 2 - 1] >= left) // touches the last one
 						spans[n_spans * 2 - 1] = right;
@@ -272,17 +270,17 @@ void region_set_path(struct region *dst, const struct gfx_path *path, const stru
 	} else {
 		struct gfx_rect bounds;
 		path_bounds(path, &bounds);
+		if (clip) { // in floats first: the clip brings a far-reaching path into an int's range
+			struct region_rect c = region_bounds(clip);
+			bounds.left = fmaxf(bounds.left, c.left);
+			bounds.top = fmaxf(bounds.top, c.top);
+			bounds.right = fminf(bounds.right, c.right);
+			bounds.bottom = fminf(bounds.bottom, c.bottom);
+		}
 		const float limit = 0x1p30f; // beyond an int a cast is undefined
 		if (!(fabsf(bounds.left) < limit && fabsf(bounds.top) < limit && fabsf(bounds.right) < limit && fabsf(bounds.bottom) < limit))
 			goto done;
 		area = (struct region_rect){floorf(bounds.left), floorf(bounds.top), ceilf(bounds.right), ceilf(bounds.bottom)};
-		if (clip) {
-			struct region_rect c = region_bounds(clip);
-			area.left = area.left > c.left ? area.left : c.left;
-			area.top = area.top > c.top ? area.top : c.top;
-			area.right = area.right < c.right ? area.right : c.right;
-			area.bottom = area.bottom < c.bottom ? area.bottom : c.bottom;
-		}
 	}
 	if (area.right <= area.left || area.bottom <= area.top)
 		goto done;
@@ -312,8 +310,8 @@ void region_translate(struct region *region, int dx, int dy)
 void region_scale(struct region *dst, const struct region *src, float scale)
 {
 	struct region out = {0}, rect = {0};
-	for (size_t i = 0; scale > 0 && i < region_rect_count(src); i++) {
-		struct region_rect r = region_rect_at(src, i);
+	for (size_t i = 0, band = 0; scale > 0 && i < region_rect_count(src); i++) {
+		struct region_rect r = region_rect_at(src, i, &band);
 		region_set_rect(&rect, roundf(r.left * scale), roundf(r.top * scale), roundf(r.right * scale), roundf(r.bottom * scale));
 		region_op(&out, &out, &rect, REGION_UNION);
 	}
@@ -334,12 +332,11 @@ size_t region_rect_count(const struct region *region)
 	return region->n_spans;
 }
 
-struct region_rect region_rect_at(const struct region *region, size_t i)
+struct region_rect region_rect_at(const struct region *region, size_t i, size_t *band)
 {
-	size_t b = 0;
-	while (i >= region->bands[b].first + region->bands[b].count)
-		b++;
-	return (struct region_rect){region->xs[i * 2], region->bands[b].top, region->xs[i * 2 + 1], region->bands[b].bottom};
+	while (i >= region->bands[*band].first + region->bands[*band].count)
+		(*band)++;
+	return (struct region_rect){region->xs[i * 2], region->bands[*band].top, region->xs[i * 2 + 1], region->bands[*band].bottom};
 }
 
 struct region_rect region_bounds(const struct region *region)

@@ -1,6 +1,7 @@
 package dev.dine.framework.graphics;
 
 import android.atl.ATLCanvas;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -56,5 +57,24 @@ public class CanvasTest extends TestCase {
 		circle.addCircle(200, 200, 10, Path.Direction.CW);
 		assertTrue(canvas.clipPath(circle, Region.Op.DIFFERENCE));
 		assertEquals(new Rect(0, 0, 100, 50), canvas.getClipBounds());
+	}
+
+	private static int strokedArcPixel(float sweep, int x, int y) {
+		Bitmap bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
+		Paint stroke = new Paint();
+		stroke.setStyle(Paint.Style.STROKE);
+		stroke.setStrokeWidth(2);
+		stroke.setColor(0xff00ff00);
+		new Canvas(bitmap).drawArc(2, 2, 14, 14, 0, sweep, true, stroke);
+		return bitmap.getPixel(x, y);
+	}
+
+	// a sweep of 360 degrees or more is the whole oval: no line to the center, as SkCanvas::drawArc
+	public void testFullSweepArcIsTheOval() {
+		assertTrue("a wedge strokes its radius", strokedArcPixel(350, 11, 8) != 0);
+		for (float sweep : new float[] {360, -360, 400}) {
+			assertEquals("radius, sweep " + sweep, 0, strokedArcPixel(sweep, 11, 8));
+			assertTrue("rim, sweep " + sweep, strokedArcPixel(sweep, 13, 8) != 0);
+		}
 	}
 }

@@ -13,7 +13,6 @@ struct gfx_paint *gfx_paint_new(void)
 {
 	struct gfx_paint *paint = calloc(1, sizeof(*paint));
 	paint->color = 0xFF000000;
-	paint->stroke_width = 1;
 	paint->text_size = 12;
 	paint->filter = GFX_NO_COLOR_FILTER;
 	paint->blend = GFX_BLEND_SRC_OVER;

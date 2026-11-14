@@ -40,8 +40,9 @@ void region_scale(struct region *dst, const struct region *src, float scale);
 
 bool region_is_empty(const struct region *region);
 size_t region_rect_count(const struct region *region);
-/* rects top to bottom, left to right */
-struct region_rect region_rect_at(const struct region *region, size_t i);
+/* Rects top to bottom, left to right. *band keeps the walk's place: 0 at the start of a pass over
+ * rising i. */
+struct region_rect region_rect_at(const struct region *region, size_t i, size_t *band);
 /* all 0 when empty */
 struct region_rect region_bounds(const struct region *region);
 bool region_contains(const struct region *region, int x, int y);

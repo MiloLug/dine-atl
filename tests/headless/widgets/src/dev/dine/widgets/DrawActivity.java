@@ -288,6 +288,39 @@ public class DrawActivity extends Activity {
 		rgb.setPixel(0, 0, 0xff1c0000);
 		if (rgb.getPixel(0, 0) != 0xff180000)
 			wrong.append(" rgb565 ").append(Integer.toHexString(rgb.getPixel(0, 0)));
+		// SkRRect shrinks a corner's two radii alike: a radius past half the height gives round ends
+		Bitmap pill = Bitmap.createBitmap(200, 40, Bitmap.Config.ARGB_8888);
+		new Canvas(pill).drawRoundRect(0, 0, 200, 40, 40, 40, paint(0xffff0000));
+		if (pill.getPixel(12, 4) != 0xffff0000 || pill.getPixel(2, 2) != 0)
+			wrong.append(" pill ").append(Integer.toHexString(pill.getPixel(12, 4)));
+		// stops of different alpha blend premultiplied: white that fades out stays white
+		Bitmap fade = Bitmap.createBitmap(16, 1, Bitmap.Config.ARGB_8888);
+		fade.eraseColor(0xffffffff);
+		Paint fading = new Paint();
+		fading.setShader(new LinearGradient(0, 0, 16, 0, 0xffffffff, 0x00000000, Shader.TileMode.CLAMP));
+		new Canvas(fade).drawRect(0, 0, 16, 1, fading);
+		if ((fade.getPixel(8, 0) & 0xff) < 0xf8)
+			wrong.append(" fade ").append(Integer.toHexString(fade.getPixel(8, 0)));
+		// Skia's miter limit is 4: a sharper join is beveled
+		Bitmap spike = Bitmap.createBitmap(32, 64, Bitmap.Config.ARGB_8888);
+		Paint stroke = paint(0xffff0000);
+		stroke.setStyle(Paint.Style.STROKE);
+		stroke.setStrokeWidth(4);
+		Path corner = new Path();
+		corner.moveTo(8, 60);
+		corner.lineTo(16, 10);
+		corner.lineTo(24, 60);
+		new Canvas(spike).drawPath(corner, stroke);
+		if (spike.getPixel(16, 3) != 0)
+			wrong.append(" miter");
+		// SkPaint's fill-and-stroke covers the union once
+		Bitmap both = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888);
+		Paint fillAndStroke = paint(0x80ff0000);
+		fillAndStroke.setStyle(Paint.Style.FILL_AND_STROKE);
+		fillAndStroke.setStrokeWidth(8);
+		new Canvas(both).drawRect(8, 8, 24, 24, fillAndStroke);
+		if (both.getPixel(10, 10) != both.getPixel(16, 16))
+			wrong.append(" fill-and-stroke ").append(Integer.toHexString(both.getPixel(10, 10)));
 		Log.i(TAG, "widgets pixels" + (wrong.length() > 0 ? wrong : " ok"));
 
 		Bitmap big = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);

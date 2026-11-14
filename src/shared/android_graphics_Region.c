@@ -73,8 +73,8 @@ JNIEXPORT jintArray JNICALL Java_android_graphics_Region_nativeGetBoundaryPathRe
 	if (!array || !count)
 		return array;
 	jint *values = (*env)->GetIntArrayElements(env, array, NULL);
-	for (size_t i = 0; i < count; i++) {
-		struct region_rect r = region_rect_at(_PTR(region), i);
+	for (size_t i = 0, band = 0; i < count; i++) {
+		struct region_rect r = region_rect_at(_PTR(region), i, &band);
 		values[i * 4 + 0] = r.left;
 		values[i * 4 + 1] = r.top;
 		values[i * 4 + 2] = r.right;
@@ -154,8 +154,8 @@ JNIEXPORT jstring JNICALL Java_android_graphics_Region_nativeToString(JNIEnv *en
 	// "Region(" and ")", each rect 4 ints of up to 11 characters, 3 commas, brackets and a space
 	char *text = malloc(9 + count * 51);
 	size_t n = sprintf(text, "Region(");
-	for (size_t i = 0; i < count; i++) {
-		struct region_rect r = region_rect_at(_PTR(region), i);
+	for (size_t i = 0, band = 0; i < count; i++) {
+		struct region_rect r = region_rect_at(_PTR(region), i, &band);
 		n += sprintf(text + n, "%s[%d,%d,%d,%d]", i ? " " : "", r.left, r.top, r.right, r.bottom);
 	}
 	sprintf(text + n, ")");

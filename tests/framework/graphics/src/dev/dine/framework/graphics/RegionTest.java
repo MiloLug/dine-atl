@@ -285,4 +285,32 @@ public class RegionTest extends TestCase {
 		assertEquals(new Rect(20, 0, 30, 10), r);
 		assertFalse(iterator.next(r));
 	}
+
+	// the clip bounds the rows to fill, however far the path reaches
+	public void testSetPathOfAHugePathInAClip() {
+		Path path = new Path();
+		path.addRect(-2e9f, -2e9f, 2e9f, 2e9f, Path.Direction.CW);
+		Region region = new Region();
+		assertTrue(region.setPath(path, new Region(0, 0, 10, 10)));
+		assertEquals(new Region(0, 0, 10, 10), region);
+	}
+
+	public void testOpsOfTwoOperandsKeepTheirOrder() {
+		Region left = new Region(0, 0, 10, 10), right = new Region(5, 0, 20, 10), out = new Region();
+		assertTrue(out.op(left, right, Region.Op.DIFFERENCE));
+		assertEquals(new Region(0, 0, 5, 10), out);
+		assertTrue(out.op(left, right, Region.Op.REVERSE_DIFFERENCE));
+		assertEquals(new Region(10, 0, 20, 10), out);
+		assertTrue(out.op(new Rect(0, 0, 10, 10), right, Region.Op.DIFFERENCE));
+		assertEquals(new Region(0, 0, 5, 10), out);
+		assertTrue(out.op(new Rect(0, 0, 10, 10), right, Region.Op.REVERSE_DIFFERENCE));
+		assertEquals(new Region(10, 0, 20, 10), out);
+		Path a = new Path(), b = new Path();
+		a.addRect(0, 0, 10, 10, Path.Direction.CW);
+		b.addRect(5, 0, 20, 10, Path.Direction.CW);
+		assertTrue(a.op(b, Path.Op.DIFFERENCE));
+		RectF bounds = new RectF();
+		a.computeBounds(bounds, true);
+		assertEquals(new RectF(0, 0, 5, 10), bounds);
+	}
 }

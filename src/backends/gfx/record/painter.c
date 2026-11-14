@@ -33,11 +33,15 @@ static void paint_white(cairo_t *cr, const void *unused)
 
 static void add_stops(cairo_pattern_t *pattern, const struct gfx_shader *shader)
 {
-	for (size_t i = 0; i < shader->n; i++) {
-		uint32_t c = shader->colors[i];
-		float position = shader->positions ? shader->positions[i] : shader->n > 1 ? (float)i / (shader->n - 1) : 0;
-		cairo_pattern_add_color_stop_rgba(pattern, position, ((c >> 16) & 0xff) / 255., ((c >> 8) & 0xff) / 255., (c & 0xff) / 255., (c >> 24) / 255.);
+	uint32_t *colors;
+	float *positions;
+	size_t n = shader_ramp(shader, &colors, &positions); // cairo blends a pair of stops as given
+	for (size_t i = 0; i < n; i++) {
+		uint32_t c = colors[i];
+		cairo_pattern_add_color_stop_rgba(pattern, positions[i], ((c >> 16) & 0xff) / 255., ((c >> 8) & 0xff) / 255., (c & 0xff) / 255., (c >> 24) / 255.);
 	}
+	free(colors);
+	free(positions);
 }
 
 // the color at t of the shader's stops
@@ -46,18 +50,16 @@ static void stop_color(const struct gfx_shader *shader, float t, double rgba[4])
 	size_t i = 0;
 	float p0 = 0, p1 = 0;
 	while (i + 1 < shader->n) {
-		p0 = shader->positions ? shader->positions[i] : (float)i / (shader->n - 1);
-		p1 = shader->positions ? shader->positions[i + 1] : (float)(i + 1) / (shader->n - 1);
+		p0 = shader->positions[i];
+		p1 = shader->positions[i + 1];
 		if (t <= p1)
 			break;
 		i++;
 	}
-	uint32_t c0 = shader->colors[i], c1 = shader->colors[i + 1 < shader->n ? i + 1 : i];
 	float f = p1 > p0 ? fminf(1, fmaxf(0, (t - p0) / (p1 - p0))) : 0;
-	for (int k = 0; k < 4; k++) {
-		int shift = k == 3 ? 24 : 16 - k * 8;
-		rgba[k] = ((((c0 >> shift) & 0xff) * (1 - f)) + (((c1 >> shift) & 0xff) * f)) / 255.;
-	}
+	uint32_t c = shader_mix(shader->colors[i], shader->colors[i + 1 < shader->n ? i + 1 : i], f);
+	for (int k = 0; k < 4; k++)
+		rgba[k] = ((c >> (k == 3 ? 24 : 16 - k * 8)) & 0xff) / 255.;
 }
 
 // wedges of a mesh around the center, each from its start's color to its end's
@@ -147,6 +149,7 @@ static void set_stroke(cairo_t *cr, const struct gfx_paint *paint)
 {
 	// Paint.Cap and Join share cairo's order; width 0 is a hairline
 	cairo_set_line_width(cr, paint->stroke_width > 0 ? paint->stroke_width : 1);
+	cairo_set_miter_limit(cr, 4); // SkPaint's; cairo's own is 10
 	cairo_set_line_cap(cr, (cairo_line_cap_t)paint->stroke_cap);
 	cairo_set_line_join(cr, (cairo_line_join_t)paint->stroke_join);
 }
@@ -190,13 +193,23 @@ static void paint_path(cairo_t *cr, const struct gfx_paint *paint, bool even_odd
 
 static void draw_shape(cairo_t *cr, const struct op *op, void (*add)(cairo_t *cr, const struct op *op), bool even_odd)
 {
+	// SkPaint's fill-and-stroke covers the union once: the stroke replaces what the fill put under it
+	bool both = op->paint.style == GFX_PAINT_FILL_AND_STROKE;
+	if (both)
+		cairo_push_group(cr);
 	if (op->paint.style != GFX_PAINT_STROKE) {
 		add(cr, op);
 		paint_path(cr, &op->paint, even_odd, false);
 	}
 	if (op->paint.style != GFX_PAINT_FILL) {
+		if (both)
+			cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 		add(cr, op);
 		paint_path(cr, &op->paint, false, true);
+	}
+	if (both) {
+		cairo_pop_group_to_source(cr);
+		cairo_paint(cr);
 	}
 }
 

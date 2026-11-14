@@ -53,8 +53,14 @@ void shader_unref(struct gfx_shader *shader);
 /* The gradient's parameter t over a rect in its own space (the local matrix undone): 0 to 1 is one
  * period (linear: from the start point to the end; radial: from the center out to the radius). */
 void shader_t_range(const struct gfx_shader *shader, const struct gfx_rect *rect, float *t_min, float *t_max);
+/* Android's gradients blend premultiplied colors; toolkits blend a stop pair as given. */
+/* c0 to c1 at f, as ARGB */
+uint32_t shader_mix(uint32_t c0, uint32_t c1, float f);
+/* The shader's stops with every pair of different alpha cut into pieces, so a blend of the stops
+ * as given follows the premultiplied one. Returns the count; colors and positions are malloc'd. */
+size_t shader_ramp(const struct gfx_shader *shader, uint32_t **colors, float **positions);
 /* Stops for t from k0 to k1 (whole periods covering t_min..t_max) at positions 0 to 1, so a
- * backend draws REPEAT and MIRROR as a clamped gradient from k0 to k1; CLAMP: the shader's own,
+ * backend draws REPEAT and MIRROR as a clamped gradient from k0 to k1; CLAMP: shader_ramp's,
  * k0 0 and k1 1. Returns the count; colors and positions are malloc'd. */
 size_t shader_stops(const struct gfx_shader *shader, float t_min, float t_max, int *k0, int *k1, uint32_t **colors, float **positions);
 

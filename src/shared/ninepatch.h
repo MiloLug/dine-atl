@@ -12,7 +12,6 @@ struct gfx_ninepatch {
 	int n_x_divs, n_y_divs, n_colors;
 	int32_t *x_divs, *y_divs;
 	uint32_t *colors; // NINEPATCH_NO_COLOR, NINEPATCH_TRANSPARENT or the patch's one ARGB
-	int32_t padding_left, padding_top, padding_right, padding_bottom;
 };
 
 #define NINEPATCH_TRANSPARENT 0

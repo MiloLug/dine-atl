@@ -121,6 +121,43 @@ void shader_t_range(const struct gfx_shader *shader, const struct gfx_rect *rect
 
 // more periods than a screen shows only at absurd scales
 #define MAX_PERIODS 256
+// pieces a pair of stops with different alpha is cut into
+#define PREMUL_STEPS 8
+
+static float position(const struct gfx_shader *shader, size_t i)
+{
+	return shader->positions ? shader->positions[i] : shader->n > 1 ? (float)i / (shader->n - 1) : 0;
+}
+
+uint32_t shader_mix(uint32_t c0, uint32_t c1, float f)
+{
+	float a0 = c0 >> 24, a1 = c1 >> 24, a = a0 + (a1 - a0) * f;
+	uint32_t out = (uint32_t)lroundf(a) << 24;
+	for (int shift = 0; a > 0 && shift < 24; shift += 8) {
+		float premultiplied = ((c0 >> shift) & 0xff) * a0 * (1 - f) + ((c1 >> shift) & 0xff) * a1 * f;
+		out |= (uint32_t)lroundf(premultiplied / a) << shift;
+	}
+	return out;
+}
+
+size_t shader_ramp(const struct gfx_shader *shader, uint32_t **colors, float **positions)
+{
+	size_t n = 0;
+	*colors = malloc(shader->n * PREMUL_STEPS * sizeof(**colors));
+	*positions = malloc(shader->n * PREMUL_STEPS * sizeof(**positions));
+	for (size_t i = 0; i < shader->n; i++) {
+		(*colors)[n] = shader->colors[i];
+		(*positions)[n++] = position(shader, i);
+		if (i + 1 == shader->n || shader->colors[i] >> 24 == shader->colors[i + 1] >> 24)
+			continue;
+		for (int step = 1; step < PREMUL_STEPS; step++) {
+			float f = (float)step / PREMUL_STEPS;
+			(*colors)[n] = shader_mix(shader->colors[i], shader->colors[i + 1], f);
+			(*positions)[n++] = position(shader, i) + (position(shader, i + 1) - position(shader, i)) * f;
+		}
+	}
+	return n;
+}
 
 size_t shader_stops(const struct gfx_shader *shader, float t_min, float t_max, int *k0, int *k1, uint32_t **colors, float **positions)
 {
@@ -132,16 +169,21 @@ size_t shader_stops(const struct gfx_shader *shader, float t_min, float t_max, i
 		if (*k1 - *k0 > MAX_PERIODS)
 			*k1 = *k0 + MAX_PERIODS;
 	}
-	size_t periods = *k1 - *k0, n = shader->n * periods;
+	uint32_t *ramp_colors;
+	float *ramp_positions;
+	size_t ramp = shader_ramp(shader, &ramp_colors, &ramp_positions);
+	size_t periods = *k1 - *k0, n = ramp * periods;
 	*colors = malloc(n * sizeof(**colors));
 	*positions = malloc(n * sizeof(**positions));
 	for (size_t p = 0, out = 0; p < periods; p++) {
 		bool mirrored = shader->tile == SHADER_MIRROR && ((*k0 + (int)p) & 1);
-		for (size_t i = 0; i < shader->n; i++, out++) {
-			size_t j = mirrored ? shader->n - 1 - i : i;
-			(*colors)[out] = shader->colors[j];
-			(*positions)[out] = (p + (mirrored ? 1 - shader->positions[j] : shader->positions[j])) / periods;
+		for (size_t i = 0; i < ramp; i++, out++) {
+			size_t j = mirrored ? ramp - 1 - i : i;
+			(*colors)[out] = ramp_colors[j];
+			(*positions)[out] = (p + (mirrored ? 1 - ramp_positions[j] : ramp_positions[j])) / periods;
 		}
 	}
+	free(ramp_colors);
+	free(ramp_positions);
 	return n;
 }

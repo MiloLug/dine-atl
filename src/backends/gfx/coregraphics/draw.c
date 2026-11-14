@@ -105,6 +105,7 @@ static void set_stroke(CGContextRef context, const struct gfx_paint *paint)
 {
 	// Paint.Cap and Join share CGLineCap's and CGLineJoin's order; width 0 is a hairline
 	CGContextSetLineWidth(context, paint->stroke_width > 0 ? paint->stroke_width : 1);
+	CGContextSetMiterLimit(context, 4); // SkPaint's; CG's own is 10
 	CGContextSetLineCap(context, (CGLineCap)paint->stroke_cap);
 	CGContextSetLineJoin(context, (CGLineJoin)paint->stroke_join);
 }
@@ -284,6 +285,10 @@ static void stroke_path(CGContextRef context, CGPathRef path, const struct gfx_p
 
 static void draw_path(CGContextRef context, CGPathRef path, bool even_odd, const struct gfx_paint *paint, bool live)
 {
+	// SkPaint's fill-and-stroke covers the union once: the stroke replaces what the fill put under it
+	bool both = paint->style == GFX_PAINT_FILL_AND_STROKE;
+	if (both)
+		CGContextBeginTransparencyLayer(context, NULL);
 	if (paint->style != GFX_PAINT_STROKE) {
 		if (paint->shader) {
 			shade(context, path, even_odd, false, paint, live);
@@ -295,8 +300,15 @@ static void draw_path(CGContextRef context, CGPathRef path, bool even_odd, const
 				CGContextFillPath(context);
 		}
 	}
-	if (paint->style != GFX_PAINT_FILL)
+	if (paint->style != GFX_PAINT_FILL) {
+		CGContextSaveGState(context);
+		if (both)
+			CGContextSetBlendMode(context, kCGBlendModeCopy);
 		stroke_path(context, path, paint, live);
+		CGContextRestoreGState(context);
+	}
+	if (both)
+		CGContextEndTransparencyLayer(context);
 }
 
 static CGPathRef cg_path(const struct gfx_path *path, const CGAffineTransform *transform)
@@ -387,11 +399,12 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale, bo
 		break;
 	}
 	case OP_ROUND_RECT: {
-		// CG asserts on corners past the middle
-		CGFloat rx = fmin(fmax(a[4], 0), rect.size.width / 2), ry = fmin(fmax(a[5], 0), rect.size.height / 2);
-		CGPathRef path = CGPathCreateWithRoundedRect(rect, rx, ry, NULL);
+		struct gfx_path *round = path_new();
+		path_add_round_rect(round, a[0], a[1], a[2], a[3], (float[8]){a[4], a[5], a[4], a[5], a[4], a[5], a[4], a[5]}, false);
+		CGPathRef path = cg_path(round, NULL);
 		draw_path(context, path, false, &op->paint, live);
 		CGPathRelease(path);
+		path_unref(round);
 		break;
 	}
 	case OP_LINE: { // stroked whatever the style
