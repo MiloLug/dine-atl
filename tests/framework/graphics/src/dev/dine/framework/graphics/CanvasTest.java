@@ -69,6 +69,16 @@ public class CanvasTest extends TestCase {
 		return bitmap.getPixel(x, y);
 	}
 
+	// SkRRect sorts its rect
+	public void testAnInvertedRoundRectDraws() {
+		Bitmap bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
+		Paint fill = new Paint();
+		fill.setColor(0xff00ff00);
+		new Canvas(bitmap).drawRoundRect(14, 14, 2, 2, 4, 4, fill);
+		assertEquals(0xff00ff00, bitmap.getPixel(8, 8));
+		assertEquals("the corner is cut", 0, bitmap.getPixel(2, 2));
+	}
+
 	// a sweep of 360 degrees or more is the whole oval: no line to the center, as SkCanvas::drawArc
 	public void testFullSweepArcIsTheOval() {
 		assertTrue("a wedge strokes its radius", strokedArcPixel(350, 11, 8) != 0);

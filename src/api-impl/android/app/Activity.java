@@ -53,10 +53,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	Window window;
 	int requested_orientation = -1 /*ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED*/; // dummy
 	public Intent intent;
+	// who started this one for a result, until the result is on its way there
 	private Activity resultActivity;
 	private int resultRequestCode;
-	private boolean paused = false;
-	private boolean stopped = false; // set by native code: onStop ran, onRestart is due
+	private int resultCode = RESULT_CANCELED;
+	private Intent resultData;
+	// from the activities this one started for a result, until its next start hands them over;
+	// recreate() gives the list itself to the new instance, which those activities then answer
+	private ArrayList<PendingResult> pendingResults = new ArrayList<>();
+	// native code's (shared/activity.c): 0 created, 1 started, 2 resumed, 3 stopped
+	private int lifecycle;
+	private boolean windowFocus;
 	private CharSequence title = null;
 	private ActionBar action_bar;
 	private boolean title_ready; // AOSP's mTitleReady: from onPostCreate
@@ -291,7 +298,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 			fragment.onResume();
 		}
 
-		paused = false;
 		return;
 	}
 
@@ -308,7 +314,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 			fragment.onPause();
 		}
 
-		paused = true;
 		return;
 	}
 
@@ -339,6 +344,14 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		Slog.i(TAG, "- onWindowFocusChanged - yay! (hasFocus: " + hasFocus + ")");
 
 		return;
+	}
+
+	/** Called by native code: tells the activity a change of its window's focus, once. */
+	final void atlWindowFocusChanged(boolean hasFocus) {
+		if (windowFocus == hasFocus)
+			return;
+		windowFocus = hasFocus;
+		onWindowFocusChanged(hasFocus);
 	}
 
 	protected void onSaveInstanceState(Bundle outState) {
@@ -427,7 +440,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 				final Activity activity = internalCreateActivity(get_atl_loaded_app(), atl_process_app(), intent.getComponent().getClassName(), getWindow().native_window, intent);
 				activity.resultRequestCode = requestCode;
 				activity.resultActivity = this;
-				runOnUiThread(new Runnable() {
+				// posted, as Context.startActivity: Android starts no activity inside the caller's callback
+				new Handler(getMainLooper()).post(new Runnable() {
 					@Override
 					public void run() {
 						nativeStartActivity(activity);
@@ -450,9 +464,45 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public void setResult(int resultCode, Intent data) {
-		if (resultActivity != null) {
-			resultActivity.onActivityResult(resultRequestCode, resultCode, data);
+		this.resultCode = resultCode;
+		this.resultData = data;
+	}
+
+	private static final class PendingResult {
+		final int requestCode, resultCode;
+		final Intent data;
+
+		PendingResult(int requestCode, int resultCode, Intent data) {
+			this.requestCode = requestCode;
+			this.resultCode = resultCode;
+			this.data = data;
 		}
+	}
+
+	/** Marks the activity finishing; its result waits at its caller, as AOSP's
+	 * finishActivityResultsLocked leaves it. Also called by native code for an activity it closes. */
+	final void atlFinishing() {
+		finishing = true;
+		Activity caller = resultActivity;
+		resultActivity = null;
+		if (caller != null) {
+			ArrayList<PendingResult> results = caller.pendingResults;
+			synchronized (results) { // finish() comes from any thread
+				results.add(new PendingResult(resultRequestCode, resultCode, resultData));
+			}
+		}
+	}
+
+	/** Called by native code ahead of a start's lifecycle calls, where AOSP 10 delivers results. */
+	final void atlDeliverResults() {
+		PendingResult[] results;
+		ArrayList<PendingResult> pending = pendingResults;
+		synchronized (pending) {
+			results = pending.toArray(new PendingResult[0]);
+			pending.clear();
+		}
+		for (PendingResult result : results)
+			onActivityResult(result.requestCode, result.resultCode, result.data);
 	}
 
 	public void setResult(int resultCode) {
@@ -494,13 +544,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public void finish() {
-		finishing = true;
+		atlFinishing();
 		new Handler(getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
 				if (window != null && window.native_window != 0) {
-					nativeFinish(getWindow().native_window);
+					nativeFinish();
 					window.native_window = 0;
+					if (!get_atl_loaded_app().instrumented) {
+						// a message of its own: one queued by now may start the next activity
+						new Handler(getMainLooper()).post(new Runnable() {
+							@Override
+							public void run() {
+								nativeEndIfEmpty();
+							}
+						});
+					}
 				}
 			}
 		});
@@ -639,10 +698,14 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 		try {
 			/* TODO: check if this is a toplevel activity */
 			Activity activity = internalCreateActivity(get_atl_loaded_app(), atl_process_app(), this.getClass().getName(), getWindow().native_window, intent);
+			activity.resultActivity = resultActivity; // the new instance answers the caller
+			activity.resultRequestCode = resultRequestCode;
+			resultActivity = null;
+			activity.pendingResults = pendingResults;
 			new Handler().post(new Runnable() {
 				@Override
 				public void run() {
-					nativeFinish(0);
+					nativeFinish();
 					nativeStartActivity(activity);
 				}
 			});
@@ -673,7 +736,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	}
 
 	public boolean hasWindowFocus() {
-		return true; // FIXME?
+		return windowFocus;
 	}
 
 	public boolean isDestroyed() {
@@ -699,7 +762,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 
 	public void setTaskDescription(ActivityManager.TaskDescription description) {}
 
-	private native void nativeFinish(long native_window);
+	private native void nativeFinish();
+	private native void nativeEndIfEmpty();
 	public static native void nativeStartActivity(Activity activity);
 	public static native boolean nativeResumeActivity(Context context, Class<? extends Activity> activityClass, Intent intent);
 	public static native void nativeOpenURI(String uri);

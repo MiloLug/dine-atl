@@ -51,8 +51,36 @@ static void set_decor_attached(JNIEnv *env, jobject activity, bool attached)
 	(*env)->DeleteLocalRef(env, window_jobj);
 }
 
+/* Activity.lifecycle: the last of these calls the activity got. A finish() inside one of them ends
+ * the way up there, and the close takes the activity down from there. */
+enum {
+	CREATED,
+	STARTED,
+	RESUMED,
+	STOPPED, // its next start begins with onRestart
+};
+
+// onPause for a resumed activity, then onStop; nothing for one that isn't started
+static void activity_step_down(JNIEnv *env, struct atl_app *app, jobject activity)
+{
+	int lifecycle = _GET_INT_FIELD(activity, "lifecycle");
+	if (lifecycle != RESUMED && lifecycle != STARTED)
+		return;
+	if (lifecycle == RESUMED) {
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.performPause);
+		exit_on_exception(env);
+		_SET_INT_FIELD(activity, "lifecycle", STARTED);
+	}
+	windows_token_visible(env, app, activity, false); // AOSP: hidden once paused, before onStop
+
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performStop);
+	exit_on_exception(env);
+	_SET_INT_FIELD(activity, "lifecycle", STOPPED);
+}
+
 static void activity_close(JNIEnv *env, struct atl_app *app, jobject activity)
 {
+	activity_step_down(env, app, activity);
 	set_decor_attached(env, activity, false);
 	ui_window_remove_activity(app->window, get_decor_view(env, activity));
 
@@ -63,18 +91,7 @@ static void activity_close(JNIEnv *env, struct atl_app *app, jobject activity)
 
 static void activity_unfocus(JNIEnv *env, struct atl_app *app, jobject activity)
 {
-	if (!_GET_BOOL_FIELD(activity, "paused")) {
-		(*env)->CallVoidMethod(env, activity, handle_cache.activity.performPause);
-		exit_on_exception(env);
-	}
-	windows_token_visible(env, app, activity, false); // AOSP: hidden once paused, before onStop
-
-	if (!_GET_BOOL_FIELD(activity, "stopped")) {
-		_SET_BOOL_FIELD(activity, "stopped", true);
-		(*env)->CallVoidMethod(env, activity, handle_cache.activity.performStop);
-		exit_on_exception(env);
-	}
-
+	activity_step_down(env, app, activity);
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, false);
 	exit_on_exception(env);
 }
@@ -84,8 +101,12 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
-	if (_GET_BOOL_FIELD(activity, "stopped")) {
-		_SET_BOOL_FIELD(activity, "stopped", false);
+	(*env)->CallVoidMethod(env, activity, handle_cache.activity.deliverResults);
+	exit_on_exception(env);
+	if (_GET_BOOL_FIELD(activity, "finishing"))
+		return;
+
+	if (_GET_INT_FIELD(activity, "lifecycle") == STOPPED) {
 		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onRestart);
 		exit_on_exception(env);
 		if (_GET_BOOL_FIELD(activity, "finishing"))
@@ -94,6 +115,7 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performStart);
 	exit_on_exception(env);
+	_SET_INT_FIELD(activity, "lifecycle", STARTED);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
@@ -107,6 +129,7 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.performResume);
 	exit_on_exception(env);
+	_SET_INT_FIELD(activity, "lifecycle", RESUMED);
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
 
@@ -116,8 +139,10 @@ static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
 		return;
 	windows_token_visible(env, app, activity, true); // AOSP's makeVisible, after the resume
 
-	(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, true);
-	exit_on_exception(env);
+	if (app->window_ready) { // else activity_window_ready tells it, after the first layout
+		(*env)->CallVoidMethod(env, activity, handle_cache.activity.onWindowFocusChanged, true);
+		exit_on_exception(env);
+	}
 }
 
 // whether back does more than closing the last activity
@@ -157,8 +182,9 @@ void activity_window_ready(struct atl_app *app)
 {
 	JNIEnv *env = get_jni_env();
 
-	for (size_t i = app->backlog_len; i-- > 0;) {
-		(*env)->CallVoidMethod(env, app->backlog[i], handle_cache.activity.onWindowFocusChanged, true);
+	app->window_ready = true;
+	if (app->activity_current) {
+		(*env)->CallVoidMethod(env, app->activity_current, handle_cache.activity.onWindowFocusChanged, true);
 		exit_on_exception(env);
 	}
 
@@ -278,7 +304,10 @@ void activity_start(JNIEnv *env, struct atl_app *app, jobject activity_object)
 	(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.performCreate, NULL);
 	exit_on_exception(env);
 
-	if (_GET_BOOL_FIELD(activity_object, "finishing")) { // finish() was called before the activity was created
+	if (_GET_BOOL_FIELD(activity_object, "finishing")) { // finish() in onCreate: Android goes on to onDestroy
+		(*env)->CallVoidMethod(env, activity_object, handle_cache.activity.performDestroy);
+		exit_on_exception(env);
+		windows_owner_closed(env, app, activity_object);
 		return;
 	}
 
@@ -293,7 +322,7 @@ void activity_start(JNIEnv *env, struct atl_app *app, jobject activity_object)
 	activity_update_current(env, app);
 }
 
-JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobject this, jlong window)
+JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobject this)
 {
 	struct atl_app *app = atl_app_of(env, this);
 	jobject removed_activity = NULL;
@@ -305,13 +334,22 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobje
 			break;
 		}
 	}
+	// one that finished inside its own start or resume isn't the current one: it is paused and stopped
+	// here, ahead of the next one's start, as the current one is in its unfocus
+	if (removed_activity && removed_activity != app->activity_current)
+		activity_step_down(env, app, removed_activity);
 	activity_update_current(env, app);
 	if (removed_activity) {
 		activity_close(env, app, removed_activity);
 		_UNREF(removed_activity);
 	}
-	if (app->backlog_len == 0 && window)
-		loop_main_post(app->loop, close_window_if_empty, app);
+}
+
+// the close itself is a post: it ends the loop, which no dispatch may run past
+JNIEXPORT void JNICALL Java_android_app_Activity_nativeEndIfEmpty(JNIEnv *env, jobject this)
+{
+	struct atl_app *app = atl_app_of(env, this);
+	loop_main_post(app->loop, close_window_if_empty, app);
 }
 
 JNIEXPORT void JNICALL Java_android_app_Activity_nativeStartActivity(JNIEnv *env, jclass class, jobject activity)
@@ -332,6 +370,10 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity(JNIEnv
 				activities_to_close = malloc(n_to_close * sizeof(*activities_to_close));
 				memcpy(activities_to_close, &app->backlog[i + 1], n_to_close * sizeof(*activities_to_close));
 				app->backlog_len = i + 1;
+				for (size_t j = 0; j < n_to_close; j++) { // AOSP finishes them with RESULT_CANCELED
+					(*env)->CallVoidMethod(env, activities_to_close[j], handle_cache.activity.finishing);
+					exit_on_exception(env);
+				}
 			}
 
 			(*env)->CallVoidMethod(env, app->backlog[i], handle_cache.activity.onNewIntent, intent);

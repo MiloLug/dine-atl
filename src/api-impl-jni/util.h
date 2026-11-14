@@ -2,6 +2,7 @@
 #define _UTILS_H_
 
 #include <jni.h>
+#include <stdbool.h>
 
 #include "defines.h"
 #include "handle_cache.h"
@@ -31,6 +32,9 @@ struct loop_main *prepare_main_looper(JNIEnv *env);
 /* For an exception thrown into C code where Android's main loop would see it: the thread's uncaught
  * handler gets it and the process ends, as an Android app's does. Returns only when none is pending. */
 void exit_on_exception(JNIEnv *env);
+/* After a call into app code that may throw without ending the app (notes/decisions.md): prints a
+ * pending exception under a line the test instruments look for, clears it and returns true. */
+bool clear_app_exception(JNIEnv *env);
 
 /* we don't (currently?) install the headers for liblog */
 typedef enum {

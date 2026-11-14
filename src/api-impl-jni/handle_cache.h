@@ -15,6 +15,8 @@ struct handle_cache {
 		jmethodID performPause;
 		jmethodID onBackPressed;
 		jmethodID onNewIntent;
+		jmethodID finishing;
+		jmethodID deliverResults;
 	} activity;
 	struct {
 		jclass class;

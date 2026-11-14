@@ -195,26 +195,34 @@ void path_add_oval(struct gfx_path *path, float left, float top, float right, fl
 
 void path_fit_round_rect_radii(float width, float height, float r[8])
 {
-	for (int i = 0; i < 8; i++)
-		r[i] = fmaxf(r[i], 0);
+	// a corner with a radius of 0 or less is square, and takes no room from its neighbours
+	for (int i = 0; i < 8; i += 2)
+		if (r[i] <= 0 || r[i + 1] <= 0)
+			r[i] = r[i + 1] = 0;
 	// radii that don't fit a side shrink, all by one factor
 	float scale = 1;
 	const float sums[4][2] = {{r[0] + r[2], width}, {r[4] + r[6], width}, {r[1] + r[7], height}, {r[3] + r[5], height}};
 	for (int i = 0; i < 4; i++)
 		if (sums[i][0] > sums[i][1])
 			scale = fminf(scale, sums[i][1] / sums[i][0]);
-	for (int i = 0; i < 8; i += 2) {
-		// a corner with one radius of 0 is square
-		bool square = !r[i] || !r[i + 1];
-		r[i] = square ? 0 : r[i] * scale;
-		r[i + 1] = square ? 0 : r[i + 1] * scale;
-	}
+	for (int i = 0; i < 8; i++)
+		r[i] *= scale;
 }
 
 void path_add_round_rect(struct gfx_path *path, float left, float top, float right, float bottom, const float radii[8], bool ccw)
 {
 	float r[8];
 	memcpy(r, radii, sizeof(r));
+	if (left > right) { // SkRRect sorts its rect
+		float swap = left;
+		left = right;
+		right = swap;
+	}
+	if (top > bottom) {
+		float swap = top;
+		top = bottom;
+		bottom = swap;
+	}
 	path_fit_round_rect_radii(right - left, bottom - top, r);
 	// each corner's oval and the angle where a clockwise walk enters it
 	const float corners[4][5] = {

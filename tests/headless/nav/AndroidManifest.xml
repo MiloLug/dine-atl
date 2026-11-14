@@ -12,5 +12,11 @@
 		<activity android:name=".ImmersiveActivity"/>
 		<activity android:name=".ResultActivity"/>
 		<activity android:name=".AnswerActivity"/>
+		<activity android:name=".LoginActivity"/>
+		<activity android:name=".FinishRootActivity"/>
+		<activity android:name=".FinishingActivity"/>
+		<activity android:name=".HandoverActivity"/>
+		<activity android:name=".EndActivity"/>
+		<activity android:name=".BackStartActivity"/>
 	</application>
 </manifest>

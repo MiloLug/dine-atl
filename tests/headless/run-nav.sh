@@ -10,7 +10,10 @@
 # checked by the next command's lines coming first. Then the status bar and IME edges reach the
 # content, and a size command lays the window out again; then ImmersiveActivity's bar flags; then
 # A and B at 480 dpi, where the insets' and the size's dp are 3 px each and the spans come back in
-# dp; last, ResultActivity starts AnswerActivity for a result from inside a tap and gets it once.
+# dp; then results: an activity started for one from inside a tap and from the caller's onCreate, its
+# result or Back's RESULT_CANCELED handed over once before the caller restarts; an activity that
+# finishes inside its own onCreate, onStart or onResume; the only activity finishing and starting the
+# next; last, an activity started and one finished while the task is in the back.
 # Usage: run-nav.sh <headless build dir> <nav.apk>
 set -euo pipefail
 
@@ -123,23 +126,67 @@ send "size 200 100"
 expect "nav: B insets 60 30 60 30 0 30 0 30 0 0 0 30" "host: exclusion left - right -" "nav: B size 600x300"
 stop
 
-# R starts S for a result inside the tap's dispatch. Android hands the result over after S's onPause,
-# ATL at setResult: only that it comes once before R resumes is checked, not where
+# R starts S for a result from a tap. S sets a result twice and finishes: R gets the last one once,
+# as Android 10 hands it over, while still stopped. Back in S gives RESULT_CANCELED.
 start ResultActivity
+r_resumes=("nav: R onRestart" "nav: R onStart" "nav: R insets $none" "nav: R onResume")
+s_starts=("nav: S onCreate" "nav: S onStart" "nav: S insets $none" "nav: S onResume")
 expect "nav: R onCreate" "nav: R onStart" "$a_frame" "nav: R insets $none" "nav: R onResume"
 send "tap ask"
-expect "nav: R onPause" "nav: R onStop" "nav: S onCreate" "nav: S onStart" "nav: S insets $none" "nav: S onResume"
+expect "nav: R onPause" "nav: R onStop" "${s_starts[@]}"
 send "tap answer"
-results=0
-for want in "nav: S onPause" "nav: S onStop" "nav: R onRestart" "nav: R onStart" "nav: R insets $none" "nav: R onResume"; do
-  next
-  if [[ $REPLY == "nav: R result 7 -1 yes" ]]; then
-    results=$((results + 1))
-    next
-  fi
-  [[ $REPLY == "$want" ]] || fail "got \"$REPLY\", want \"$want\""
-done
-((results == 1)) || fail "no \"nav: R result 7 -1 yes\" before R resumed"
-expect "nav: S onDestroy"
+expect "nav: S onPause" "nav: S onStop" "nav: R result 7 -1 yes" "${r_resumes[@]}" "nav: S onDestroy"
+send "tap ask"
+expect "nav: R onPause" "nav: R onStop" "${s_starts[@]}"
+send back
+expect "nav: S onPause" "nav: S onStop" "nav: R result 7 0 null" "${r_resumes[@]}" "nav: S onDestroy"
+stop
+
+# L asks from its own onCreate: its start goes on to onResume before S's begins
+start LoginActivity
+expect "nav: L onCreate" "nav: L onStart" "$a_frame" "nav: L insets $none" "nav: L onResume" "nav: L onPause" "nav: L onStop" \
+  "${s_starts[@]}"
+send "tap answer"
+expect "nav: S onPause" "nav: S onStop" "nav: L result 7 -1 yes" "nav: L onRestart" "nav: L onStart" "nav: L insets $none" \
+  "nav: L onResume" "nav: S onDestroy"
+stop
+
+# X finishes inside onCreate, then onStart, then onResume: it gets the callbacks that pair with the
+# ones it had, and F comes back each time
+start FinishRootActivity
+f_resumes=("nav: F onRestart" "nav: F onStart" "nav: F insets $none" "nav: F onResume")
+expect "nav: F onCreate" "nav: F onStart" "$a_frame" "nav: F insets $none" "nav: F onResume"
+send "tap next"
+expect "nav: F onPause" "nav: F onStop" "nav: X onCreate" "nav: X onDestroy" "${f_resumes[@]}"
+send "tap next"
+expect "nav: F onPause" "nav: F onStop" "nav: X onCreate" "nav: X onStart" "nav: X onStop" "${f_resumes[@]}" "nav: X onDestroy"
+send "tap next"
+expect "nav: F onPause" "nav: F onStop" "nav: X onCreate" "nav: X onStart" "nav: X insets $none" "nav: X onResume" \
+  "nav: X onPause" "nav: X onStop" "${f_resumes[@]}" "nav: X onDestroy"
+stop
+
+# H, the only activity, finishes and then starts E: the app goes on although the stack was empty
+start HandoverActivity
+expect "nav: H onCreate" "nav: H onStart" "$a_frame" "nav: H insets $none" "nav: H onResume"
+send "tap go"
+expect "nav: H onPause" "nav: H onStop" "nav: H onDestroy" "nav: E onCreate" "nav: E onStart" "nav: E insets $none" "nav: E onResume"
+stop
+
+# In the back: T starts E, which is only created until the task comes to the front; then E finishes
+# there, and the front brings T back
+start BackStartActivity
+expect "nav: T onCreate" "nav: T onStart" "$a_frame" "nav: T insets $none" "nav: T onResume"
+send "tap arm"
+expect "nav: T armed"
+send home
+expect "nav: T onPause" "nav: T onStop" "host: task back host" "nav: E onCreate"
+send front
+expect "nav: E onStart" "nav: E insets $none" "nav: E onResume" "host: task front host"
+send "tap arm"
+expect "nav: E armed"
+send home
+expect "nav: E onPause" "nav: E onStop" "host: task back host" "nav: E onDestroy"
+send front
+expect "nav: T onRestart" "nav: T onStart" "nav: T insets $none" "nav: T onResume" "host: task front host"
 stop
 echo "PASS"

@@ -14,10 +14,14 @@ struct loop_main;
 struct loop_main *loop_main_prepare(void);
 /* The calling thread's main loop, NULL on any other thread. */
 struct loop_main *loop_main_current(void);
-/* Next dispatch after timeout_ms (> 0). The loop's own thread only. */
+/* Next dispatch after timeout_ms (> 0), unless a wake came since the running dispatch began. From
+ * inside a dispatch. */
 void loop_main_schedule(struct loop_main *loop, int timeout_ms);
 /* Dispatch as soon as possible. Any thread. */
 void loop_main_wake(struct loop_main *loop);
+/* From inside a dispatch: whether the loop has other work waiting (posts; on glib any ready source
+ * of the main context). True also asks for a dispatch right after that work, so the caller returns. */
+bool loop_main_yield(struct loop_main *loop);
 /* Runs fn(data) once on the loop's thread. Any thread. False, and fn never runs, for a NULL loop
  * and after loop_main_quit. */
 bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data);

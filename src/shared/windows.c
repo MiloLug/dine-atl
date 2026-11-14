@@ -55,10 +55,7 @@ static void call_window(JNIEnv *env, struct atl_subwindow *window, jmethodID met
 	va_start(args, method);
 	(*env)->CallVoidMethodV(env, java_window, method, args);
 	va_end(args);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, java_window);
 }
 

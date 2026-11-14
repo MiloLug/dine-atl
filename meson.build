@@ -287,6 +287,13 @@ else
   backend_libs += static_library('atl_loop_poll', 'src/backends/loop/poll/loop.c',
                                  dependencies: dependency('threads'))
 endif
+if loop_backend == 'glib'
+  test('loop', executable('loop-test', ['tests/loop/loop_test.c', 'src/backends/loop/glib/loop.c'],
+                          c_args: '-DLOOP_GLIB', dependencies: dependency('glib-2.0')))
+elif loop_backend == 'poll'
+  test('loop', executable('loop-test', ['tests/loop/loop_test.c', 'src/backends/loop/poll/loop.c'],
+                          dependencies: dependency('threads')))
+endif
 
 if host_backend == 'gtk'
   backend_libs += static_library('atl_host_gtk', 'src/backends/host/gtk/host.c', dependencies: dependency('gtk4'))

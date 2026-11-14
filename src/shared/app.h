@@ -45,6 +45,7 @@ struct atl_app {
 	size_t backlog_len, backlog_cap;
 	jobject activity_current;
 	bool task_front; // in the back, no activity is focused; the stack and the window stay
+	bool window_ready; // the window had its first layout: a resumed activity has window focus from then on
 	struct atl_subwindow *subwindows; // windows.c's
 	jobject token_shown;              // windows.c's: the activity whose windows show, the backlog's ref
 

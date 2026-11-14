@@ -354,6 +354,7 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 		if (d->extra_string_keys) {
 			jobject intent = _GET_OBJ_FIELD(activity_object, "intent", "Landroid/content/Intent;");
 			parse_string_extras(env, d->extra_string_keys, intent);
+			(*env)->DeleteLocalRef(env, intent);
 			g_strfreev(d->extra_string_keys);
 		}
 	}
@@ -505,9 +506,9 @@ static void start_app(GtkApplication *app, char **apks, int napks, const char *p
 
 	if (!d->apk_instrumentation_class) {
 		activity_start(env, host_app, activity_object);
-
-		g_timeout_add(10, G_SOURCE_FUNC(hacky_on_window_focus_changed_callback), env);
+		(*env)->DeleteLocalRef(env, activity_object); // GTK runs this in the base JNI frame, which never pops
 	}
+	g_timeout_add(10, G_SOURCE_FUNC(hacky_on_window_focus_changed_callback), env);
 
 	jobject input_queue_callback = g_object_get_data(G_OBJECT(window), "input_queue_callback");
 	if (input_queue_callback) {
@@ -537,7 +538,10 @@ static void open(GtkApplication *app, GFile **files, gint nfiles, const gchar *h
 		char *uri = g_file_get_uri(files[0]);
 		JNIEnv *env = get_jni_env();
 		fprintf(stderr, "opening uri over DBus: %s\n", uri);
+		(*env)->PushLocalFrame(env, 8); // GTK calls it from the base JNI frame
 		activity_start(env, host_app, atl_activity_create_main(env, host_app, d->apk_main_activity_class, uri));
+		(*env)->PopLocalFrame(env, NULL);
+		g_free(uri);
 		return;
 	}
 	if (d->package || d->uninstall) {

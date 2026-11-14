@@ -100,6 +100,18 @@ void loop_main_wake(struct loop_main *loop)
 	signal_main(loop);
 }
 
+bool loop_main_yield(struct loop_main *loop)
+{
+	pthread_mutex_lock(&loop->mutex);
+	bool waiting = loop->posts != NULL;
+	if (waiting)
+		loop->dispatch_pending = true;
+	pthread_mutex_unlock(&loop->mutex);
+	if (waiting)
+		signal_main(loop);
+	return waiting;
+}
+
 bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data)
 {
 	if (!loop)

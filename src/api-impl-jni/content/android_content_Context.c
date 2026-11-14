@@ -150,7 +150,7 @@ static gboolean on_new_endpoint(Connector1 *connector, GDBusMethodInvocation *in
 	g_free(token);
 	g_free(endpoint);
 
-	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD(_CLASS((jobject)user_data), "getApplication", "()Landroid/app/Application;"));
+	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD_OF((jobject)user_data, "getApplication", "()Landroid/app/Application;"));
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
 	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
@@ -178,7 +178,7 @@ static gboolean on_message(Connector1 *connector, GDBusMethodInvocation *invocat
 	g_variant_unref(message_variant);
 	(*env)->CallObjectMethod(env, intent, handle_cache.intent.putExtraByteArray, _JSTRING("bytesMessage"), bytesMessage);
 
-	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD(_CLASS((jobject)user_data), "getApplication", "()Landroid/app/Application;"));
+	jobject context = (*env)->CallObjectMethod(env, (jobject)user_data, _METHOD_OF((jobject)user_data, "getApplication", "()Landroid/app/Application;"));
 	(*env)->CallVoidMethod(env, context, handle_cache.context.sendBroadcast, intent);
 	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);

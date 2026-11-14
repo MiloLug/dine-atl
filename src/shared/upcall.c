@@ -58,10 +58,7 @@ void atl_upcall_view_measure(struct atl_ref *view, int width_spec, int height_sp
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->CallVoidMethod(env, (jobject)view, handle_cache.view.measure, width_spec, height_spec);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 }
 
 int atl_upcall_view_get_measured(struct atl_ref *view, bool vertical)
@@ -97,10 +94,7 @@ void atl_upcall_view_draw(struct atl_ref *view, struct gfx_canvas *canvas)
 	if (!view_obj) // collected; its free is posted
 		return;
 	(*env)->CallVoidMethod(env, view_obj, handle_cache.view.atlDraw, _INTPTR(canvas));
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, view_obj);
 }
 
@@ -116,10 +110,7 @@ static void call_observer(struct atl_ref *observer, jmethodID method)
 	if (!observer_obj)
 		return;
 	(*env)->CallVoidMethod(env, observer_obj, method);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, observer_obj);
 }
 
@@ -140,11 +131,8 @@ bool atl_upcall_dialog_result(struct atl_ref *dialog, int which)
 	if (!dialog_obj) // collected after its close
 		return false;
 	bool drawn = (*env)->CallBooleanMethod(env, dialog_obj, handle_cache.dialog.atlDialogResult, which);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
+	if (clear_app_exception(env))
 		drawn = false;
-	}
 	(*env)->DeleteLocalRef(env, dialog_obj);
 	return drawn;
 }
@@ -157,9 +145,6 @@ void atl_upcall_click(struct atl_ref *view)
 		return;
 	if ((*env)->CallBooleanMethod(env, view_obj, handle_cache.view.isClickable))
 		(*env)->CallBooleanMethod(env, view_obj, handle_cache.view.performClick);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, view_obj);
 }

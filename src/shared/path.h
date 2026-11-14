@@ -57,8 +57,8 @@ void path_arc_to(struct gfx_path *path, float left, float top, float right, floa
 void path_add_arc(struct gfx_path *path, float left, float top, float right, float bottom, float start, float sweep);
 void path_add_rect(struct gfx_path *path, float left, float top, float right, float bottom, bool ccw);
 void path_add_oval(struct gfx_path *path, float left, float top, float right, float bottom, bool ccw);
-/* SkRRect's radii for a rect of this size, in place: none below 0, a corner with one radius of 0
- * square, and radii that don't fit a side shrunk, all by one factor. */
+/* SkRRect's radii for a rect of this size (not negative), in place: a corner with a radius of 0 or
+ * less is square, then radii that don't fit a side shrink, all by one factor. */
 void path_fit_round_rect_radii(float width, float height, float radii[8]);
 /* radii: x, y of the top left, top right, bottom right and bottom left corners */
 void path_add_round_rect(struct gfx_path *path, float left, float top, float right, float bottom, const float radii[8], bool ccw);

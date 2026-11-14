@@ -62,6 +62,7 @@ public class Instrumentation {
 			Constructor<? extends Instrumentation> constructor = cls.getConstructor();
 			Instrumentation i = constructor.newInstance();
 			i.app = app;
+			app.instrumented = true;
 			i.onCreate(arguments != null ? arguments.getExtras() : null);
 
 			return i;
@@ -319,11 +320,11 @@ public class Instrumentation {
 
 	/* Copyright (C) 2006 The Android Open Source Project */
 	public void waitForIdleSync() {
-		/*validateNotAppThread();
+		validateNotAppThread();
 		Idler idler = new Idler(null);
-		Looper.myLooper().myQueue().addIdleHandler(idler);
-		new Handler(Looper.myLooper()).post(new EmptyRunnable());
-		idler.waitForIdle();*/
+		Looper.getMainLooper().getQueue().addIdleHandler(idler);
+		new Handler(Looper.getMainLooper()).post(new EmptyRunnable());
+		idler.waitForIdle();
 	}
 
 	/* Copyright (C) 2006 The Android Open Source Project */

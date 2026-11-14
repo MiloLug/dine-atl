@@ -107,7 +107,8 @@ int atl_embedded_main(JNIEnv *env, const struct atl_embedded_config *config)
 		app->window_width = window.width;
 		app->window_height = window.height;
 	}
-	app->night = window.night;
+	if (!app->night) // 0: the host set none before the start (atl_nav_set_night)
+		app->night = window.night;
 	pthread_mutex_unlock(&app->insets_lock);
 	if (atl_app_prepare(env, app, (char *const[]){(char *)config->apk}, 1, NULL) < 0)
 		return exited(app, -1);

@@ -756,7 +756,10 @@ public class Window {
 		new Handler(context.getMainLooper()).post(new Runnable() {
 			@Override
 			public void run() {
-				dispatchInsets(insets_forced);
+				if (window_visible) // a window that isn't shown gets its insets with the show
+					dispatchInsets(insets_forced);
+				else
+					insets_requested = false;
 			}
 		});
 	}

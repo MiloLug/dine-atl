@@ -148,6 +148,16 @@ void exit_on_exception(JNIEnv *env)
 	exit(10);
 }
 
+bool clear_app_exception(JNIEnv *env)
+{
+	if (!(*env)->ExceptionCheck(env))
+		return false;
+	fprintf(stderr, "atl: app exception cleared:\n");
+	(*env)->ExceptionDescribe(env);
+	(*env)->ExceptionClear(env);
+	return true;
+}
+
 void extract_from_apk(struct atl_app *app, const char *path, const char *target)
 {
 	JNIEnv *env = get_jni_env();

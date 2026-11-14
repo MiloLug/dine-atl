@@ -151,7 +151,7 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1layout(JNIEnv *env, jobjec
 
 JNIEXPORT void JNICALL Java_android_view_View_getWindowVisibleDisplayFrame(JNIEnv *env, jobject this, jobject rect)
 {
-	jobject context = (*env)->CallObjectMethod(env, this, _METHOD(_CLASS(this), "getContext", "()Landroid/content/Context;"));
+	jobject context = (*env)->CallObjectMethod(env, this, _METHOD_OF(this, "getContext", "()Landroid/content/Context;"));
 	struct atl_app *app = atl_app_of(env, context);
 	(*env)->DeleteLocalRef(env, context);
 	int width, height;

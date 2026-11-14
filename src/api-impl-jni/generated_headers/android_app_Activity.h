@@ -42,10 +42,18 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeMoveTaskToBack
 /*
  * Class:     android_app_Activity
  * Method:    nativeFinish
- * Signature: (J)V
+ * Signature: ()V
  */
 JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish
-  (JNIEnv *, jobject, jlong);
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     android_app_Activity
+ * Method:    nativeEndIfEmpty
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_android_app_Activity_nativeEndIfEmpty
+  (JNIEnv *, jobject);
 
 /*
  * Class:     android_app_Activity

@@ -33,11 +33,8 @@ static jobject motion_event_new(JNIEnv *env, const struct atl_touch *touch)
 static bool call_entry(JNIEnv *env, jmethodID entry, jobject root, jobject event)
 {
 	jboolean handled = (*env)->CallStaticBooleanMethod(env, handle_cache.atl_input.class, entry, root, event);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
+	if (clear_app_exception(env))
 		return false;
-	}
 	return handled;
 }
 
@@ -84,10 +81,7 @@ void atl_upcall_scrolled(struct atl_ref *view, int x, int y)
 	if (!view_obj) // collected; its node goes with the finalizer's free
 		return;
 	(*env)->CallVoidMethod(env, view_obj, handle_cache.view.atlScrolled, x, y);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, view_obj);
 }
 
@@ -95,14 +89,6 @@ void atl_upcall_scrolled(struct atl_ref *view, int x, int y)
 static jobject view_local(JNIEnv *env, struct atl_ref *view)
 {
 	return (*env)->NewLocalRef(env, (jobject)view);
-}
-
-static void clear_exception(JNIEnv *env)
-{
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
 }
 
 void atl_upcall_edit_report(struct atl_ref *view, const struct atl_edit_report *report)
@@ -113,7 +99,7 @@ void atl_upcall_edit_report(struct atl_ref *view, const struct atl_edit_report *
 	if (view_obj) {
 		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlEdited, utf8_to_jstring(env, report->prev), report->prev_start, report->prev_end,
 		                       utf8_to_jstring(env, report->text), report->start, report->end, (jint)report->seq);
-		clear_exception(env);
+		clear_app_exception(env);
 	}
 	(*env)->PopLocalFrame(env, NULL);
 }
@@ -125,7 +111,7 @@ void atl_upcall_edit_action(struct atl_ref *view)
 	jobject view_obj = view_local(env, view);
 	if (view_obj) {
 		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlEditorAction);
-		clear_exception(env);
+		clear_app_exception(env);
 	}
 	(*env)->PopLocalFrame(env, NULL);
 }
@@ -137,7 +123,7 @@ void atl_upcall_edit_focus(struct atl_ref *view, bool focused, bool keyboard)
 	jobject view_obj = view_local(env, view);
 	if (view_obj) {
 		(*env)->CallVoidMethod(env, view_obj, handle_cache.edit_text.atlToolkitFocus, focused, keyboard);
-		clear_exception(env);
+		clear_app_exception(env);
 	}
 	(*env)->PopLocalFrame(env, NULL);
 }

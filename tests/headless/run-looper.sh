@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the looper APK (looper/, built by the superproject's tests/harness/apk.py) in the headless
 # build: it goes through the loop slot's paths and finishes, so ATL exits by itself. Exit 0 when
-# every step logged, the worker's timed wait and main's untimed one lasted their 50 ms on next to no
-# CPU time, and ATL exited 0. Usage: run-looper.sh <headless build dir> <looper.apk>
+# every step logged (the last: a layout pass ran between messages that were all due), the worker's
+# timed wait and main's untimed one lasted their 50 ms on next to no CPU time, and ATL exited 0.
+# Usage: run-looper.sh <headless build dir> <looper.apk>
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -19,7 +20,7 @@ env "${headless_env[@]}" DINE_PREFIX="$work/data" timeout 60 \
   ./android-translation-layer "$apk" -l dev/dine/looper/MainActivity -X -Xint >"$log" 2>&1 || rc=$?
 
 # The APK is unsigned: PackageParser's "no certificates" error is expected, ATL ignores it.
-for step in "worker idling" "worker woken" "worker timeout" "main woken" "worker quit" "done"; do
+for step in "worker idling" "worker woken" "worker timeout" "main woken" "worker quit" "laid out" "done"; do
   grep -q "looper $step" "$log" || fail "no \"looper $step\" (exit status $rc)"
 done
 for wait in timed untimed; do

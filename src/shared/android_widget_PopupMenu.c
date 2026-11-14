@@ -25,12 +25,9 @@ struct posted_answer {
 static void tell_java(JNIEnv *env, struct atl_menu *menu, int index)
 {
 	menu->answered = true;
-	jmethodID result = _METHOD(_CLASS(menu->popup), "atlMenuResult", "(I)V");
+	jmethodID result = _METHOD_OF(menu->popup, "atlMenuResult", "(I)V");
 	(*env)->CallVoidMethod(env, menu->popup, result, index);
-	if ((*env)->ExceptionCheck(env)) {
-		(*env)->ExceptionDescribe(env);
-		(*env)->ExceptionClear(env);
-	}
+	clear_app_exception(env);
 }
 
 // the backend's one answer: after a Java dismissal it only frees

@@ -124,11 +124,6 @@ void shader_t_range(const struct gfx_shader *shader, const struct gfx_rect *rect
 // pieces a pair of stops with different alpha is cut into
 #define PREMUL_STEPS 8
 
-static float position(const struct gfx_shader *shader, size_t i)
-{
-	return shader->positions ? shader->positions[i] : shader->n > 1 ? (float)i / (shader->n - 1) : 0;
-}
-
 uint32_t shader_mix(uint32_t c0, uint32_t c1, float f)
 {
 	float a0 = c0 >> 24, a1 = c1 >> 24, a = a0 + (a1 - a0) * f;
@@ -147,13 +142,13 @@ size_t shader_ramp(const struct gfx_shader *shader, uint32_t **colors, float **p
 	*positions = malloc(shader->n * PREMUL_STEPS * sizeof(**positions));
 	for (size_t i = 0; i < shader->n; i++) {
 		(*colors)[n] = shader->colors[i];
-		(*positions)[n++] = position(shader, i);
+		(*positions)[n++] = shader->positions[i];
 		if (i + 1 == shader->n || shader->colors[i] >> 24 == shader->colors[i + 1] >> 24)
 			continue;
 		for (int step = 1; step < PREMUL_STEPS; step++) {
 			float f = (float)step / PREMUL_STEPS;
 			(*colors)[n] = shader_mix(shader->colors[i], shader->colors[i + 1], f);
-			(*positions)[n++] = position(shader, i) + (position(shader, i + 1) - position(shader, i)) * f;
+			(*positions)[n++] = shader->positions[i] + (shader->positions[i + 1] - shader->positions[i]) * f;
 		}
 	}
 	return n;

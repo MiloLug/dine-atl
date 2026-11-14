@@ -47,7 +47,8 @@ struct post {
 struct loop_main {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
-	int64_t ready_at; // -1: no dispatch pending
+	int64_t deadline; // of the scheduled dispatch; -1: none
+	bool woken;       // dispatch as soon as possible
 	struct post *posts, *posts_tail;
 	bool quit;
 };
@@ -59,6 +60,8 @@ struct loop_main *loop_main_prepare(void)
 	struct loop_main *loop = calloc(1, sizeof(*loop));
 	pthread_mutex_init(&loop->mutex, NULL);
 	init_cond(&loop->cond);
+	loop->deadline = -1;
+	loop->woken = true;
 	current = loop;
 	return loop;
 }
@@ -71,16 +74,26 @@ struct loop_main *loop_main_current(void)
 void loop_main_schedule(struct loop_main *loop, int timeout_ms)
 {
 	pthread_mutex_lock(&loop->mutex);
-	loop->ready_at = now_ms() + timeout_ms;
+	loop->deadline = now_ms() + timeout_ms;
 	pthread_mutex_unlock(&loop->mutex);
 }
 
 void loop_main_wake(struct loop_main *loop)
 {
 	pthread_mutex_lock(&loop->mutex);
-	loop->ready_at = 0;
+	loop->woken = true;
 	pthread_cond_signal(&loop->cond);
 	pthread_mutex_unlock(&loop->mutex);
+}
+
+bool loop_main_yield(struct loop_main *loop)
+{
+	pthread_mutex_lock(&loop->mutex);
+	bool waiting = loop->posts != NULL;
+	if (waiting)
+		loop->woken = true;
+	pthread_mutex_unlock(&loop->mutex);
+	return waiting;
 }
 
 bool loop_main_post(struct loop_main *loop, void (*fn)(void *data), void *data)
@@ -108,15 +121,17 @@ void loop_main_run(struct loop_main *loop)
 {
 	pthread_mutex_lock(&loop->mutex);
 	while (!loop->quit) {
-		if (!loop->posts && (loop->ready_at < 0 || now_ms() < loop->ready_at)) {
-			wait_until(&loop->cond, &loop->mutex, loop->ready_at);
+		bool dispatch = loop->woken || (loop->deadline >= 0 && now_ms() >= loop->deadline);
+		if (!loop->posts && !dispatch) {
+			wait_until(&loop->cond, &loop->mutex, loop->deadline);
 			continue;
 		}
 		struct post *posts = loop->posts;
 		loop->posts = loop->posts_tail = NULL;
-		bool dispatch = loop->ready_at >= 0 && now_ms() >= loop->ready_at;
-		if (dispatch)
-			loop->ready_at = -1;
+		if (dispatch) {
+			loop->woken = false;
+			loop->deadline = -1;
+		}
 		pthread_mutex_unlock(&loop->mutex);
 
 		while (posts) {

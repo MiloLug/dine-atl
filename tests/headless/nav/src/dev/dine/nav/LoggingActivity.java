@@ -19,7 +19,7 @@ public abstract class LoggingActivity extends Activity {
 		this.name = name;
 	}
 
-	private void log(String callback) {
+	void log(String callback) {
 		Log.i("nav", "nav: " + name + " " + callback);
 	}
 

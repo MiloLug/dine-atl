@@ -170,6 +170,30 @@ public class PathTest extends TestCase {
 		assertEquals(new Region(0, 0, 40, 20), region);
 	}
 
+	// SkRRect squares such corners before it fits the others to the sides
+	public void testASquaredCornerTakesNoRoomFromItsNeighbour() {
+		Path path = new Path();
+		path.addRoundRect(new RectF(0, 0, 60, 40), new float[] {50, 0, 50, 30, 0, 0, 0, 0}, Path.Direction.CW);
+		Region region = new Region();
+		region.setPath(path, new Region(0, 0, 60, 40));
+		assertTrue(region.contains(20, 20));
+		assertTrue("the top left corner is square", region.contains(0, 0));
+		// outside a 50 by 30 top right corner, inside one shrunk to 30 by 18
+		assertFalse(region.contains(40, 3));
+	}
+
+	// SkRRect sorts its rect
+	public void testAnInvertedRoundRectIsTheSortedOne() {
+		Path sorted = new Path(), inverted = new Path();
+		sorted.addRoundRect(new RectF(0, 0, 60, 40), 10, 10, Path.Direction.CW);
+		inverted.addRoundRect(new RectF(60, 40, 0, 0), 10, 10, Path.Direction.CW);
+		Region clip = new Region(0, 0, 60, 40), want = new Region(), got = new Region();
+		want.setPath(sorted, clip);
+		got.setPath(inverted, clip);
+		assertFalse(want.isEmpty());
+		assertEquals(want, got);
+	}
+
 	// SkPath::arcTo takes the sweep mod 360: a full turn adds the start point only
 	public void testArcToTakesItsSweepModulo360() {
 		Path quarter = new Path();

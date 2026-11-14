@@ -2,12 +2,10 @@ package dev.dine.nav;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 
-/* R: a tap on "ask" starts S for a result, from inside the tap's dispatch (MainActivity's
- * startActivity is posted); logs the result as "nav: R result <request> <code> <answer>". */
+// R: a tap on "ask" starts S for a result; logs the result as "nav: R result <request> <code> <answer>"
 public class ResultActivity extends LoggingActivity {
 	public ResultActivity() {
 		super("R");
@@ -26,6 +24,6 @@ public class ResultActivity extends LoggingActivity {
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		Log.i("nav", "nav: R result " + requestCode + " " + resultCode + " " + (data != null ? data.getStringExtra("answer") : null));
+		log("result " + requestCode + " " + resultCode + " " + (data != null ? data.getStringExtra("answer") : null));
 	}
 }

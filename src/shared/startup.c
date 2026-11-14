@@ -318,7 +318,7 @@ jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *windo
 	app->running = true; // first: a night set during the apply posts, so none is lost
 	atl_night_apply(env, app);
 
-	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD(_CLASS(app->record), "start", "(J)Landroid/app/Application;"), _INTPTR(window));
+	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD_OF(app->record, "start", "(J)Landroid/app/Application;"), _INTPTR(window));
 	exit_on_exception(env);
 	return application;
 }

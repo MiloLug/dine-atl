@@ -58,6 +58,8 @@ public final class ATLLoadedApp {
 	public volatile Looper main_looper;
 	/** Whether a host started the app (its Application, providers, onCreate); else it is only loaded. */
 	public boolean started;
+	/** An instrumentation runs the app: it ends with that, not with its last activity. */
+	public boolean instrumented;
 	/** The app's configuration: a copy of the display's that display changes update. */
 	public final Configuration config;
 	private PackageManager package_manager;

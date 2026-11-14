@@ -5,7 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
 
-// S: a tap on "answer" sets ResultActivity's result and finishes
+// S: a tap on "answer" sets its caller's result twice, the second one to stay, and finishes
 public class AnswerActivity extends LoggingActivity {
 	public AnswerActivity() {
 		super("S");
@@ -17,6 +17,7 @@ public class AnswerActivity extends LoggingActivity {
 		((TextView)content).setText("answer");
 		content.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
+				setResult(RESULT_CANCELED);
 				setResult(RESULT_OK, new Intent().putExtra("answer", "yes"));
 				finish();
 			}

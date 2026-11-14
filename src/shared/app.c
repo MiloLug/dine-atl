@@ -29,7 +29,7 @@ static jobject group_of(JNIEnv *env, struct atl_app *app)
 
 static char *string_of(JNIEnv *env, jobject object, const char *method)
 {
-	jstring string = (*env)->CallObjectMethod(env, object, _METHOD(_CLASS(object), method, "()Ljava/lang/String;"));
+	jstring string = (*env)->CallObjectMethod(env, object, _METHOD_OF(object, method, "()Ljava/lang/String;"));
 	const char *chars = (*env)->GetStringUTFChars(env, string, NULL);
 	char *copy = strdup(chars);
 	(*env)->ReleaseStringUTFChars(env, string, chars);
@@ -73,7 +73,7 @@ void atl_app_take_attaches(JNIEnv *env, struct atl_app *app)
 
 jobject atl_app_application(JNIEnv *env, struct atl_app *app)
 {
-	return (*env)->CallObjectMethod(env, app->record, _METHOD(_CLASS(app->record), "getApplication", "()Landroid/app/Application;"));
+	return (*env)->CallObjectMethod(env, app->record, _METHOD_OF(app->record, "getApplication", "()Landroid/app/Application;"));
 }
 
 struct atl_app *atl_app_of(JNIEnv *env, jobject context)

@@ -8,16 +8,22 @@
 // also read by legacy code (Bitmap, libandroid's native_window)
 GThread *main_thread_id;
 
+static GSource *source = NULL;
+static GMutex wake_lock;
+static bool woken; // since the running dispatch began: its schedule must not undo the wake
+
 static gboolean dispatch_func(GSource *source, GSourceFunc callback, gpointer user_data)
 {
+	g_mutex_lock(&wake_lock);
+	woken = false;
 	g_source_set_ready_time(source, -1); // clear previous timeout
+	g_mutex_unlock(&wake_lock);
 	atl_upcall_looper_loop();
 	return G_SOURCE_CONTINUE;
 }
 static GSourceFuncs source_funcs = {
 	.dispatch = dispatch_func,
 };
-static GSource *source = NULL;
 
 // the gtk host runs one app; its GApplication owns the loop, so there is no run or quit
 struct loop_main {
@@ -44,13 +50,34 @@ struct loop_main *loop_main_current(void)
 
 void loop_main_schedule(struct loop_main *loop, int timeout_ms)
 {
-	g_source_set_ready_time(source, g_source_get_time(source) + timeout_ms * 1000L);
+	g_mutex_lock(&wake_lock);
+	if (!woken)
+		g_source_set_ready_time(source, g_source_get_time(source) + timeout_ms * 1000L);
+	g_mutex_unlock(&wake_lock);
 }
 
 void loop_main_wake(struct loop_main *loop)
 {
+	g_mutex_lock(&wake_lock);
+	woken = true;
 	g_source_set_ready_time(source, 0);
+	g_mutex_unlock(&wake_lock);
 	g_main_context_wakeup(NULL); // needed when called from another thread
+}
+
+static gboolean resume(gpointer user_data)
+{
+	loop_main_wake(&main_loop);
+	return G_SOURCE_REMOVE;
+}
+
+bool loop_main_yield(struct loop_main *loop)
+{
+	if (!g_main_context_pending(NULL))
+		return false;
+	// an idle: behind the posts queued so far and the sources that are ready now
+	g_idle_add(resume, NULL);
+	return true;
 }
 
 struct post {

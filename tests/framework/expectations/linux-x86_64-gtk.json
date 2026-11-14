@@ -1,1 +1,6 @@
-{}
+{
+  "dev.dine.framework.basics.LooperTest#testIdleHandlersRunAfterThePendingLayout": {
+    "expect": "fail",
+    "reason": "ATL-128: GTK lays out from its frame clock, which the loop can't see as waiting work"
+  }
+}

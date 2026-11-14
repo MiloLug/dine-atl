@@ -662,9 +662,10 @@ void gfx_canvas_draw_rect(struct gfx_canvas *canvas, float left, float top, floa
 void gfx_canvas_draw_round_rect(struct gfx_canvas *canvas, float left, float top, float right, float bottom, float rx, float ry, const struct gfx_paint *gfx_paint)
 {
 	float r[8] = {rx, ry, rx, ry, rx, ry, rx, ry};
-	path_fit_round_rect_radii(right - left, bottom - top, r); // GSK draws the radii it is given
+	float width = fabsf(right - left), height = fabsf(bottom - top); // SkRRect sorts its rect
+	path_fit_round_rect_radii(width, height, r); // GSK draws the radii it is given
 	GskRoundedRect rect = {
-		.bounds = GRAPHENE_RECT_INIT(left, top, right - left, bottom - top),
+		.bounds = GRAPHENE_RECT_INIT(fminf(left, right), fminf(top, bottom), width, height),
 		.corner = {{r[0], r[1]}, {r[2], r[3]}, {r[4], r[5]}, {r[6], r[7]}},
 	};
 	paint_round_rect(GTK_SNAPSHOT(canvas), &rect, (const struct AndroidPaint *)gfx_paint);

@@ -29,6 +29,9 @@ dev.dine.framework.basics.LifecycleCallbacksTest#testCallbacksSurroundTheLifecyc
 dev.dine.framework.basics.LocationTest#testGlobalVisibleRectClipsToParent
 dev.dine.framework.basics.LocationTest#testLocationInWindow
 dev.dine.framework.basics.LocationTest#testOffsetDescendantRect
+dev.dine.framework.basics.LooperTest#testAChainOfDueMessagesLetsLayoutRun
+dev.dine.framework.basics.LooperTest#testAViewThatKeepsInvalidatingLetsMessagesRun
+dev.dine.framework.basics.LooperTest#testIdleHandlersRunAfterThePendingLayout
 dev.dine.framework.basics.PermissionTest#testRequestIsAnsweredAfterItReturns
 dev.dine.framework.basics.RectTest#testInsetsAdd
 dev.dine.framework.basics.RectTest#testIntersect
@@ -138,6 +141,7 @@ dev.dine.framework.graphics.BlendModeTest#testPorterDuffFilterIsTheBlendModeFilt
 dev.dine.framework.graphics.BlendModeTest#testShadedTextIsFiltered
 dev.dine.framework.graphics.BlendModeTest#testShaderEdgesAsAColors
 dev.dine.framework.graphics.BlendModeTest#testStrokedText
+dev.dine.framework.graphics.CanvasTest#testAnInvertedRoundRectDraws
 dev.dine.framework.graphics.CanvasTest#testCanvasWithoutBitmap
 dev.dine.framework.graphics.CanvasTest#testCanvasWithoutBitmapClipsEverything
 dev.dine.framework.graphics.CanvasTest#testClipRectReturnsWhetherTheClipIsEmpty
@@ -198,8 +202,10 @@ dev.dine.framework.graphics.PaintTest#testStrokeCapsDraw
 dev.dine.framework.graphics.PaintTest#testStrokeJoinsDraw
 dev.dine.framework.graphics.PaintTest#testStrokeWidthStartsAtTheHairline
 dev.dine.framework.graphics.PaintTest#testTextAlignStartsLeft
+dev.dine.framework.graphics.PathTest#testASquaredCornerTakesNoRoomFromItsNeighbour
 dev.dine.framework.graphics.PathTest#testAddPathToItself
 dev.dine.framework.graphics.PathTest#testAnInvertedOvalDoesNotCloseTheContourBeforeIt
+dev.dine.framework.graphics.PathTest#testAnInvertedRoundRectIsTheSortedOne
 dev.dine.framework.graphics.PathTest#testArcToJoinsWithALine
 dev.dine.framework.graphics.PathTest#testArcToTakesItsSweepModulo360
 dev.dine.framework.graphics.PathTest#testCopyIsIndependent
@@ -303,6 +309,8 @@ dev.dine.framework.input.TouchTest#testPressedStateSelectsTheSelectorsChild
 dev.dine.framework.input.TouchTest#testSecondPointerSplitsToItsOwnTarget
 dev.dine.framework.input.TouchTest#testSiblingBeneathGetsDownTheTopOneLeaves
 dev.dine.framework.input.TouchTest#testTargetIsPinnedAtDown
+dev.dine.framework.lifecycle.FirstFocusTest#testTheFirstActivityGainsWindowFocusOnce
+dev.dine.framework.lifecycle.TaskEndTest#testTheAppGoesOnAfterItsLastActivityFinishes
 dev.dine.framework.text.EditTextTest#testEditsToTheEditableNotify
 dev.dine.framework.text.EditTextTest#testFiltersApply
 dev.dine.framework.text.EditTextTest#testGetTextIsTheEditable

@@ -11,6 +11,7 @@
 struct native_message_queue {
 	struct loop_main *main; // an Android main thread's, whose loop belongs to the platform
 	struct loop_worker *worker; // any other thread's
+	bool polled; // main: the running dispatch made its first poll
 };
 
 struct loop_main *prepare_main_looper(JNIEnv *env)
@@ -24,7 +25,7 @@ struct loop_main *prepare_main_looper(JNIEnv *env)
 
 JNIEXPORT jlong JNICALL Java_android_os_MessageQueue_nativeInit(JNIEnv *env, jclass this)
 {
-	struct native_message_queue *message_queue = malloc(sizeof(struct native_message_queue));
+	struct native_message_queue *message_queue = calloc(1, sizeof(struct native_message_queue));
 
 	message_queue->main = loop_main_current();
 	message_queue->worker = message_queue->main ? NULL : loop_worker_new();
@@ -46,10 +47,18 @@ JNIEXPORT jboolean JNICALL Java_android_os_MessageQueue_nativePollOnce(JNIEnv *e
 	struct native_message_queue *message_queue = _PTR(ptr);
 
 	if (!message_queue->worker) {
-		if (!timeout_millis)
-			return false;
-		if (timeout_millis != -1) // -1 means no more messages
+		if (!timeout_millis) {
+			/* Android polls between any two messages. Here the loop's own work (layout, frames,
+			 * input) gets its turn after each message; a dispatch's first poll goes on to the
+			 * messages, so that work can't hold them up either. */
+			if (!message_queue->polled || !loop_main_yield(message_queue->main)) {
+				message_queue->polled = true;
+				return false;
+			}
+		} else if (timeout_millis != -1) { // -1 means no more messages
 			loop_main_schedule(message_queue->main, timeout_millis);
+		}
+		message_queue->polled = false;
 		return true; // indicate that java side should return to block in the platform loop
 	}
 

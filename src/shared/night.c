@@ -18,7 +18,7 @@ void atl_night_apply(JNIEnv *env, struct atl_app *app)
 	jobjectArray activities = (*env)->NewObjectArray(env, app->backlog_len, (*env)->FindClass(env, "android/app/Activity"), NULL);
 	for (size_t i = 0; i < app->backlog_len; i++)
 		(*env)->SetObjectArrayElement(env, activities, i, app->backlog[i]);
-	(*env)->CallVoidMethod(env, app->record, _METHOD(_CLASS(app->record), "applyNight", "(I[Landroid/app/Activity;)V"), night, activities);
+	(*env)->CallVoidMethod(env, app->record, _METHOD_OF(app->record, "applyNight", "(I[Landroid/app/Activity;)V"), night, activities);
 	exit_on_exception(env);
 	(*env)->PopLocalFrame(env, NULL);
 }
