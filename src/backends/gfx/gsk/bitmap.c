@@ -84,8 +84,12 @@ void *gfx_image_encode_png(const uint32_t *words, int width, int height, size_t 
 #ifdef ATL_TEST_HOOKS
 extern GThread *main_thread_id;
 
-bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target)
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target, float scale)
 {
+	if (scale != 1) {
+		gfx_canvas_free(canvas);
+		return false;
+	}
 	GskRenderNode *node = gtk_snapshot_free_to_node(GTK_SNAPSHOT(canvas));
 	if (!node)
 		return true;
@@ -135,7 +139,7 @@ static void draw_texture(GtkSnapshot *snapshot, const struct gsk_draw *draw, enu
 	if (part == GSK_COVERAGE)
 		gtk_snapshot_append_color(snapshot, &(GdkRGBA){1, 1, 1, 1}, draw->bounds);
 	else
-		gtk_snapshot_append_texture(snapshot, (GdkTexture *)draw->data, draw->bounds);
+		gsk_append_bitmap_texture(snapshot, draw->paint->filter_bitmap, (GdkTexture *)draw->data, draw->bounds);
 }
 
 static void bitmap_paintable_snapshot(GdkPaintable *paintable, GdkSnapshot *snapshot, double width, double height)

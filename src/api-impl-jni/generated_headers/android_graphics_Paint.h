@@ -33,6 +33,10 @@ extern "C" {
 #define android_graphics_Paint_AUTO_HINTING_TEXT_FLAG 2048L
 #undef android_graphics_Paint_VERTICAL_TEXT_FLAG
 #define android_graphics_Paint_VERTICAL_TEXT_FLAG 4096L
+#undef android_graphics_Paint_HIDDEN_DEFAULT_PAINT_FLAGS
+#define android_graphics_Paint_HIDDEN_DEFAULT_PAINT_FLAGS 1282L
+#undef android_graphics_Paint_ACTIVE_FLAGS
+#define android_graphics_Paint_ACTIVE_FLAGS 58L
 /*
  * Class:     android_graphics_Paint
  * Method:    native_create
@@ -232,6 +236,22 @@ JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1get_1text_1bounds
  */
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1text_1align
   (JNIEnv *, jclass, jlong, jint);
+
+/*
+ * Class:     android_graphics_Paint
+ * Method:    native_set_filter_bitmap
+ * Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1filter_1bitmap
+  (JNIEnv *, jclass, jlong, jboolean);
+
+/*
+ * Class:     android_graphics_Paint
+ * Method:    native_get_filter_bitmap
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL Java_android_graphics_Paint_native_1get_1filter_1bitmap
+  (JNIEnv *, jclass, jlong);
 
 /*
  * Class:     android_graphics_Paint

@@ -21,12 +21,17 @@ public final class ATLTestHooks {
 		return new ATLCanvas(nativeNewViewCanvas(), width, height);
 	}
 	/* The recording drawn into target as the window would show it (gsk: on the main thread, with
-	 * the display's renderer); false: the backend draws views nowhere it can read. The canvas is
-	 * used up. */
+	 * the display's renderer; coregraphics: its replay into the pixels); false: the backend draws
+	 * views nowhere it can read (headless). The canvas is used up. */
 	public static boolean drawViewCanvas(ATLCanvas canvas, Bitmap target) {
+		return drawViewCanvas(canvas, target, 1);
+	}
+	/* The same as a layer of scale px per point draws it (coregraphics; the others draw at 1 only and
+	 * return false for another scale). */
+	public static boolean drawViewCanvas(ATLCanvas canvas, Bitmap target, float scale) {
 		long handle = canvas.handle;
 		canvas.handle = 0;
-		return nativeDrawViewCanvas(handle, target);
+		return nativeDrawViewCanvas(handle, target, scale);
 	}
 	private static native long nativeNewViewCanvas();
 
@@ -38,5 +43,5 @@ public final class ATLTestHooks {
 
 	/* atl_nav_set_night for the context's app only: Configuration.UI_MODE_NIGHT_YES or _NO. */
 	public static native void setNight(android.content.Context context, int night);
-	private static native boolean nativeDrawViewCanvas(long canvas, Bitmap target);
+	private static native boolean nativeDrawViewCanvas(long canvas, Bitmap target, float scale);
 }

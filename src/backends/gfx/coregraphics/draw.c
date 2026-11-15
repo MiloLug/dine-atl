@@ -118,16 +118,17 @@ static CGAffineTransform affine(const graphene_matrix_t *m)
 	                             graphene_matrix_get_value(m, 3, 0), graphene_matrix_get_value(m, 3, 1));
 }
 
-static void draw_shader(CGContextRef context, const struct gfx_shader *shader, bool live);
+static void draw_shader(CGContextRef context, const struct gfx_shader *shader, bool live, bool filter_bitmap);
 
 // the bitmap at 0, 0 in its pixels; CLAMP doesn't extend its edges, MIRROR repeats (ATL-48)
-static void draw_bitmap_shader(CGContextRef context, const struct gfx_shader *shader, bool live)
+static void draw_bitmap_shader(CGContextRef context, const struct gfx_shader *shader, bool live, bool filter_bitmap)
 {
 	unsigned generation;
 	CGImageRef image = cg_bitmap_image(shader->bitmap, live, &generation);
 	if (!image)
 		return;
 	CGRect tile = CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image));
+	CGContextSetInterpolationQuality(context, filter_bitmap ? kCGInterpolationLow : kCGInterpolationNone);
 	// CGContextDrawImage draws y up; the context is y down
 	CGContextTranslateCTM(context, 0, tile.size.height);
 	CGContextScaleCTM(context, 1, -1);
@@ -139,7 +140,7 @@ static void draw_bitmap_shader(CGContextRef context, const struct gfx_shader *sh
 }
 
 // a painter's: src blended onto dst per pixel, as CG has no blend mode for it
-static void draw_compose_pixels(CGContextRef context, const struct gfx_shader *shader)
+static void draw_compose_pixels(CGContextRef context, const struct gfx_shader *shader, bool filter_bitmap)
 {
 	CGAffineTransform ctm;
 	CGRect device;
@@ -151,8 +152,8 @@ static void draw_compose_pixels(CGContextRef context, const struct gfx_shader *s
 		CGContextRelease(dst);
 		return;
 	}
-	draw_shader(dst, shader->dst, true);
-	draw_shader(src, shader->src, true);
+	draw_shader(dst, shader->dst, true, filter_bitmap);
+	draw_shader(src, shader->src, true, filter_bitmap);
 	uint32_t *d = CGBitmapContextGetData(dst), *s = CGBitmapContextGetData(src);
 	size_t d_row = CGBitmapContextGetBytesPerRow(dst) / 4, s_row = CGBitmapContextGetBytesPerRow(src) / 4;
 	for (size_t y = 0; y < (size_t)device.size.height; y++)
@@ -164,38 +165,38 @@ static void draw_compose_pixels(CGContextRef context, const struct gfx_shader *s
 }
 
 // dst, then src over it with the mode's blend, in a transparency layer
-static void draw_compose(CGContextRef context, const struct gfx_shader *shader, bool live)
+static void draw_compose(CGContextRef context, const struct gfx_shader *shader, bool live, bool filter_bitmap)
 {
 	if (live && shader->dst && shader->src && !cg_blend_exact(shader->mode)) {
-		draw_compose_pixels(context, shader);
+		draw_compose_pixels(context, shader, filter_bitmap);
 		return;
 	}
 	CGContextBeginTransparencyLayer(context, NULL);
 	if (shader->dst) {
 		CGContextSaveGState(context);
-		draw_shader(context, shader->dst, live);
+		draw_shader(context, shader->dst, live, filter_bitmap);
 		CGContextRestoreGState(context);
 	}
 	int mode = shader->mode;
 	if (shader->src && mode != GFX_BLEND_DST) {
 		CGContextSaveGState(context);
 		CGContextSetBlendMode(context, cg_blend(mode));
-		draw_shader(context, shader->src, live);
+		draw_shader(context, shader->src, live, filter_bitmap);
 		CGContextRestoreGState(context);
 	}
 	CGContextEndTransparencyLayer(context);
 }
 
 // fills the clip, the shader's local matrix applied in it
-static void draw_shader(CGContextRef context, const struct gfx_shader *shader, bool live)
+static void draw_shader(CGContextRef context, const struct gfx_shader *shader, bool live, bool filter_bitmap)
 {
 	CGContextConcatCTM(context, affine(&shader->matrix));
 	if (shader->kind == SHADER_BITMAP) {
-		draw_bitmap_shader(context, shader, live);
+		draw_bitmap_shader(context, shader, live, filter_bitmap);
 		return;
 	}
 	if (shader->kind == SHADER_COMPOSE) {
-		draw_compose(context, shader, live);
+		draw_compose(context, shader, live, filter_bitmap);
 		return;
 	}
 	CGRect box = CGContextGetClipBoundingBox(context);
@@ -242,7 +243,7 @@ static void draw_filtered_shader(CGContextRef context, const struct gfx_paint *p
 	if (!offscreen)
 		return;
 	size_t width = device.size.width, height = device.size.height;
-	draw_shader(offscreen, paint->shader, live);
+	draw_shader(offscreen, paint->shader, live, paint->filter_bitmap);
 	uint32_t *pixels = CGBitmapContextGetData(offscreen);
 	size_t row_words = CGBitmapContextGetBytesPerRow(offscreen) / 4;
 	float alpha = (paint->color >> 24) / 255.f;
@@ -268,7 +269,7 @@ static void shade(CGContextRef context, CGPathRef path, bool even_odd, bool stro
 		draw_filtered_shader(context, paint, live);
 	} else {
 		CGContextSetAlpha(context, (paint->color >> 24) / 255.);
-		draw_shader(context, paint->shader, live);
+		draw_shader(context, paint->shader, live, paint->filter_bitmap);
 	}
 	CGContextRestoreGState(context);
 }
@@ -453,6 +454,7 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale, bo
 		CGRect whole = CGRectMake(dst.origin.x - a[0] * xscale, dst.origin.y - a[1] * yscale,
 		                          CGImageGetWidth(image) * xscale, CGImageGetHeight(image) * yscale);
 		CGContextClipToRect(context, dst);
+		CGContextSetInterpolationQuality(context, op->paint.filter_bitmap ? kCGInterpolationLow : kCGInterpolationNone);
 		bool mask = op->bitmap->config == GFX_BITMAP_ALPHA_8; // its alpha in the paint's shader or color
 		if (mask)
 			CGContextBeginTransparencyLayerWithRect(context, dst, NULL);
@@ -471,7 +473,7 @@ static void draw_op(CGContextRef context, const struct op *op, CGFloat scale, bo
 				draw_filtered_shader(context, &op->paint, live);
 			} else if (op->paint.shader) {
 				CGContextSetAlpha(context, (op->paint.color >> 24) / 255.);
-				draw_shader(context, op->paint.shader, live);
+				draw_shader(context, op->paint.shader, live, op->paint.filter_bitmap);
 			} else {
 				CGContextFillRect(context, dst);
 			}
@@ -607,3 +609,24 @@ void cg_list_draw(const struct gfx_canvas *list, CGContextRef context, CGFloat s
 	free(pushes);
 	CGContextRestoreGState(context);
 }
+
+#ifdef ATL_TEST_HOOKS
+/* The list as a view's layer replays it: a context in points over the target's pixels (the CTM
+ * scales by `scale`, as a layer's contentsScale does), cg_list_draw taking the list's px back. */
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target, float scale)
+{
+	CGContextRef context = CGBitmapContextCreate(target->words, target->width, target->height, 8, target->width * 4, cg_srgb(),
+	                                             kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+	if (context) {
+		cg_list_publish(canvas);
+		CGContextTranslateCTM(context, 0, target->height); // y down, as a layer's
+		CGContextScaleCTM(context, 1, -1);
+		CGContextScaleCTM(context, scale, scale);
+		cg_list_draw(canvas, context, scale);
+		CGContextRelease(context);
+		bitmap_changed(target);
+	}
+	gfx_canvas_free(canvas);
+	return context != NULL;
+}
+#endif

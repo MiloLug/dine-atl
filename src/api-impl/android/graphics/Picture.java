@@ -131,9 +131,10 @@ public class Picture {
 		}
 
 		@Override
-		public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
+		public void drawBitmap(Bitmap bitmap, Rect src, RectF dst, Paint paint) {
 			final Bitmap b = bitmap.isMutable() ? bitmap.copy(bitmap.getConfig(), false) : bitmap;
-			final Rect s = src != null ? new Rect(src) : null, d = new Rect(dst);
+			final Rect s = src != null ? new Rect(src) : null;
+			final RectF d = new RectF(dst);
 			final Paint p = copy(paint);
 			add(new Op() {
 				public void replay(Canvas canvas) {
@@ -199,8 +200,7 @@ public class Picture {
 
 		@Override
 		public void drawLines(float[] points, int offset, int count, Paint paint) {
-			if (offset + count < 0 /* overflow */ || offset + count > points.length)
-				throw new ArrayIndexOutOfBoundsException();
+			atlCheckRange(points, offset, count);
 			final float[] pts = Arrays.copyOfRange(points, offset, offset + count);
 			final Paint p = copy(paint);
 			add(new Op() {
@@ -258,7 +258,7 @@ public class Picture {
 		this.width = width;
 		this.height = height;
 		recorder = new Recorder(width, height);
-		return new Canvas(recorder, width, height);
+		return new Canvas(recorder);
 	}
 
 	public void endRecording() {

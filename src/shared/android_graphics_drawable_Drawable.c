@@ -29,6 +29,12 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorF
 	gfx_drawable_set_color_filter(_PTR(paintable_ptr), &filter);
 }
 
+JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setFilterBitmap(JNIEnv *env, jclass class, jlong paintable_ptr, jboolean filter)
+{
+	if (paintable_ptr)
+		gfx_drawable_set_filter_bitmap(_PTR(paintable_ptr), filter);
+}
+
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1invalidate(JNIEnv *env, jobject this, jlong paintable_ptr)
 {
 	if (paintable_ptr)

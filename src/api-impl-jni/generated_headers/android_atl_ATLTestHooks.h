@@ -58,10 +58,10 @@ JNIEXPORT void JNICALL Java_android_atl_ATLTestHooks_setNight
 /*
  * Class:     android_atl_ATLTestHooks
  * Method:    nativeDrawViewCanvas
- * Signature: (JLandroid/graphics/Bitmap;)Z
+ * Signature: (JLandroid/graphics/Bitmap;F)Z
  */
 JNIEXPORT jboolean JNICALL Java_android_atl_ATLTestHooks_nativeDrawViewCanvas
-  (JNIEnv *, jclass, jlong, jobject);
+  (JNIEnv *, jclass, jlong, jobject, jfloat);
 
 #ifdef __cplusplus
 }

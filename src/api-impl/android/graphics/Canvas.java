@@ -19,7 +19,6 @@ public class Canvas {
 
 	private Bitmap bitmap;
 	private long bitmap_canvas; // a Canvas(Bitmap)'s gfx canvas, which atl_canvas draws into
-	private int width, height; // a Picture's
 	private ATLCanvas atl_canvas;
 
 	public Canvas() {
@@ -34,10 +33,8 @@ public class Canvas {
 	}
 
 	// a Picture's recording: delegate keeps the calls
-	Canvas(ATLCanvas delegate, int width, int height) {
+	Canvas(ATLCanvas delegate) {
 		atl_canvas = delegate;
-		this.width = width;
-		this.height = height;
 	}
 
 	/** @hide the gfx canvas the next draw goes into, 0: none */
@@ -277,8 +274,7 @@ public class Canvas {
 	 * @param paint  The paint used to draw the bitmap (may be null)
 	 */
 	public void drawBitmap(Bitmap bitmap, float left, float top, Paint paint) {
-		Rect dst = new Rect((int)left, (int)top, (int)left + bitmap.getWidth(), (int)top + bitmap.getHeight());
-		drawBitmap(bitmap, null, dst, paint);
+		drawBitmap(bitmap, null, new RectF(left, top, left + bitmap.getWidth(), top + bitmap.getHeight()), paint);
 	}
 
 	/**
@@ -304,7 +300,8 @@ public class Canvas {
 	 * @param paint  May be null. The paint used to draw the bitmap
 	 */
 	public void drawBitmap(Bitmap bitmap, Rect src, RectF dst, Paint paint) {
-		drawBitmap(bitmap, src, new Rect((int)dst.left, (int)dst.top, (int)dst.right, (int)dst.bottom), paint);
+		throwIfCannotDraw(bitmap);
+		atl_canvas.drawBitmap(bitmap, src, dst, paint);
 	}
 
 	/**
@@ -517,11 +514,11 @@ public class Canvas {
 	}
 
 	public int getWidth() {
-		return bitmap == null ? width : bitmap.getWidth();
+		return atl_canvas.getWidth();
 	}
 
 	public int getHeight() {
-		return bitmap == null ? height : bitmap.getHeight();
+		return atl_canvas.getHeight();
 	}
 
 	public void drawColor(int color) {
@@ -531,7 +528,7 @@ public class Canvas {
 	}
 
 	public void drawARGB(int a, int r, int g, int b) {
-		Log.w("Canvas", "STUB: drawARGB(" + a + ", " + r + ", " + g + ", " + b + ")");
+		drawColor(Color.argb(a, r, g, b));
 	}
 
 	public int saveLayer(RectF bounds, Paint paint, int flags) {
@@ -572,7 +569,7 @@ public class Canvas {
 	}
 
 	public void drawOval(RectF oval, Paint paint) {
-		drawRoundRect(oval, oval.width() / 2, oval.height() / 2, paint);
+		drawOval(oval.left, oval.top, oval.right, oval.bottom, paint);
 	}
 
 	public void drawColor(int color, PorterDuff.Mode mode) {
@@ -671,18 +668,39 @@ public class Canvas {
 		restore();
 	}
 
+	/* As Skia draws it (SkDraw::drawPoints): a hairline point is one device pixel, a wide one a square
+	 * of the stroke width, a circle with a round cap; the paint's style is taken as fill. */
 	public void drawPoint(float x, float y, Paint paint) {
-		Log.w("Canvas", "STUB: drawPoint");
+		Paint fill = new Paint(paint);
+		fill.setStyle(Paint.Style.FILL);
+		float width = paint.getStrokeWidth();
+		if (width == 0) {
+			float[] device = {x, y};
+			Matrix matrix = getMatrix(), inverse = new Matrix();
+			matrix.mapPoints(device);
+			if (!matrix.invert(inverse) || Float.isNaN(device[0]) || Float.isNaN(device[1]))
+				return;
+			float left = (float)Math.floor(device[0]), top = (float)Math.floor(device[1]);
+			int count = save();
+			concat(inverse);
+			drawRect(left, top, left + 1, top + 1, fill);
+			restoreToCount(count);
+		} else if (paint.getStrokeCap() == Paint.Cap.ROUND) {
+			drawCircle(x, y, width / 2, fill);
+		} else {
+			drawRect(x - width / 2, y - width / 2, x + width / 2, y + width / 2, fill);
+		}
 	}
 
 	public void drawPoints(float[] pts, Paint paint) {
-		drawPoints(pts, 0, pts.length / 2, paint);
+		drawPoints(pts, 0, pts.length, paint);
 	}
 
+	// count: values, two to a point
 	public void drawPoints(float[] pts, int offset, int count, Paint paint) {
-		for (int i = offset; i < count; i++) {
-			drawPoint(pts[i * 2], pts[i * 2 + 1], paint);
-		}
+		ATLCanvas.atlCheckRange(pts, offset, count);
+		for (int i = offset; i + 1 < offset + count; i += 2)
+			drawPoint(pts[i], pts[i + 1], paint);
 	}
 
 	public boolean quickReject(float left, float top, float right, float bottom, EdgeType edgeType) {

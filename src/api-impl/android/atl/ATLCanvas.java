@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/BaseCanvas.java at android-security-10.0.0_r75,
+ * Apache License 2.0; see doc/AOSP.md.
+ */
 package android.atl;
 
 import android.graphics.*;
@@ -15,8 +20,13 @@ public class ATLCanvas extends DisplayListCanvas {
 	private Stack<Matrix> state_stack = new Stack<>();
 	// per save level, the clip's bounds in device space, as Android's clip queries answer from them
 	private Stack<RectF> clip_stack = new Stack<>();
+	private int width, height; // of what it draws into
 
+	// a draw with no paint is Skia's default one, which samples a scaled bitmap at the nearest texel
 	private static Paint default_paint = new Paint();
+	static {
+		default_paint.setFilterBitmap(false);
+	}
 
 	private static long nativePaint(Paint paint) {
 		return (paint != null ? paint : default_paint).getNativeInstance();
@@ -34,10 +44,22 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	// a new target of this size: the save stack goes, the clip is the whole target
 	public void atlReset(int width, int height) {
+		this.width = width;
+		this.height = height;
 		state_stack.clear();
 		state_stack.push(new Matrix());
 		clip_stack.clear();
 		clip_stack.push(new RectF(0, 0, width, height));
+	}
+
+	@Override
+	public int getWidth() {
+		return width;
+	}
+
+	@Override
+	public int getHeight() {
+		return height;
 	}
 
 	@Override
@@ -160,12 +182,17 @@ public class ATLCanvas extends DisplayListCanvas {
 
 	@Override
 	public void drawBitmap(Bitmap bitmap, Rect src, Rect dst, Paint paint) {
+		drawBitmap(bitmap, src, new RectF(dst), paint);
+	}
+
+	@Override
+	public void drawBitmap(Bitmap bitmap, Rect src, RectF dst, Paint paint) {
 		throwIfCannotDraw(bitmap);
 		long native_paint = nativePaint(paint);
 		if (src == null)
-			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, 0, 0, -1, -1, native_paint);
+			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, false, 0, 0, 0, 0, native_paint);
 		else
-			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, src.left, src.top, src.right, src.bottom, native_paint);
+			native_drawBitmap(handle, bitmap.getNativeInstance(), dst.left, dst.top, dst.right, dst.bottom, true, src.left, src.top, src.right, src.bottom, native_paint);
 	}
 
 	@Override
@@ -198,10 +225,16 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_drawLine(handle, startX, startY, stopX, stopY, nativePaint(paint));
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project */
+	/** @hide drawLines' range check */
+	public static void atlCheckRange(float[] points, int offset, int count) {
+		if ((offset | count) < 0 || offset > points.length - count)
+			throw new ArrayIndexOutOfBoundsException();
+	}
+
 	@Override
 	public void drawLines(float[] points, int offset, int count, Paint paint) {
-		if (offset + count < 0 /* overflow */ || offset + count > points.length)
-			throw new ArrayIndexOutOfBoundsException();
+		atlCheckRange(points, offset, count);
 		native_drawLines(handle, points, offset, count, nativePaint(paint));
 	}
 
@@ -210,14 +243,18 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_drawRoundRect(handle, left, top, right, bottom, rx, ry, nativePaint(paint));
 	}
 
+	// Skia draws no circle of a radius of 0 or less; the round rect below would draw a square
 	@Override
 	public void drawCircle(float cx, float cy, float radius, Paint paint) {
-		drawRoundRect(cx - radius, cy - radius, cx + radius, cy + radius, radius, radius, paint);
+		if (radius > 0)
+			drawRoundRect(cx - radius, cy - radius, cx + radius, cy + radius, radius, radius, paint);
 	}
 
+	// the backends sort the rect, not the radii taken from it
 	@Override
 	public void drawOval(float left, float top, float right, float bottom, Paint paint) {
-		drawRoundRect(left, top, right, bottom, (right - left) / 2, (bottom - top) / 2, paint);
+		float width = Math.abs(right - left), height = Math.abs(bottom - top);
+		drawRoundRect(left, top, right, bottom, width / 2, height / 2, paint);
 	}
 
 	@Override
@@ -230,8 +267,8 @@ public class ATLCanvas extends DisplayListCanvas {
 		native_drawDrawable(handle, drawable.paintable, width, height);
 	}
 
-	// src_right -1: the whole bitmap
-	protected native void native_drawBitmap(long handle, long bitmap, int left, int top, int right, int bottom, int src_left, int src_top, int src_right, int src_bottom, long paint);
+	// has_src false: the whole bitmap
+	protected native void native_drawBitmap(long handle, long bitmap, float left, float top, float right, float bottom, boolean has_src, int src_left, int src_top, int src_right, int src_bottom, long paint);
 	protected native void native_drawRect(long handle, float left, float top, float right, float bottom, long paint);
 	protected native void native_drawPath(long handle, long path, boolean even_odd, long paint);
 	protected native void native_drawArc(long handle, float left, float top, float right, float bottom, float start, float sweep, boolean use_center, long paint);

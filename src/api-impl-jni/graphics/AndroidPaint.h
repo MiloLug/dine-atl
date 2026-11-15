@@ -21,6 +21,7 @@ struct AndroidPaint {
 	struct gfx_shader *shader; // held
 	enum gfx_blend blend;
 	float stroke_width; // Paint's own: 0 is the hairline, which gsk_stroke holds as 1
+	bool filter_bitmap : 1; // bilinear sampling of a scaled bitmap, else nearest
 	bool is_fill : 1;
 	bool is_stroke : 1;
 	bool use_color_filter : 1;

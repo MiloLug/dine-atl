@@ -75,6 +75,88 @@ public class PaintTest extends TestCase {
 		assertEquals(Paint.Align.LEFT, paint.getTextAlign());
 	}
 
+	// AOSP: FILTER_BITMAP_FLAG is set on every new or reset Paint, whatever flags it is given
+	public void testBitmapFilterIsOnByDefault() {
+		assertTrue(new Paint().isFilterBitmap());
+		assertTrue(new Paint(0).isFilterBitmap());
+		assertTrue(new Paint(Paint.ANTI_ALIAS_FLAG).isFilterBitmap());
+		Paint paint = new Paint();
+		paint.setFilterBitmap(false);
+		assertFalse(paint.isFilterBitmap());
+		assertEquals(0, paint.getFlags() & Paint.FILTER_BITMAP_FLAG);
+		assertFalse(new Paint(paint).isFilterBitmap());
+		paint.reset();
+		assertTrue(paint.isFilterBitmap());
+		assertEquals(Paint.FILTER_BITMAP_FLAG, paint.getFlags() & Paint.FILTER_BITMAP_FLAG);
+		paint.setFlags(0);
+		assertFalse(paint.isFilterBitmap());
+		paint.setFlags(Paint.FILTER_BITMAP_FLAG);
+		assertTrue(paint.isFilterBitmap());
+		Paint set = new Paint();
+		set.setFilterBitmap(false);
+		set.set(paint);
+		assertTrue(set.isFilterBitmap());
+		paint.setFilterBitmap(false);
+		set.set(paint); // a copy follows its source
+		assertFalse(set.isFilterBitmap());
+		assertFalse(new Paint(paint).isFilterBitmap());
+	}
+
+	// AOSP's HIDDEN_DEFAULT_PAINT_FLAGS: kerning, embedded bitmap text and bitmap filtering, on every new Paint
+	public void testANewPaintReportsTheHiddenDefaultFlags() {
+		int hidden = Paint.DEV_KERN_TEXT_FLAG | Paint.EMBEDDED_BITMAP_TEXT_FLAG | Paint.FILTER_BITMAP_FLAG;
+		assertEquals(hidden, new Paint().getFlags());
+		assertEquals(hidden | Paint.ANTI_ALIAS_FLAG, new Paint(Paint.ANTI_ALIAS_FLAG).getFlags());
+		Paint paint = new Paint(Paint.DITHER_FLAG);
+		assertEquals(hidden | Paint.DITHER_FLAG, paint.getFlags());
+		assertEquals(hidden | Paint.DITHER_FLAG, new Paint(paint).getFlags());
+		paint.setFlags(Paint.UNDERLINE_TEXT_FLAG);
+		assertEquals(Paint.UNDERLINE_TEXT_FLAG, paint.getFlags());
+		paint.reset();
+		assertEquals(hidden, paint.getFlags());
+		Paint set = new Paint(Paint.ANTI_ALIAS_FLAG);
+		set.set(new Paint());
+		assertEquals(hidden, set.getFlags());
+	}
+
+	/* AOSP: ANTI_ALIAS_FLAG is no hidden default, and isAntiAlias reads the flag setAntiAlias and
+	 * setFlags set. ATL's backends antialias whatever it says. */
+	public void testAntiAliasIsTheFlag() {
+		Paint paint = new Paint();
+		assertFalse(paint.isAntiAlias());
+		paint.setAntiAlias(true);
+		assertTrue(paint.isAntiAlias());
+		assertEquals(Paint.ANTI_ALIAS_FLAG, paint.getFlags() & Paint.ANTI_ALIAS_FLAG);
+		assertTrue(new Paint(paint).isAntiAlias());
+		assertTrue(new Paint(Paint.ANTI_ALIAS_FLAG).isAntiAlias());
+		paint.setAntiAlias(false);
+		assertFalse(paint.isAntiAlias());
+		paint.setFlags(Paint.ANTI_ALIAS_FLAG);
+		assertTrue(paint.isAntiAlias());
+		paint.reset();
+		assertFalse(paint.isAntiAlias());
+	}
+
+	public void testLetterSpacingIsWhatWasSet() {
+		Paint paint = new Paint();
+		assertEquals(0f, paint.getLetterSpacing());
+		paint.setLetterSpacing(0.25f);
+		assertEquals(0.25f, paint.getLetterSpacing());
+		assertEquals(0.25f, new Paint(paint).getLetterSpacing());
+		paint.reset();
+		assertEquals(0f, paint.getLetterSpacing());
+	}
+
+	// AOSP's reset ends with setFlags(HIDDEN_DEFAULT_PAINT_FLAGS): whatever the flags were
+	public void testResetRestoresTheHiddenDefaultFlags() {
+		Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+		paint.setFlags(0);
+		assertEquals(0, paint.getFlags() & Paint.FILTER_BITMAP_FLAG);
+		paint.reset();
+		assertTrue(paint.isFilterBitmap());
+		assertEquals(Paint.FILTER_BITMAP_FLAG, paint.getFlags() & Paint.FILTER_BITMAP_FLAG);
+	}
+
 	// 0 is Android's hairline, and what a new Paint holds
 	public void testStrokeWidthStartsAtTheHairline() {
 		Paint paint = new Paint();
@@ -149,5 +231,7 @@ public class PaintTest extends TestCase {
 		assertEquals(Integer.toHexString(bitmap.getPixel(16, 16)), Integer.toHexString(bitmap.getPixel(10, 10)));
 		assertEquals(Integer.toHexString(bitmap.getPixel(16, 16)), Integer.toHexString(bitmap.getPixel(5, 16)));
 		assertEquals(0, bitmap.getPixel(2, 16));
+		assertEquals(0x80, alpha(bitmap, 16, 16)); // inside the fill
+		assertEquals(0x80, alpha(bitmap, 5, 16)); // on the stroke band
 	}
 }

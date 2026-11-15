@@ -143,6 +143,7 @@ void gsk_painter_draw_node(struct gsk_painter *painter, GskRenderNode *node)
 struct bitmap_op {
 	const struct gfx_bitmap *bitmap;
 	struct gfx_rect src, dst;
+	bool filter_bitmap;
 	float alpha;
 	const struct gfx_color_filter *filter;
 	uint32_t color;
@@ -151,7 +152,7 @@ struct bitmap_op {
 static void draw_bitmap_op(cairo_t *cr, const void *data)
 {
 	const struct bitmap_op *op = data;
-	cpainter_draw_bitmap(cr, op->bitmap, &op->src, &op->dst, op->alpha, op->filter, op->color, NULL);
+	cpainter_draw_bitmap(cr, op->bitmap, &op->src, &op->dst, op->filter_bitmap, op->alpha, op->filter, op->color, NULL);
 }
 
 static void cover_bitmap_op(cairo_t *cr, const void *data)
@@ -173,7 +174,7 @@ void gsk_painter_draw_bitmap(struct gsk_painter *painter, struct gfx_bitmap *bit
 {
 	struct gfx_bitmap *own = bitmap == painter->cairo.bitmap ? bitmap_snapshot(bitmap) : NULL;
 	struct bitmap_op op = {own ? own : bitmap, src ? *src : (struct gfx_rect){0, 0, bitmap->width, bitmap->height}, *dst,
-	                       paint->color.alpha, &paint->filter, argb_of(&paint->color)};
+	                       paint->filter_bitmap, paint->color.alpha, &paint->filter, argb_of(&paint->color)};
 	cpainter_draw(&painter->cairo, &painter->matrix, paint->blend, draw_bitmap_op, cover_bitmap_op, &op, dst);
 	if (own)
 		gfx_bitmap_unref(own);

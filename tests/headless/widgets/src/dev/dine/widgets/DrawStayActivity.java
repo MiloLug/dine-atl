@@ -15,8 +15,10 @@ import android.widget.TextView;
 
 /* DrawActivity for a look on the phone: it stays, and a bar then redraws itself for 2 s and logs how
  * many draws ran, which the display's frame rate bounds. It also logs Paint's widths and line
- * spacing beside a TextView's measured size for the same texts, and how long 1000 measureText
- * calls take, and draws 50 times into a bitmap an ImageView shows while the view redraws it. */
+ * spacing beside a TextView's measured size for the same texts and compares them (a label as wide as
+ * the Paint, digits of one width, a width the font cache gives again after it restarted), and how
+ * long 1000 measureText calls take, and draws 50 times into a bitmap an ImageView shows while the
+ * view redraws it. */
 public class DrawStayActivity extends DrawActivity {
 	private static class SpinView extends View {
 		private final Paint paint = new Paint();
@@ -42,7 +44,10 @@ public class DrawStayActivity extends DrawActivity {
 		}
 	}
 
+	private static final int WIDTH_TOLERANCE = 2; // px, as TextViewTest's label against a Paint
+
 	private void logMetrics() {
+		StringBuilder wrong = new StringBuilder();
 		String[] texts = {"Hello world", "The quick brown fox", "0123456789", "WWWWW iiiii"};
 		for (int sp : new int[] {14, 18}) {
 			for (String text : texts) {
@@ -52,10 +57,31 @@ public class DrawStayActivity extends DrawActivity {
 				label.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
 				Paint paint = new Paint();
 				paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, getResources().getDisplayMetrics()));
-				Log.i(TAG, "widgets metric \"" + text + "\" " + sp + "sp paint " + (int)Math.ceil(paint.measureText(text)) + " " + paint.getFontMetrics(null)
+				int width = (int)Math.ceil(paint.measureText(text));
+				Log.i(TAG, "widgets metric \"" + text + "\" " + sp + "sp paint " + width + " " + paint.getFontMetrics(null)
 				               + " label " + label.getMeasuredWidth() + "x" + label.getMeasuredHeight());
+				if (Math.abs(label.getMeasuredWidth() - width) > WIDTH_TOLERANCE)
+					wrong.append(" \"").append(text).append("\" ").append(sp).append("sp label ").append(label.getMeasuredWidth()).append(" paint ").append(width);
 			}
 		}
+		// Roboto's digits share one width, and the sans font here has them tabular
+		Paint digits = new Paint();
+		digits.setTextSize(40);
+		if (digits.measureText("1111") != digits.measureText("0000"))
+			wrong.append(" digits 1111 ").append(digits.measureText("1111")).append(" 0000 ").append(digits.measureText("0000"));
+		// a font the cache dropped when it filled up comes back as it was: the other sizes must outnumber
+		// coregraphics/text.c's fonts[64]
+		Paint again = new Paint();
+		again.setTextSize(33);
+		float first = again.measureText("The quick brown fox");
+		for (int size = 1; size <= 200; size++) {
+			Paint other = new Paint();
+			other.setTextSize(50 + size);
+			other.measureText("The quick brown fox");
+		}
+		if (again.measureText("The quick brown fox") != first)
+			wrong.append(" font cache ").append(first).append(" then ").append(again.measureText("The quick brown fox"));
+		Log.i(TAG, "widgets metrics" + (wrong.length() > 0 ? " failed" + wrong : " ok"));
 	}
 
 	private void logMeasureTime() {

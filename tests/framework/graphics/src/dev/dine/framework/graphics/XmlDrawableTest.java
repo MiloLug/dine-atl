@@ -99,9 +99,13 @@ public class XmlDrawableTest extends android.test.InstrumentationTestCase {
 		Drawable selector = resources().getDrawable(R.drawable.animated_selector);
 		assertTrue(selector instanceof AnimatedStateListDrawable);
 		assertEquals(idle(), ((ColorDrawable)selector.getCurrent()).getColor());
-		assertTrue(resources().getDrawable(R.drawable.spinner) instanceof AnimatedRotateDrawable);
+		Drawable spinner = resources().getDrawable(R.drawable.spinner);
+		assertTrue(spinner instanceof AnimatedRotateDrawable);
+		assertEquals(idle(), draw(spinner, 10).getPixel(5, 5));
 		Drawable fade = resources().getDrawable(R.drawable.fade);
 		assertTrue(fade instanceof TransitionDrawable);
 		assertEquals(2, ((TransitionDrawable)fade).getNumberOfLayers());
+		int shown = draw(fade, 10).getPixel(5, 5); // a layer's color, whichever one ATL's TransitionDrawable shows
+		assertTrue(Integer.toHexString(shown), shown == idle() || shown == resources().getColor(R.color.pressed));
 	}
 }

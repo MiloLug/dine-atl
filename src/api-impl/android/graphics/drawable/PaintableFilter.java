@@ -6,8 +6,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 
 /* A bitmap or nine-patch drawable's color filter and tint, on its native drawable as AOSP's draws
- * put them on the paint: an explicit color filter wins over the tint. The gfx slot takes a
- * PorterDuff filter only; any other ColorFilter draws unfiltered. */
+ * put them on the paint: an explicit color filter wins over the tint. */
 final class PaintableFilter {
 	ColorFilter colorFilter;
 	ColorStateList tint;

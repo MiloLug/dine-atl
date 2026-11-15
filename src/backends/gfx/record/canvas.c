@@ -277,7 +277,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		struct ninepatch_slice *slices;
 		size_t n = ninepatch_slices(drawable->ninepatch, gfx_bitmap_get_width(drawable->bitmap), gfx_bitmap_get_height(drawable->bitmap), width, height, &slices);
 		for (size_t i = 0; i < n; i++) {
-			struct gfx_paint paint = {.color = slices[i].color, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER};
+			struct gfx_paint paint = {.color = slices[i].color, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER, .filter_bitmap = true};
 			if (slices[i].color == NINEPATCH_NO_COLOR) {
 				paint.color = 0xff000000;
 				gfx_canvas_draw_bitmap(canvas, drawable->bitmap, &slices[i].src, &slices[i].dst, &paint);
@@ -287,7 +287,7 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 		}
 		free(slices);
 	} else if (drawable->bitmap) {
-		struct gfx_paint opaque = {.color = 0xff000000, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER};
+		struct gfx_paint opaque = {.color = 0xff000000, .filter = drawable->filter, .blend = GFX_BLEND_SRC_OVER, .filter_bitmap = drawable->filter_bitmap};
 		gfx_canvas_draw_bitmap(canvas, drawable->bitmap, NULL, &(struct gfx_rect){0, 0, width, height}, &opaque);
 	} else if (!drawable->drawable_ref && drawable->selected) {
 		gfx_canvas_draw_drawable(canvas, drawable->selected, width, height);
@@ -295,13 +295,6 @@ void gfx_canvas_draw_drawable(struct gfx_canvas *canvas, struct gfx_drawable *dr
 }
 
 #ifdef ATL_TEST_HOOKS
-// a list is only dumped, never drawn
-bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target)
-{
-	gfx_canvas_free(canvas);
-	return false;
-}
-
 static const char *const style_names[] = {"fill", "stroke", "fill_and_stroke"};
 static const char *const family_names[] = {"", " serif", " mono"};
 
@@ -521,6 +514,8 @@ void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out)
 			print_filter(out, &op->paint.filter);
 			if (op->paint.blend != GFX_BLEND_SRC_OVER)
 				fprintf(out, " blend %d", op->paint.blend);
+			if (!op->paint.filter_bitmap)
+				fputs(" nearest", out);
 			break;
 		case OP_PATH:
 		case OP_CLIP_PATH:

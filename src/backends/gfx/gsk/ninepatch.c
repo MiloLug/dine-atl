@@ -99,6 +99,13 @@ struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struc
 	return (struct gfx_drawable *)ninepatch;
 }
 
+void gfx_drawable_set_filter_bitmap(struct gfx_drawable *drawable, bool filter)
+{
+	struct gfx_paint *paint = gsk_bitmap_drawable_filter(GDK_PAINTABLE(drawable)); // a nine-patch always filters
+	if (paint)
+		gfx_paint_set_filter_bitmap(paint, filter);
+}
+
 void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *color_filter)
 {
 	struct gfx_paint *filter = NINEPATCH_IS_PAINTABLE(drawable) ? NINEPATCH_PAINTABLE(drawable)->filter : gsk_bitmap_drawable_filter(GDK_PAINTABLE(drawable));

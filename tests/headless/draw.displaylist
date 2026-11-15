@@ -13,7 +13,7 @@ displaylist:   unclip 1
 displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
-displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000 nearest
 displaylist:   rect 0,140 10,150 #ff00ff00 fill blend 0
 displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
 displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic
@@ -74,7 +74,7 @@ displaylist:   unclip 1
 displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
-displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000 nearest
 displaylist:   rect 0,140 10,150 #ff00ff00 fill blend 0
 displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
 displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic
@@ -131,7 +131,7 @@ displaylist:   unclip 1
 displaylist:   clip 220,10 240,30 difference
 displaylist:   rect 210,0 250,40 #ff0000ff fill
 displaylist:   unclip 1
-displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000
+displaylist:   bitmap 64x64 src 0,0 64,64 dst 260,0 324,64 #ff000000 nearest
 displaylist:   rect 0,140 10,150 #ff00ff00 fill blend 0
 displaylist:   text "Dine bold" 10,190 #ff000000 fill size 30 bold
 displaylist:   text "serif italic" 10,230 #ff000000 fill size 30 serif italic

@@ -50,10 +50,11 @@ void cpainter_filter_surface(cairo_surface_t *surface, const struct gfx_color_fi
 /* What draw() draws, at the coverage cover() gives, onto the current target in mode: Skia's
  * lerp(d, mode(s, d), coverage) per pixel. */
 void cpainter_draw_in_mode(cairo_t *cr, enum gfx_blend mode, cpainter_draw_fn draw, cpainter_draw_fn cover, const void *data);
-/* src (NULL: all) of the bitmap into dst at alpha, then through filter (Skia's order); an ALPHA_8
- * bitmap is a mask of shader (a pattern in the current user space) at alpha, or of color (Color's
- * ARGB) without one. A bitmap drawn into the painter's own takes a snapshot first (bitmap_snapshot). */
-void cpainter_draw_bitmap(cairo_t *cr, const struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst,
+/* src (NULL: all) of the bitmap into dst, sampled bilinearly (filter_bitmap) or at the nearest
+ * texel, at alpha, then through filter (Skia's order); an ALPHA_8 bitmap is a mask of shader (a
+ * pattern in the current user space) at alpha, or of color (Color's ARGB) without one. A bitmap
+ * drawn into the painter's own takes a snapshot first (bitmap_snapshot). */
+void cpainter_draw_bitmap(cairo_t *cr, const struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, bool filter_bitmap,
                           float alpha, const struct gfx_color_filter *filter, uint32_t color, cairo_pattern_t *shader);
 cairo_surface_t *cpainter_bitmap_surface(const struct gfx_bitmap *bitmap); // over its words
 

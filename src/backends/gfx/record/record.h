@@ -23,6 +23,7 @@ struct gfx_paint {
 	int font_style; // GFX_FONT_BOLD, GFX_FONT_ITALIC
 	struct gfx_color_filter filter;
 	enum gfx_blend blend;
+	bool filter_bitmap; // bilinear sampling of a scaled bitmap, else nearest
 	struct gfx_shader *shader; // held: a copy of the struct takes a ref (record_paint_copy)
 };
 
@@ -31,6 +32,7 @@ struct gfx_drawable {
 	struct gfx_bitmap *bitmap;     // a BitmapDrawable's or NinePatchDrawable's, held
 	struct gfx_ninepatch *ninepatch; // a NinePatchDrawable's, owned
 	struct gfx_color_filter filter; // over the bitmap
+	bool filter_bitmap;             // bilinear sampling of the bitmap, else nearest
 	atomic_int refs;
 	struct gfx_drawable *selected; // a container's child (neither of the above), held
 };

@@ -1,6 +1,8 @@
 package dev.dine.widgets;
 
 import android.app.Activity;
+import android.atl.ATLCanvas;
+import android.atl.ATLTestHooks;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -41,9 +43,11 @@ import android.widget.ImageView;
 
 /* A view drawn through Canvas, text, a Layout, paths, arcs, gradients, a layer and a nine-patch
  * included, for run-draw.sh: headless compares its display lists with draw.displaylist, gtk draws
- * it. It redraws after invalidate(), not after a layout at the same size, and after showing again
+ * it. It redraws after invalidate(), not after a layout at the same size (gtk does: ATL-131), and after showing again
  * from INVISIBLE with an invalidate() while hidden; then it finishes. Beside it, a view scrolled by
- * 10 px keeps its selector background in place. */
+ * 10 px keeps its selector background in place. onCreate also logs what the bitmap canvases and the
+ * view's own replay (a recording read back through ATLTestHooks: gtk's GSK, the phone's CoreGraphics)
+ * draw: `widgets pixels`, `blend`, `layers` and `view pixels` are `ok` or name what read wrong. */
 public class DrawActivity extends Activity {
 	static final String TAG = "widgets";
 	protected FrameLayout root;
@@ -96,6 +100,7 @@ public class DrawActivity extends Activity {
 			canvas.drawRect(210, 0, 250, 40, blue);
 			canvas.restore();
 			canvas.drawBitmap(photo, null, new Rect(260, 0, 324, 64), null);
+			canvas.drawBitmap(photo, new Rect(0, 0, 0, 64), new Rect(260, 70, 324, 134), null); // a source with no area: not drawn
 
 			// a copy keeps its paint's blend mode
 			Paint clear = new Paint(fill);
@@ -321,6 +326,36 @@ public class DrawActivity extends Activity {
 		new Canvas(both).drawRect(8, 8, 24, 24, fillAndStroke);
 		if (both.getPixel(10, 10) != both.getPixel(16, 16))
 			wrong.append(" fill-and-stroke ").append(Integer.toHexString(both.getPixel(10, 10)));
+		// a scaled bitmap is sampled nearest without Paint's FILTER_BITMAP_FLAG, bilinear with it
+		Bitmap two = Bitmap.createBitmap(new int[] {0xffff0000, 0xff0000ff}, 2, 1, Bitmap.Config.ARGB_8888);
+		for (boolean filter : new boolean[] {false, true}) {
+			Paint sampling = new Paint();
+			sampling.setFilterBitmap(filter);
+			Bitmap scaled = Bitmap.createBitmap(8, 1, Bitmap.Config.ARGB_8888);
+			new Canvas(scaled).drawBitmap(two, null, new Rect(0, 0, 8, 1), sampling);
+			boolean blended = false;
+			for (int x = 0; x < 8; x++)
+				blended |= scaled.getPixel(x, 0) != 0xffff0000 && scaled.getPixel(x, 0) != 0xff0000ff;
+			if (blended != filter)
+				wrong.append(filter ? " bilinear " : " nearest ").append(Integer.toHexString(scaled.getPixel(3, 0))).append(',').append(Integer.toHexString(scaled.getPixel(4, 0)));
+		}
+		// and a BitmapShader samples as the paint's flag says too
+		for (boolean filter : new boolean[] {false, true}) {
+			BitmapShader shader = new BitmapShader(two, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+			Matrix stretch = new Matrix();
+			stretch.setScale(4, 1);
+			shader.setLocalMatrix(stretch);
+			Paint sampling = new Paint();
+			sampling.setShader(shader);
+			sampling.setFilterBitmap(filter);
+			Bitmap scaled = Bitmap.createBitmap(8, 1, Bitmap.Config.ARGB_8888);
+			new Canvas(scaled).drawRect(0, 0, 8, 1, sampling);
+			boolean blended = false;
+			for (int x = 0; x < 8; x++)
+				blended |= scaled.getPixel(x, 0) != 0xffff0000 && scaled.getPixel(x, 0) != 0xff0000ff;
+			if (blended != filter)
+				wrong.append(filter ? " shader-bilinear " : " shader-nearest ").append(Integer.toHexString(scaled.getPixel(3, 0))).append(',').append(Integer.toHexString(scaled.getPixel(4, 0)));
+		}
 		Log.i(TAG, "widgets pixels" + (wrong.length() > 0 ? wrong : " ok"));
 
 		Bitmap big = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
@@ -552,6 +587,157 @@ public class DrawActivity extends Activity {
 		Log.i(TAG, "widgets blend" + (mismatches.length() > 0 ? mismatches : " ok"));
 	}
 
+	private interface Draw {
+		void draw(Canvas canvas);
+	}
+
+	/* What a view's recording draws, read back through the test hook: the canvas's px as a layer shows
+	 * them at `scale` px per point (CoreGraphics only: the others draw at 1); null: this build draws no
+	 * views, or none at that scale. */
+	private static Bitmap rendered(int width, int height, float scale, Draw draw) {
+		ATLCanvas canvas = ATLTestHooks.newViewCanvas(width, height);
+		draw.draw(canvas);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		return ATLTestHooks.drawViewCanvas(canvas, bitmap, scale) ? bitmap : null;
+	}
+
+	private static Bitmap rendered(int width, int height, Draw draw) {
+		return rendered(width, height, 1, draw);
+	}
+
+	private static void expect(StringBuilder wrong, String what, Bitmap bitmap, int x, int y, int want) {
+		if (!near(bitmap.getPixel(x, y), want))
+			wrong.append(' ').append(what).append(' ').append(x).append(',').append(y).append(' ').append(Integer.toHexString(bitmap.getPixel(x, y)));
+	}
+
+	/* A view's draw as the backend replays it (gtk: GSK's nodes, the phone: CoreGraphics' replay of the
+	 * list; headless draws no views): at scale 1, clips and the restore that ends them, a PNG, a drawable
+	 * through a color filter and a gradient; at each scale the backend draws (1 on gtk, 1 and 3 on the
+	 * phone) a clip edge, a stroke, a hairline and text. */
+	private void logViewPixels() {
+		StringBuilder wrong = new StringBuilder();
+		Bitmap clips = rendered(32, 16, new Draw() {
+			public void draw(Canvas canvas) {
+				Paint red = paint(0xffff0000);
+				canvas.save();
+				canvas.clipRect(0, 0, 8, 8);
+				canvas.drawRect(0, 0, 32, 16, red);
+				canvas.restore();
+				canvas.drawRect(24, 0, 32, 8, paint(0xff00ff00)); // outside the first clip, which the restore ended
+				canvas.save();
+				canvas.clipRect(8, 8, 16, 16, Region.Op.DIFFERENCE);
+				canvas.drawRect(0, 8, 32, 16, paint(0xff0000ff));
+				canvas.restore();
+			}
+		});
+		if (clips == null) {
+			Log.i(TAG, "widgets view pixels none: this build draws no views");
+			return;
+		}
+		expect(wrong, "intersect", clips, 4, 4, 0xffff0000);
+		expect(wrong, "intersect-outside", clips, 20, 4, 0);
+		expect(wrong, "unclip", clips, 28, 4, 0xff00ff00);
+		expect(wrong, "difference", clips, 4, 12, 0xff0000ff);
+		expect(wrong, "difference-after", clips, 20, 12, 0xff0000ff);
+		expect(wrong, "difference-inside", clips, 12, 12, 0);
+
+		final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
+		Bitmap png = rendered(64, 64, new Draw() {
+			public void draw(Canvas canvas) {
+				canvas.drawBitmap(photo, 0, 0, null);
+			}
+		});
+		for (int[] at : new int[][] {{16, 16}, {48, 16}, {16, 48}, {48, 48}})
+			expect(wrong, "png", png, at[0], at[1], photo.getPixel(at[0], at[1]));
+
+		Bitmap tinted = rendered(16, 16, new Draw() {
+			public void draw(Canvas canvas) {
+				BitmapDrawable drawable = new BitmapDrawable(getResources(), photo);
+				drawable.setColorFilter(0xff0000ff, PorterDuff.Mode.SRC_ATOP);
+				drawable.setBounds(0, 0, 16, 16);
+				drawable.draw(canvas);
+			}
+		});
+		expect(wrong, "filtered-drawable", tinted, 8, 8, 0xff0000ff);
+
+		Bitmap shaded = rendered(32, 8, new Draw() {
+			public void draw(Canvas canvas) {
+				Paint gradient = new Paint();
+				gradient.setShader(new LinearGradient(0, 0, 32, 0, 0xffff0000, 0xff0000ff, Shader.TileMode.CLAMP));
+				canvas.drawRect(0, 0, 32, 8, gradient);
+			}
+		});
+		int left = shaded.getPixel(1, 4), right = shaded.getPixel(30, 4);
+		if (left >>> 24 != 0xff || (left >> 16 & 0xff) < 0xe0 || (left & 0xff) > 0x20 || right >>> 24 != 0xff || (right & 0xff) < 0xe0 || (right >> 16 & 0xff) > 0x20)
+			wrong.append(" shader ").append(Integer.toHexString(left)).append(',').append(Integer.toHexString(right));
+
+		StringBuilder scales = new StringBuilder();
+		for (int scale : new int[] {1, 3}) {
+			if (scaledViewPixels(scale, wrong))
+				scales.append(' ').append(scale);
+		}
+		Log.i(TAG, "widgets view pixels" + (wrong.length() > 0 ? wrong : " ok scales" + scales));
+	}
+
+	/* A clip's edge, a stroke, a hairline and text on white, drawn as a layer at `scale` px per point
+	 * draws them (the list's px go through cg_list_draw's and cg_text_line's 1/scale): the clip and the
+	 * lines on whole device pixels, the text with its ink's extent the glyph box's, and the white
+	 * background where nothing was drawn. false: this build draws none at that scale. */
+	private boolean scaledViewPixels(final int scale, StringBuilder wrong) {
+		final Paint ink = paint(0xff000000);
+		ink.setTextSize(24);
+		final Rect box = new Rect();
+		ink.getTextBounds("Dine", 0, 4, box);
+		box.offset(4, 58); // drawn at 4, 58
+		Bitmap bitmap = rendered(96, 64, scale, new Draw() {
+			public void draw(Canvas canvas) {
+				canvas.drawRect(0, 0, 96, 64, paint(0xffffffff));
+				canvas.save();
+				canvas.clipRect(0, 0, 46, 12);
+				canvas.drawRect(0, 0, 96, 12, paint(0xffff0000));
+				canvas.restore();
+				Paint stroke = paint(0xffff0000);
+				stroke.setStrokeWidth(4);
+				canvas.drawLine(2, 18, 40, 18, stroke);
+				canvas.drawLine(2, 22.5f, 40, 22.5f, paint(0xffff0000)); // a hairline
+				canvas.drawText("Dine", 4, 58, ink);
+			}
+		});
+		if (bitmap == null)
+			return false;
+		String at = "@" + scale;
+		expect(wrong, "clip-in" + at, bitmap, 45, 6, 0xffff0000);
+		expect(wrong, "clip-out" + at, bitmap, 46, 6, 0xffffffff);
+		expect(wrong, "stroke-top" + at, bitmap, 20, 16, 0xffff0000);
+		expect(wrong, "stroke-bottom" + at, bitmap, 20, 19, 0xffff0000);
+		expect(wrong, "stroke-above" + at, bitmap, 20, 15, 0xffffffff);
+		expect(wrong, "stroke-below" + at, bitmap, 20, 20, 0xffffffff);
+		expect(wrong, "hairline" + at, bitmap, 20, 22, 0xffff0000);
+		expect(wrong, "hairline-above" + at, bitmap, 20, 21, 0xffffffff);
+		expect(wrong, "hairline-below" + at, bitmap, 20, 23, 0xffffffff);
+		expect(wrong, "background" + at, bitmap, 92, 62, 0xffffffff);
+		/* the ink's extent is the glyph box's, within 10 px (a line is laid out in points, so another scale changes
+		 * its advances: 5 px of 50 at scale 1 on the phone). A text at the wrong scale is off by more: a third of
+		 * the size by 34 px at the right edge and 12 at the top, one drawn at a wrong place by its offset. The
+		 * measured extents go to a line of their own. */
+		int left = 96, top = 64, right = -1, bottom = -1;
+		for (int y = 28; y < 64; y++) {
+			for (int x = 0; x < 96; x++) {
+				int pixel = bitmap.getPixel(x, y);
+				if (pixel == 0xffffffff || pixel >>> 24 == 0) // the background, or nothing drawn
+					continue;
+				left = Math.min(left, x);
+				top = Math.min(top, y);
+				right = Math.max(right, x + 1);
+				bottom = Math.max(bottom, y + 1);
+			}
+		}
+		Log.i(TAG, "widgets view text scale " + scale + " ink [" + left + "," + top + "][" + right + "," + bottom + "] box " + box.toShortString());
+		if (right < 0 || Math.abs(left - box.left) > 10 || Math.abs(top - box.top) > 10 || Math.abs(right - box.right) > 10 || Math.abs(bottom - box.bottom) > 10)
+			wrong.append(" text").append(at).append(" ink [").append(left).append(',').append(top).append("][").append(right).append(',').append(bottom).append("] box ").append(box.toShortString());
+		return true;
+	}
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -560,6 +746,7 @@ public class DrawActivity extends Activity {
 		logPixels();
 		logBlends();
 		logLayerBlends();
+		logViewPixels();
 		root = new FrameLayout(this);
 		root.addView(new DrawView(this));
 		View scrolled = new View(this);

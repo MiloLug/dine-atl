@@ -3,10 +3,12 @@ package dev.dine.framework.graphics;
 import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.util.Log;
@@ -40,6 +42,103 @@ public class BitmapPixelsTest extends android.test.InstrumentationTestCase {
 		assertEquals(RED, copy.getPixel(1, 1));
 		assertEquals(RED, part.getPixel(1, 1));
 		assertEquals(RED, scaled.getPixel(1, 1));
+	}
+
+	// Skia places a bitmap at the float coordinates: here a device pixel is exact (scale 4, 1.25 * 4 = 5)
+	public void testABitmapLandsOnItsFloatPosition() {
+		Bitmap red = Bitmap.createBitmap(new int[] {RED}, 1, 1, Bitmap.Config.ARGB_8888);
+		Bitmap target = bitmap(16, 16);
+		Canvas canvas = new Canvas(target);
+		canvas.scale(4, 4);
+		canvas.drawBitmap(red, 1.25f, 2.75f, null);
+		assertEquals(RED, target.getPixel(5, 11));
+		assertEquals(RED, target.getPixel(8, 14));
+		assertEquals(0, target.getPixel(4, 11));
+		assertEquals(0, target.getPixel(9, 11));
+		assertEquals(0, target.getPixel(5, 10));
+		assertEquals(0, target.getPixel(5, 15));
+		Bitmap rect = bitmap(16, 16);
+		canvas = new Canvas(rect);
+		canvas.scale(4, 4);
+		canvas.drawBitmap(red, null, new RectF(1.25f, 2.75f, 2.25f, 3.75f), null);
+		assertEquals(RED, rect.getPixel(5, 11));
+		assertEquals(0, rect.getPixel(4, 11));
+		assertEquals(0, rect.getPixel(5, 15));
+	}
+
+	// a destination RectF keeps its fraction: 1.5 user units are 6 device pixels
+	public void testABitmapFillsAFloatRect() {
+		Bitmap red = Bitmap.createBitmap(new int[] {RED}, 1, 1, Bitmap.Config.ARGB_8888);
+		Bitmap target = bitmap(16, 16);
+		Canvas canvas = new Canvas(target);
+		canvas.scale(4, 4);
+		canvas.drawBitmap(red, null, new RectF(0, 0, 1.5f, 1), null);
+		assertEquals(RED, target.getPixel(5, 3));
+		assertEquals(0, target.getPixel(6, 3));
+		assertEquals(0, target.getPixel(5, 4));
+	}
+
+	// AOSP: the new bitmap is the size of the source part's bounds under the matrix
+	public void testCreateBitmapWithAMatrixTakesTheTransformedBounds() {
+		Bitmap source = Bitmap.createBitmap(new int[] {RED, BLUE}, 2, 1, Bitmap.Config.ARGB_8888);
+		Matrix scale = new Matrix();
+		scale.setScale(2, 3);
+		Bitmap scaled = Bitmap.createBitmap(source, 0, 0, 2, 1, scale, false);
+		assertEquals(4, scaled.getWidth());
+		assertEquals(3, scaled.getHeight());
+		assertEquals(RED, scaled.getPixel(0, 0));
+		assertEquals(BLUE, scaled.getPixel(3, 2));
+		Matrix turn = new Matrix();
+		turn.setRotate(90);
+		Bitmap turned = Bitmap.createBitmap(source, 0, 0, 2, 1, turn, true);
+		assertEquals(1, turned.getWidth());
+		assertEquals(2, turned.getHeight());
+		assertEquals(RED, turned.getPixel(0, 0));
+		assertEquals(BLUE, turned.getPixel(0, 1));
+	}
+
+	// the filter argument is the Paint's FILTER_BITMAP_FLAG: only the source's colors, or a blend of them
+	public void testScaledBitmapFollowsItsFilterArgument() {
+		Bitmap source = Bitmap.createBitmap(new int[] {RED, BLUE, RED, BLUE}, 2, 2, Bitmap.Config.ARGB_8888);
+		Bitmap nearest = Bitmap.createScaledBitmap(source, 8, 8, false), linear = Bitmap.createScaledBitmap(source, 8, 8, true);
+		boolean blended = false;
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+				int pixel = nearest.getPixel(x, y);
+				assertTrue(String.format("nearest %d,%d is #%08x", x, y, pixel), pixel == RED || pixel == BLUE);
+				blended |= linear.getPixel(x, y) != RED && linear.getPixel(x, y) != BLUE;
+			}
+		}
+		assertTrue("a filtered scale blends", blended);
+	}
+
+	// a rect that isn't finite draws nothing, and the canvas draws on (cairo's context broke for good on one)
+	public void testANonFiniteBitmapRectDrawsNothing() {
+		Bitmap red = Bitmap.createBitmap(new int[] {RED}, 1, 1, Bitmap.Config.ARGB_8888);
+		Bitmap target = bitmap(4, 4);
+		Canvas canvas = new Canvas(target);
+		for (float bad : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+			canvas.drawBitmap(red, null, new RectF(0, 0, bad, 4), null);
+			canvas.drawBitmap(red, null, new RectF(bad, 0, 4, 4), null);
+			canvas.drawBitmap(red, bad, 0, null);
+		}
+		assertEquals(0, target.getPixel(2, 2));
+		canvas.drawRect(0, 0, 4, 4, paint(GREEN));
+		assertEquals(GREEN, target.getPixel(2, 2));
+	}
+
+	// a drawable with no area draws nothing, and the canvas draws on (cairo's context broke for good on a zero scale)
+	public void testAnEmptyBitmapDrawableDrawsNothing() {
+		Bitmap source = Bitmap.createBitmap(new int[] {RED}, 1, 1, Bitmap.Config.ARGB_8888);
+		Bitmap target = bitmap(4, 4);
+		Canvas canvas = new Canvas(target);
+		BitmapDrawable drawable = new BitmapDrawable(getInstrumentation().getTargetContext().getResources(), source);
+		for (int[] b : new int[][] {{0, 0, 0, 0}, {0, 0, 4, 0}, {0, 0, 0, 4}}) {
+			drawable.setBounds(b[0], b[1], b[2], b[3]);
+			drawable.draw(canvas);
+		}
+		canvas.drawRect(0, 0, 4, 4, paint(GREEN));
+		assertEquals(GREEN, target.getPixel(2, 2));
 	}
 
 	// a setPixel writes one pixel, not the whole bitmap

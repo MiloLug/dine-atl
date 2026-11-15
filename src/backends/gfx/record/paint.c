@@ -16,7 +16,18 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->text_size = 12;
 	paint->filter = GFX_NO_COLOR_FILTER;
 	paint->blend = GFX_BLEND_SRC_OVER;
+	paint->filter_bitmap = true;
 	return paint;
+}
+
+void gfx_paint_set_filter_bitmap(struct gfx_paint *paint, bool filter)
+{
+	paint->filter_bitmap = filter;
+}
+
+bool gfx_paint_get_filter_bitmap(const struct gfx_paint *paint)
+{
+	return paint->filter_bitmap;
 }
 
 void gfx_paint_set_blend(struct gfx_paint *paint, enum gfx_blend blend)
@@ -141,6 +152,7 @@ struct gfx_drawable *gfx_drawable_new(struct atl_ref *drawable_ref)
 	struct gfx_drawable *drawable = calloc(1, sizeof(*drawable));
 	drawable->drawable_ref = drawable_ref;
 	drawable->filter = GFX_NO_COLOR_FILTER;
+	drawable->filter_bitmap = true;
 	drawable->refs = 1;
 	return drawable;
 }
@@ -185,6 +197,11 @@ struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struc
 	struct gfx_drawable *drawable = gfx_bitmap_drawable_new(bitmap);
 	drawable->ninepatch = ninepatch;
 	return drawable;
+}
+
+void gfx_drawable_set_filter_bitmap(struct gfx_drawable *drawable, bool filter)
+{
+	drawable->filter_bitmap = filter;
 }
 
 void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *filter)

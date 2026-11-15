@@ -47,6 +47,14 @@ JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1unref
 JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setColorFilter
   (JNIEnv *, jclass, jlong, jint, jint, jfloatArray);
 
+/*
+ * Class:     android_graphics_drawable_Drawable
+ * Method:    native_setFilterBitmap
+ * Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL Java_android_graphics_drawable_Drawable_native_1setFilterBitmap
+  (JNIEnv *, jclass, jlong, jboolean);
+
 #ifdef __cplusplus
 }
 #endif

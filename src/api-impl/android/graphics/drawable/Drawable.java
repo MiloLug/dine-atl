@@ -469,6 +469,10 @@ public class Drawable {
 
 	public void setFilterBitmap(boolean filter) {}
 
+	public boolean isFilterBitmap() {
+		return false;
+	}
+
 	public void setHotspotBounds(int left, int top, int right, int bottom) {}
 
 	public Drawable getCurrent() {
@@ -496,4 +500,5 @@ public class Drawable {
 	protected native void native_unref(long paintable);
 	// mode -1: none
 	static native void native_setColorFilter(long paintable, int mode, int color, float[] matrix);
+	static native void native_setFilterBitmap(long paintable, boolean filter);
 }

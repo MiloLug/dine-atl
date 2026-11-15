@@ -12,10 +12,10 @@ extern "C" {
 /*
  * Class:     android_atl_ATLCanvas
  * Method:    native_drawBitmap
- * Signature: (JJIIIIIIIIJ)V
+ * Signature: (JJFFFFZIIIIJ)V
  */
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap
-  (JNIEnv *, jobject, jlong, jlong, jint, jint, jint, jint, jint, jint, jint, jint, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jfloat, jfloat, jfloat, jfloat, jboolean, jint, jint, jint, jint, jlong);
 
 /*
  * Class:     android_atl_ATLCanvas

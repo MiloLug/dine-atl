@@ -41,8 +41,9 @@ static CGImageRef image_of_words(const uint32_t *words, int width, int height, b
 		data = own;
 	}
 	CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, size, copy ? free_copy : NULL);
+	// interpolating: a draw's CGContextSetInterpolationQuality decides whether a scaled image is smoothed
 	CGImageRef image = CGImageCreate(width, height, 8, 32, width * 4, cg_srgb(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
-	                                 provider, NULL, false, kCGRenderingIntentDefault);
+	                                 provider, NULL, true, kCGRenderingIntentDefault);
 	CGDataProviderRelease(provider);
 	return image;
 }

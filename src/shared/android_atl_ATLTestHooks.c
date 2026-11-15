@@ -63,9 +63,9 @@ JNIEXPORT jlong JNICALL Java_android_atl_ATLTestHooks_nativeNewViewCanvas(JNIEnv
 	return _INTPTR(gfx_canvas_new());
 }
 
-JNIEXPORT jboolean JNICALL Java_android_atl_ATLTestHooks_nativeDrawViewCanvas(JNIEnv *env, jclass class, jlong canvas, jobject target)
+JNIEXPORT jboolean JNICALL Java_android_atl_ATLTestHooks_nativeDrawViewCanvas(JNIEnv *env, jclass class, jlong canvas, jobject target, jfloat scale)
 {
-	return gfx_test_render_view(_PTR(canvas), bitmap_of(env, target));
+	return gfx_test_render_view(_PTR(canvas), bitmap_of(env, target), scale);
 }
 
 JNIEXPORT jbooleanArray JNICALL Java_android_atl_ATLTestHooks_frame(JNIEnv *env, jclass class, jobject context)

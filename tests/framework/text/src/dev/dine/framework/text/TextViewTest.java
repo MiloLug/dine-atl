@@ -343,6 +343,11 @@ public class TextViewTest extends android.test.InstrumentationTestCase {
 		assertClose("size", labelAndPaint("Translation", 40, 40), 2);
 	}
 
+	// both the label and a Paint set tabular digits: a font with proportional ones would measure them apart
+	public void testLabelTakesDigitsAsThePaintDoes() {
+		assertClose("digits", labelAndPaint("0123456789 1111111111", 40, 40), 2);
+	}
+
 	public void testSpanTakesPx() {
 		SpannableString span = new SpannableString("Translation");
 		span.setSpan(new android.text.style.AbsoluteSizeSpan(40), 0, span.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);

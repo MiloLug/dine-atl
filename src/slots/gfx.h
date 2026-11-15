@@ -67,6 +67,10 @@ enum gfx_blend {
 	GFX_BLEND_COUNT
 };
 void gfx_paint_set_blend(struct gfx_paint *paint, enum gfx_blend blend);
+/* Paint.FILTER_BITMAP_FLAG: a scaled bitmap is sampled bilinearly, else the nearest texel. A new
+ * paint has it set, as Android's. */
+void gfx_paint_set_filter_bitmap(struct gfx_paint *paint, bool filter);
+bool gfx_paint_get_filter_bitmap(const struct gfx_paint *paint);
 /* A ColorFilter: a blend mode with its color (the color over what the paint draws), or a
  * ColorMatrix's 4x5 array over unpremultiplied 0-255 channels (R' = m[0] R + m[1] G + m[2] B +
  * m[3] A + m[4], then G', B', A'). */
@@ -131,6 +135,9 @@ struct gfx_ninepatch; // src/shared/ninepatch.h
 struct gfx_drawable *gfx_ninepatch_drawable_new(struct gfx_bitmap *bitmap, struct gfx_ninepatch *ninepatch);
 /* A bitmap or nine-patch drawable's color filter: its color filter or tint. */
 void gfx_drawable_set_color_filter(struct gfx_drawable *drawable, const struct gfx_color_filter *filter);
+/* A bitmap drawable's bitmap filtering, its paint's FILTER_BITMAP_FLAG (a new one filters). A
+ * nine-patch always filters, as hwui's. */
+void gfx_drawable_set_filter_bitmap(struct gfx_drawable *drawable, bool filter);
 
 /* What android.atl.ATLCanvas draws into, on the thread that draws (a view's draw: the Android main
  * thread). gsk: a GtkSnapshot; record and coregraphics: a display list whose ops keep their paint
@@ -190,8 +197,10 @@ size_t gfx_text_break_lines(const struct gfx_paint *paint, const uint16_t *text,
 /* For the records ui backends' dump: a "displaylist:" line per op. gsk prints nothing. */
 void gfx_canvas_dump(const struct gfx_canvas *canvas, FILE *out);
 /* A view's recording (gfx_canvas_new), freed, drawn into target as the window would show it (gsk:
- * the display's renderer, on the main thread); false: no backend renderer to ask. */
-bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target);
+ * the display's renderer, on the main thread; coregraphics: cg_list_draw into the target's pixels, in
+ * a context of scale px per point as a layer's). false: no backend renderer to ask (record), or none
+ * for that scale (gsk draws at 1 only). */
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target, float scale);
 #endif
 
 #endif

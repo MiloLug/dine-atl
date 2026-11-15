@@ -4,6 +4,7 @@ import android.atl.ATLCanvas;
 import android.atl.ATLTestHooks;
 import android.graphics.Bitmap;
 import android.graphics.BlendMode;
+import android.graphics.BitmapShader;
 import android.graphics.BlendModeColorFilter;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -11,14 +12,18 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.ComposeShader;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.content.res.Resources;
 import android.graphics.drawable.BitmapDrawable;
 import java.util.IdentityHashMap;
 
@@ -197,6 +202,10 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 				all.append(all.length() > 0 ? "; " : "").append(mismatch);
 		}
 
+		void report(String what) {
+			all.append(all.length() > 0 ? "; " : "").append(where).append(what);
+		}
+
 		void assertNone() {
 			if (all.length() > 0)
 				fail(all.toString());
@@ -210,6 +219,7 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 	private static boolean viewPath; // the checks draw as a view does (gtk: GSK nodes, the display's renderer)
 	private static final IdentityHashMap<Bitmap, ATLCanvas> views = new IdentityHashMap<>();
 	private static Boolean viewPathWorks;
+	private static String viewProbeWrong; // a backend that draws views drew the probe wrong
 
 	// what a check draws into its target bitmap with: the bitmap's Canvas, or a view's recording over its pixels
 	private static Canvas canvasFor(Bitmap bitmap) {
@@ -234,7 +244,8 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 		return bitmap.getPixel(x, y);
 	}
 
-	// on the main thread: whether this backend draws views anywhere readable (headless doesn't)
+	/* On the main thread: whether this backend draws views anywhere readable (headless doesn't: its
+	 * hook returns false). One that does must draw the probe, or every check fails with it. */
 	private static boolean viewPathWorks() {
 		if (viewPathWorks == null) {
 			ATLCanvas canvas = ATLTestHooks.newViewCanvas(1, 1);
@@ -242,7 +253,9 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 			red.setColor(0xffff0000);
 			canvas.drawRect(0, 0, 1, 1, red);
 			Bitmap bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
-			viewPathWorks = ATLTestHooks.drawViewCanvas(canvas, bitmap) && bitmap.getPixel(0, 0) == 0xffff0000;
+			viewPathWorks = ATLTestHooks.drawViewCanvas(canvas, bitmap);
+			if (viewPathWorks && channelDistance(bitmap.getPixel(0, 0), 0xffff0000) > TOLERANCE)
+				viewProbeWrong = String.format("a view's red probe reads #%08x", bitmap.getPixel(0, 0));
 		}
 		return viewPathWorks;
 	}
@@ -257,6 +270,8 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 				if (!viewPathWorks())
 					return;
 				mismatches.where = "view ";
+				if (viewProbeWrong != null)
+					mismatches.report(viewProbeWrong);
 				viewPath = true;
 				try {
 					checks.run(mismatches);
@@ -286,6 +301,23 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 		return pixel(bitmap, 20 + (int)ink.exactCenterX(), 170 + (int)ink.exactCenterY());
 	}
 
+	// the pixel on the bold I's left edge, where its outline is: ink for a stroke
+	private static int glyphEdge(Shader shader) {
+		Bitmap bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+		bitmap.eraseColor(0xffffffff);
+		Paint paint = new Paint();
+		paint.setColor(0xff000000);
+		paint.setTextSize(150);
+		paint.setTypeface(Typeface.DEFAULT_BOLD);
+		paint.setStyle(Paint.Style.STROKE);
+		paint.setStrokeWidth(2);
+		paint.setShader(shader);
+		Rect ink = new Rect();
+		paint.getTextBounds("I", 0, 1, ink);
+		canvasFor(bitmap).drawText("I", 20, 170, paint);
+		return pixel(bitmap, 20 + ink.left, 170 + (int)ink.exactCenterY());
+	}
+
 	public void testStrokedText() {
 		checkOnBoth(new Checks() {
 			public void run(Mismatches mismatches) {
@@ -293,6 +325,12 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 				Shader gradient = new LinearGradient(0, 0, 200, 0, 0xff0000ff, 0xffff0000, Shader.TileMode.CLAMP);
 				mismatches.check("shaded stroke", premultiplied(0xffffffff), glyphMiddle(Paint.Style.STROKE, gradient));
 				mismatches.check("fill", premultiplied(0xff000000), glyphMiddle(Paint.Style.FILL, null));
+				// and the outline itself is drawn
+				int edge = glyphEdge(null), shaded = glyphEdge(gradient);
+				if (channelDistance(edge, 0xffffffff) < 0x60)
+					mismatches.report(String.format("stroke edge #%08x is not ink", edge));
+				if (channelDistance(shaded, 0xffffffff) < 0x60)
+					mismatches.report(String.format("shaded stroke edge #%08x is not ink", shaded));
 			}
 		});
 	}
@@ -619,6 +657,7 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 						canvas.scale(scale, scale);
 						canvas.drawCircle(8 / scale, 8 / scale, 5.5f / scale, paint);
 						checkOpaque(mismatches, mode + " at " + scale, bitmap);
+						mismatches.check(mode + " center at " + scale, premultiplied(mode == BlendMode.DST_OVER ? OPAQUE : 0xffff0000), pixel(bitmap, 8, 8)); // it drew
 					}
 					Bitmap bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
 					bitmap.eraseColor(OPAQUE);
@@ -630,6 +669,7 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 					canvas.rotate(30, 8, 8);
 					canvas.drawBitmap(red, null, new RectF(4.3f, 4.3f, 11.7f, 11.7f), paint);
 					checkOpaque(mismatches, mode + " rotated bitmap", bitmap);
+					mismatches.check(mode + " rotated bitmap center", premultiplied(mode == BlendMode.DST_OVER ? OPAQUE : 0xffff0000), pixel(bitmap, 8, 8));
 				}
 			}
 		});
@@ -649,6 +689,8 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 					canvas.rotate(30, 8, 8);
 					canvas.drawRect(4, 4, 12, 12, (Paint)pair[1]);
 				}
+				mismatches.check("color center", premultiplied(0xffff0000), pixel(colored, 8, 8)); // both drew
+				mismatches.check("shader center", premultiplied(0xffff0000), pixel(shaded, 8, 8));
 				for (int y = 0; y < 16; y++)
 					for (int x = 0; x < 16; x++)
 						mismatches.check("shader " + x + "," + y, premultiplied(pixel(colored, x, y)), pixel(shaded, x, y));
@@ -690,6 +732,220 @@ public class BlendModeTest extends android.test.InstrumentationTestCase {
 		assertEquals(0, bitmap.getPixel(1, 1));
 		assertEquals(OPAQUE, bitmap.getPixel(2, 2));
 		assertEquals(OPAQUE, bitmap.getPixel(0, 0));
+	}
+
+	private static int channelDistance(int a, int b) {
+		int most = 0;
+		for (int shift = 0; shift < 32; shift += 8)
+			most = Math.max(most, Math.abs(((a >> shift) & 0xff) - ((b >> shift) & 0xff)));
+		return most;
+	}
+
+	// a bitmap of 8x8 pixels drawn from a 2x2 source of red over blue, scaled 4 times: hard (only the source's colors) or blended
+	private static void checkSampling(Mismatches mismatches, String what, Bitmap bitmap, boolean filtered) {
+		boolean blended = false;
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+				int pixel = pixel(bitmap, x, y);
+				if (channelDistance(pixel, 0xffff0000) > TOLERANCE && channelDistance(pixel, 0xff0000ff) > TOLERANCE) {
+					if (!filtered) {
+						mismatches.report(String.format("%s: pixel %d,%d is #%08x, not a color of the source", what, x, y, pixel));
+						return;
+					}
+					blended = true;
+				}
+			}
+		}
+		if (filtered && !blended)
+			mismatches.report(what + ": no blended pixel");
+	}
+
+	private static Bitmap redOverBlue() {
+		return Bitmap.createBitmap(new int[] {0xffff0000, 0xff0000ff, 0xffff0000, 0xff0000ff}, 2, 2, Bitmap.Config.ARGB_8888);
+	}
+
+	/* The paint's filter decides whether the edge between the colors is hard (Skia's nearest) or
+	 * blended (bilinear). A null paint is Skia's default one, which samples the nearest; a new Paint
+	 * filters. */
+	private static void checkFiltering(Mismatches mismatches, String what, Paint paint, boolean filtered) {
+		Bitmap bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+		canvasFor(bitmap).drawBitmap(redOverBlue(), null, new RectF(0, 0, 8, 8), paint);
+		checkSampling(mismatches, what, bitmap, filtered);
+	}
+
+	// a BitmapShader is sampled by the paint's flag too
+	private static void checkShaderFiltering(Mismatches mismatches, String what, boolean filtered) {
+		Bitmap bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+		BitmapShader shader = new BitmapShader(redOverBlue(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+		Matrix scale = new Matrix();
+		scale.setScale(4, 4);
+		shader.setLocalMatrix(scale);
+		Paint paint = new Paint();
+		paint.setShader(shader);
+		paint.setFilterBitmap(filtered);
+		canvasFor(bitmap).drawRect(0, 0, 8, 8, paint);
+		checkSampling(mismatches, what, bitmap, filtered);
+	}
+
+	public void testBitmapShaderFollowsTheFilterFlag() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				checkShaderFiltering(mismatches, "shader, cleared flag", false);
+				checkShaderFiltering(mismatches, "shader, set flag", true);
+			}
+		});
+	}
+
+	private static void checkDrawable(Mismatches mismatches, String what, BitmapDrawable drawable, boolean filtered) {
+		drawable.setBounds(0, 0, 8, 8);
+		Bitmap bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+		drawable.draw(canvasFor(bitmap));
+		checkSampling(mismatches, what, bitmap, filtered);
+	}
+
+	/* A BitmapDrawable draws as its paint's flag says, set through setFilterBitmap or through
+	 * getPaint, and in a copy from its constant state; a new one filters. */
+	public void testBitmapDrawableFollowsItsFilterFlag() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				Resources resources = getInstrumentation().getTargetContext().getResources();
+				checkDrawable(mismatches, "drawable, default", new BitmapDrawable(resources, redOverBlue()), true);
+				BitmapDrawable cleared = new BitmapDrawable(resources, redOverBlue());
+				cleared.setFilterBitmap(false);
+				checkDrawable(mismatches, "drawable, setFilterBitmap", cleared, false);
+				BitmapDrawable paints = new BitmapDrawable(resources, redOverBlue());
+				paints.getPaint().setFilterBitmap(false);
+				checkDrawable(mismatches, "drawable, getPaint", paints, false);
+				checkDrawable(mismatches, "drawable, a copy", (BitmapDrawable)cleared.getConstantState().newDrawable(), false);
+				checkDrawable(mismatches, "drawable, a copy with resources", (BitmapDrawable)cleared.getConstantState().newDrawable(resources), false);
+			}
+		});
+	}
+
+	// <bitmap android:filter="false">: the flag, and the draw that follows it
+	public void testBitmapXmlFilterAttribute() {
+		Resources resources = getInstrumentation().getTargetContext().getResources();
+		final BitmapDrawable hard = (BitmapDrawable)resources.getDrawable(R.drawable.hard_photo);
+		final BitmapDrawable soft = (BitmapDrawable)resources.getDrawable(R.drawable.photo);
+		assertFalse(hard.getPaint().isFilterBitmap());
+		assertTrue(soft.getPaint().isFilterBitmap());
+		final int left = hard.getBitmap().getPixel(16, 16), right = hard.getBitmap().getPixel(48, 16);
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				for (BitmapDrawable drawable : new BitmapDrawable[] {hard, soft}) {
+					drawable.setBounds(0, 0, 128, 128);
+					Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
+					drawable.draw(canvasFor(bitmap));
+					boolean blended = false;
+					for (int x = 56; x < 72; x++) { // across the edge between the first two quarters
+						int pixel = pixel(bitmap, x, 20);
+						blended |= channelDistance(pixel, left) > TOLERANCE && channelDistance(pixel, right) > TOLERANCE;
+					}
+					if (blended == (drawable == hard))
+						mismatches.report((drawable == hard ? "android:filter=false" : "default") + (blended ? ": the edge is blended" : ": the edge is hard"));
+				}
+			}
+		});
+	}
+
+	public void testBitmapFilteringFollowsThePaint() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				Paint off = new Paint(Paint.FILTER_BITMAP_FLAG);
+				off.setFilterBitmap(false);
+				checkFiltering(mismatches, "cleared flag", off, false);
+				checkFiltering(mismatches, "no paint", null, false);
+				checkFiltering(mismatches, "new Paint", new Paint(), true);
+				Paint on = new Paint();
+				on.setFilterBitmap(true);
+				checkFiltering(mismatches, "set flag", on, true);
+			}
+		});
+	}
+
+	private interface Clip {
+		void apply(Canvas canvas);
+	}
+
+	/* red drawn over all of an opaque 8x8 under the clip; after the restore a green pixel where the
+	 * clip kept the red out, which only a clip that outlives its restore hides */
+	private static void checkClip(Mismatches mismatches, String what, Clip clip, int[] marker, int[][] red, int[][] kept) {
+		Bitmap bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+		bitmap.eraseColor(OPAQUE);
+		Canvas canvas = canvasFor(bitmap);
+		Paint paint = new Paint();
+		paint.setColor(0xffff0000);
+		int count = canvas.save();
+		clip.apply(canvas);
+		canvas.drawRect(0, 0, 8, 8, paint);
+		canvas.restoreToCount(count);
+		paint.setColor(0xff00ff00);
+		canvas.drawRect(marker[0], marker[1], marker[0] + 1, marker[1] + 1, paint);
+		for (int[] at : red)
+			mismatches.check(what + " red at " + at[0] + "," + at[1], premultiplied(0xffff0000), pixel(bitmap, at[0], at[1]));
+		for (int[] at : kept)
+			mismatches.check(what + " kept at " + at[0] + "," + at[1], premultiplied(OPAQUE), pixel(bitmap, at[0], at[1]));
+		mismatches.check(what + " after the restore", premultiplied(0xff00ff00), pixel(bitmap, marker[0], marker[1]));
+	}
+
+	// clips on the view path (GSK's clip and masks) and into a bitmap (cairo's), each ended by its restore
+	public void testClips() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				checkClip(mismatches, "intersect", new Clip() {
+					public void apply(Canvas canvas) {
+						canvas.clipRect(2, 0, 4, 8);
+					}
+				}, new int[] {6, 6}, new int[][] {{3, 4}}, new int[][] {{5, 4}, {1, 4}, {7, 7}});
+				checkClip(mismatches, "difference", new Clip() {
+					public void apply(Canvas canvas) {
+						canvas.clipRect(2, 2, 6, 6, Region.Op.DIFFERENCE);
+					}
+				}, new int[] {4, 4}, new int[][] {{1, 4}, {7, 7}, {4, 1}}, new int[][] {{3, 3}, {5, 5}});
+				checkClip(mismatches, "path", new Clip() {
+					public void apply(Canvas canvas) {
+						Path circle = new Path();
+						circle.addCircle(4, 4, 3, Path.Direction.CW);
+						canvas.clipPath(circle);
+					}
+				}, new int[] {7, 7}, new int[][] {{4, 4}, {3, 3}}, new int[][] {{0, 0}, {0, 3}});
+				checkClip(mismatches, "path difference", new Clip() {
+					public void apply(Canvas canvas) {
+						Path circle = new Path();
+						circle.addCircle(4, 4, 3, Path.Direction.CW);
+						canvas.clipPath(circle, Region.Op.DIFFERENCE);
+					}
+				}, new int[] {4, 4}, new int[][] {{0, 0}, {7, 7}}, new int[][] {{3, 3}, {5, 5}});
+				// a clip inside a layer with bounds: the bounds and the clip both apply, and the layer's restore ends them
+				checkClip(mismatches, "layer", new Clip() {
+					public void apply(Canvas canvas) {
+						canvas.saveLayer(new RectF(0, 0, 4, 8), null);
+						canvas.clipRect(0, 0, 8, 4);
+					}
+				}, new int[] {6, 6}, new int[][] {{2, 2}}, new int[][] {{6, 2}, {2, 6}, {7, 7}});
+			}
+		});
+	}
+
+	// a source or destination with no area draws nothing, on every canvas
+	public void testABitmapWithNoAreaDrawsNothing() {
+		checkOnBoth(new Checks() {
+			public void run(Mismatches mismatches) {
+				Bitmap source = Bitmap.createBitmap(new int[] {0xffff0000, 0xffff0000, 0xffff0000, 0xffff0000}, 2, 2, Bitmap.Config.ARGB_8888);
+				Rect[] empties = {new Rect(0, 0, 0, 2), new Rect(0, 0, 2, 0), new Rect(1, 1, 1, 1)};
+				for (int i = 0; i < empties.length; i++) {
+					for (int side = 0; side < 2; side++) {
+						Bitmap target = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888);
+						target.eraseColor(OPAQUE);
+						Rect whole = new Rect(0, 0, 4, 4);
+						canvasFor(target).drawBitmap(source, side == 0 ? empties[i] : null, side == 0 ? whole : empties[i], null);
+						String what = (side == 0 ? "src " : "dst ") + empties[i];
+						for (int[] at : new int[][] {{0, 0}, {2, 2}, {3, 3}})
+							mismatches.check(what + " at " + at[0] + "," + at[1], premultiplied(OPAQUE), pixel(target, at[0], at[1]));
+					}
+				}
+			}
+		});
 	}
 
 	public void testBlendModeOfAPorterDuffXfermode() {

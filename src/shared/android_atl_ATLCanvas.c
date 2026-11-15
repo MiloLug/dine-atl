@@ -83,12 +83,20 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawLines(JNIEnv *env,
 	(*env)->ReleaseFloatArrayElements(env, points_arr, points, JNI_ABORT);
 }
 
-JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap(JNIEnv *env, jclass class, jlong canvas, jlong bitmap, jint left, jint top, jint right, jint bottom, jint src_left, jint src_top, jint src_right, jint src_bottom, jlong paint)
+// a part with no area or an edge that isn't finite draws nothing: the backends divide by it, and cairo's context stays in error
+static bool has_area(const struct gfx_rect *rect)
+{
+	return isfinite(rect->left) && isfinite(rect->top) && isfinite(rect->right) && isfinite(rect->bottom) && rect->left != rect->right && rect->top != rect->bottom;
+}
+
+JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawBitmap(JNIEnv *env, jclass class, jlong canvas, jlong bitmap, jfloat left, jfloat top, jfloat right, jfloat bottom, jboolean has_src, jint src_left, jint src_top, jint src_right, jint src_bottom, jlong paint)
 {
 	if (!canvas || !bitmap)
 		return;
 	struct gfx_rect src = {src_left, src_top, src_right, src_bottom}, dst = {left, top, right, bottom};
-	gfx_canvas_draw_bitmap(_PTR(canvas), _PTR(bitmap), src_right < 0 ? NULL : &src, &dst, _PTR(paint));
+	if (!has_area(&dst) || (has_src && !has_area(&src)))
+		return;
+	gfx_canvas_draw_bitmap(_PTR(canvas), _PTR(bitmap), has_src ? &src : NULL, &dst, _PTR(paint));
 }
 
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1clipRect(JNIEnv *env, jclass class, jlong canvas, jfloat left, jfloat top, jfloat right, jfloat bottom, jboolean difference)
@@ -127,9 +135,9 @@ JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawArc(JNIEnv *env, j
 }
 
 // paintable 0: the Drawable has no native one (the records backends make none for a Drawable
-// without its own draw())
+// without its own draw()); one with no area draws nothing
 JNIEXPORT void JNICALL Java_android_atl_ATLCanvas_native_1drawDrawable(JNIEnv *env, jclass class, jlong canvas, jlong paintable, jint width, jint height)
 {
-	if (canvas && paintable)
+	if (canvas && paintable && width > 0 && height > 0)
 		gfx_canvas_draw_drawable(_PTR(canvas), _PTR(paintable), width, height);
 }

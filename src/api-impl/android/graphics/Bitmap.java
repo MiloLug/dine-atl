@@ -98,11 +98,25 @@ public final class Bitmap implements Parcelable {
 		return dest;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: the size from the part's bounds under the
+	 * matrix, the paint only for one */
 	public static Bitmap createBitmap(Bitmap src, int x, int y, int width, int height, Matrix matrix, boolean filter) {
-		Bitmap dest = make(width, height, src.getConfig());
+		RectF part = new RectF(0, 0, width, height), device = new RectF();
+		Config config = src.getConfig();
+		Paint paint = null;
+		if (matrix != null && !matrix.isIdentity()) {
+			matrix.mapRect(device, part);
+			width = Math.round(device.width());
+			height = Math.round(device.height());
+			if (!matrix.rectStaysRect() && config != Config.RGBA_F16)
+				config = Config.ARGB_8888;
+			paint = filtering(filter);
+		}
+		Bitmap dest = make(width, height, config);
 		Canvas canvas = new Canvas(dest);
+		canvas.translate(-device.left, -device.top);
 		canvas.concat(matrix);
-		canvas.drawBitmap(src, new Rect(x, y, x + width, y + height), new Rect(0, 0, width, height), null);
+		canvas.drawBitmap(src, new Rect(x, y, x + (int)part.width(), y + (int)part.height()), part, paint);
 		return dest;
 	}
 
@@ -124,8 +138,15 @@ public final class Bitmap implements Parcelable {
 
 	public static Bitmap createScaledBitmap(Bitmap src, int dstWidth, int dstHeight, boolean filter) {
 		Bitmap dest = make(dstWidth, dstHeight, src.getConfig());
-		new Canvas(dest).drawBitmap(src, new Rect(0, 0, src.getWidth(), src.getHeight()), new Rect(0, 0, dstWidth, dstHeight), null);
+		new Canvas(dest).drawBitmap(src, new Rect(0, 0, src.getWidth(), src.getHeight()), new Rect(0, 0, dstWidth, dstHeight), filtering(filter));
 		return dest;
+	}
+
+	// the filter argument is the paint's FILTER_BITMAP_FLAG
+	private static Paint filtering(boolean filter) {
+		Paint paint = new Paint();
+		paint.setFilterBitmap(filter);
+		return paint;
 	}
 
 	public int getWidth() {

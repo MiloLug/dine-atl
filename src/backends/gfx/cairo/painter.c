@@ -108,7 +108,7 @@ cairo_surface_t *cpainter_bitmap_surface(const struct gfx_bitmap *bitmap)
 	return cairo_image_surface_create_for_data((unsigned char *)bitmap->words, CAIRO_FORMAT_ARGB32, bitmap->width, bitmap->height, bitmap->width * 4);
 }
 
-void cpainter_draw_bitmap(cairo_t *cr, const struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst,
+void cpainter_draw_bitmap(cairo_t *cr, const struct gfx_bitmap *bitmap, const struct gfx_rect *src, const struct gfx_rect *dst, bool filter_bitmap,
                           float alpha, const struct gfx_color_filter *filter, uint32_t color, cairo_pattern_t *shader)
 {
 	struct gfx_rect all = {0, 0, bitmap->width, bitmap->height};
@@ -139,7 +139,7 @@ void cpainter_draw_bitmap(cairo_t *cr, const struct gfx_bitmap *bitmap, const st
 	cairo_translate(cr, dst->left - src->left * xscale, dst->top - src->top * yscale);
 	cairo_scale(cr, xscale, yscale);
 	cairo_pattern_t *pattern = cairo_pattern_create_for_surface(surface);
-	cairo_pattern_set_filter(pattern, CAIRO_FILTER_GOOD);
+	cairo_pattern_set_filter(pattern, filter_bitmap ? CAIRO_FILTER_GOOD : CAIRO_FILTER_NEAREST);
 	cairo_pattern_set_extend(pattern, CAIRO_EXTEND_PAD);
 	if (mask) { // the paint's colors where the bitmap's alpha says
 		if (!colors) {

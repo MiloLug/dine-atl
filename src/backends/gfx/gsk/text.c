@@ -79,8 +79,9 @@ static PangoContext *context(void)
 	return thread->context;
 }
 
-// lone surrogates become U+FFFD; byte_of[i] is unit i's first byte, a pair's second unit gets the
-// pair's (byte_of[len]: the length)
+/* lone surrogates become U+FFFD, and a line separator (which Pango breaks the layout at) a zero-width
+ * space: Paint's text is one line. byte_of[i] is unit i's first byte, a pair's second unit gets the
+ * pair's (byte_of[len]: the length) */
 static char *to_utf8(const uint16_t *text, size_t len, int *byte_of)
 {
 	char *utf8 = g_malloc(len * 3 + 1), *out = utf8;
@@ -92,6 +93,8 @@ static char *to_utf8(const uint16_t *text, size_t len, int *byte_of)
 			byte_of[++i] = out - utf8;
 		} else if (c >= 0xD800 && c < 0xE000) {
 			c = 0xFFFD;
+		} else if (c == '\n' || c == '\r' || c == 0x2028 || c == 0x2029) {
+			c = 0x200B;
 		}
 		out += g_unichar_to_utf8(c, out);
 	}

@@ -291,14 +291,14 @@ void gsk_filtered(GtkSnapshot *snapshot, const struct AndroidPaint *filter, cons
 	}
 }
 
-static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha);
+static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha, bool filter_bitmap);
 
 static void draw_shader_colors(GtkSnapshot *snapshot, const struct gsk_draw *draw, enum gsk_part part)
 {
 	if (part == GSK_COVERAGE)
 		gtk_snapshot_append_color(snapshot, &WHITE, draw->bounds);
 	else
-		append_shader(snapshot, draw->bounds, draw->paint->shader, draw->paint->color.alpha);
+		append_shader(snapshot, draw->bounds, draw->paint->shader, draw->paint->color.alpha, draw->paint->filter_bitmap);
 }
 
 /* The paint's colors over bounds: its one color (filtered on the CPU beforehand), or its shader's at
@@ -309,6 +309,22 @@ static void append_source(GtkSnapshot *snapshot, const struct AndroidPaint *pain
 		gsk_filtered(snapshot, paint, &(struct gsk_draw){draw_shader_colors, NULL, paint, bounds}, GSK_CONTENT);
 	else
 		gtk_snapshot_append_color(snapshot, &paint->color, bounds);
+}
+
+struct faded {
+	const struct gsk_draw *draw;
+	float alpha;
+};
+
+// a draw's content faded as one group
+static void draw_faded(GtkSnapshot *snapshot, const struct gsk_draw *draw, enum gsk_part part)
+{
+	const struct faded *faded = draw->data;
+	if (part == GSK_CONTENT)
+		gtk_snapshot_push_opacity(snapshot, faded->alpha);
+	draw_part(snapshot, faded->draw, part);
+	if (part == GSK_CONTENT)
+		gtk_snapshot_pop(snapshot);
 }
 
 // a paint's draw of a shape or text; bounds hold it
@@ -327,18 +343,19 @@ static void paint_draw(GtkSnapshot *snapshot, const struct AndroidPaint *paint, 
 	if (paint->is_fill && paint->is_stroke && !paint->shader && paint->color.alpha < 1 && paint->blend == GFX_BLEND_SRC_OVER) {
 		struct AndroidPaint opaque = *paint;
 		opaque.color.alpha = 1;
-		gtk_snapshot_push_opacity(snapshot, paint->color.alpha);
-		gsk_composite(snapshot, opaque.blend, &(struct gsk_draw){fn, data, &opaque, bounds}, &opaque.color);
-		gtk_snapshot_pop(snapshot);
+		struct gsk_draw both = {fn, data, &opaque, bounds};
+		gsk_composite(snapshot, opaque.blend, &(struct gsk_draw){draw_faded, &(struct faded){&both, paint->color.alpha}, &opaque, bounds}, &opaque.color);
 		return;
 	}
 	gsk_composite(snapshot, paint->blend, &(struct gsk_draw){fn, data, paint, bounds}, paint->shader ? NULL : &paint->color);
 }
 
 /* A 2D matrix as 2D transforms: GSK's cairo renderer, which draws off the main thread, draws a
- * transform made from a whole matrix (gtk_snapshot_transform_matrix) as hot pink. */
-static void transform_affine(GtkSnapshot *snapshot, const graphene_matrix_t *m)
+ * transform made from a whole matrix (gtk_snapshot_transform_matrix) as hot pink. The scale is left
+ * to the caller, which gets it (1 for any other matrix). */
+static void transform_affine_unscaled(GtkSnapshot *snapshot, const graphene_matrix_t *m, float *scale_x, float *scale_y)
 {
+	*scale_x = *scale_y = 1;
 	if (!graphene_matrix_is_2d(m)) {
 		gtk_snapshot_transform_matrix(snapshot, m);
 		return;
@@ -350,7 +367,7 @@ static void transform_affine(GtkSnapshot *snapshot, const graphene_matrix_t *m)
 	float sx = hypotf(a, b), angle = atan2f(b, a);
 	float sy = -c * sinf(angle) + d * cosf(angle);
 	if (sx == 0 || sy == 0) {
-		gtk_snapshot_scale(snapshot, 0, 0);
+		*scale_x = *scale_y = 0;
 		return;
 	}
 	float skew = (c * cosf(angle) + d * sinf(angle)) / sy;
@@ -358,41 +375,57 @@ static void transform_affine(GtkSnapshot *snapshot, const graphene_matrix_t *m)
 	gtk_snapshot_rotate(snapshot, angle * 180 / G_PI);
 	if (skew)
 		gtk_snapshot_transform(snapshot, gsk_transform_skew(NULL, atanf(skew) * 180 / G_PI, 0));
+	*scale_x = sx;
+	*scale_y = sy;
+}
+
+static void transform_affine(GtkSnapshot *snapshot, const graphene_matrix_t *m)
+{
+	float sx, sy;
+	transform_affine_unscaled(snapshot, m, &sx, &sy);
 	gtk_snapshot_scale(snapshot, sx, sy);
 }
 
-// CLAMP draws the bitmap once, its edges not extended; MIRROR repeats (ATL-48)
-static void append_bitmap_shader(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader)
+void gsk_append_bitmap_texture(GtkSnapshot *snapshot, bool filter_bitmap, GdkTexture *texture, const graphene_rect_t *bounds)
+{
+	gtk_snapshot_append_scaled_texture(snapshot, texture, filter_bitmap ? GSK_SCALING_FILTER_LINEAR : GSK_SCALING_FILTER_NEAREST, bounds);
+}
+
+/* CLAMP draws the bitmap once, its edges not extended; MIRROR repeats (ATL-48). The scale of the
+ * shader's matrix is in the sizes (positive): a texture node samples at its own size, whatever
+ * scales it after. */
+static void append_bitmap_shader(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader, bool filter_bitmap, float scale_x, float scale_y)
 {
 	GdkTexture *texture = gsk_bitmap_texture(shader->bitmap);
-	graphene_rect_t tile = GRAPHENE_RECT_INIT(0, 0, gdk_texture_get_width(texture), gdk_texture_get_height(texture));
+	graphene_rect_t tile = GRAPHENE_RECT_INIT(0, 0, gdk_texture_get_width(texture) * scale_x, gdk_texture_get_height(texture) * scale_y);
 	if (shader->tile == SHADER_CLAMP && shader->tile_y == SHADER_CLAMP) {
-		gtk_snapshot_append_texture(snapshot, texture, &tile);
+		gsk_append_bitmap_texture(snapshot, filter_bitmap, texture, &tile);
 	} else {
-		gtk_snapshot_push_repeat(snapshot, bounds, &tile);
-		gtk_snapshot_append_texture(snapshot, texture, &tile);
+		graphene_rect_t scaled = GRAPHENE_RECT_INIT(bounds->origin.x * scale_x, bounds->origin.y * scale_y, bounds->size.width * scale_x, bounds->size.height * scale_y);
+		gtk_snapshot_push_repeat(snapshot, &scaled, &tile);
+		gsk_append_bitmap_texture(snapshot, filter_bitmap, texture, &tile);
 		gtk_snapshot_pop(snapshot);
 	}
 	g_object_unref(texture);
 }
 
 // dst's colors, then src's composited onto them alone in the shader's mode
-static void append_compose(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader)
+static void append_compose(GtkSnapshot *snapshot, const graphene_rect_t *bounds, const struct gfx_shader *shader, bool filter_bitmap)
 {
 	gtk_snapshot_push_isolation(snapshot, GSK_ISOLATION_BACKGROUND);
 	if (shader->dst)
-		append_shader(snapshot, bounds, shader->dst, 1);
+		append_shader(snapshot, bounds, shader->dst, 1, filter_bitmap);
 	if (shader->src) {
 		bool source;
 		struct composite composite = composite_begin(snapshot, shader->mode, bounds, NULL, &source);
-		append_shader(snapshot, bounds, shader->src, 1);
+		append_shader(snapshot, bounds, shader->src, 1, filter_bitmap);
 		composite_end(snapshot, &composite);
 	}
 	gtk_snapshot_pop(snapshot);
 }
 
 // fills the snapshot's fill or stroke push: the local matrix applies in it, the paint's alpha over it
-static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha)
+static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, const struct gfx_shader *shader, float alpha, bool filter_bitmap)
 {
 	graphene_matrix_t inverse;
 	graphene_rect_t bounds;
@@ -401,12 +434,21 @@ static void append_shader(GtkSnapshot *snapshot, const graphene_rect_t *shape, c
 	graphene_matrix_transform_bounds(&inverse, shape, &bounds);
 	if (shader->kind == SHADER_BITMAP || shader->kind == SHADER_COMPOSE) {
 		gtk_snapshot_save(snapshot);
-		transform_affine(snapshot, &shader->matrix);
+		float scale_x = 1, scale_y = 1;
+		if (shader->kind == SHADER_BITMAP) {
+			transform_affine_unscaled(snapshot, &shader->matrix, &scale_x, &scale_y);
+			if (scale_y < 0) { // a mirror: the sizes stay positive
+				gtk_snapshot_scale(snapshot, 1, -1);
+				scale_y = -scale_y;
+			}
+		} else {
+			transform_affine(snapshot, &shader->matrix);
+		}
 		gtk_snapshot_push_opacity(snapshot, alpha);
 		if (shader->kind == SHADER_BITMAP)
-			append_bitmap_shader(snapshot, &bounds, shader);
+			append_bitmap_shader(snapshot, &bounds, shader, filter_bitmap, scale_x, scale_y);
 		else
-			append_compose(snapshot, &bounds, shader);
+			append_compose(snapshot, &bounds, shader, filter_bitmap);
 		gtk_snapshot_pop(snapshot);
 		gtk_snapshot_restore(snapshot);
 		return;
@@ -759,7 +801,7 @@ static void draw_mask_colors(GtkSnapshot *snapshot, const struct gsk_draw *draw,
 	if (part == GSK_COVERAGE)
 		gtk_snapshot_append_color(snapshot, &WHITE, draw->bounds);
 	else if (draw->paint->shader)
-		append_shader(snapshot, draw->bounds, draw->paint->shader, draw->paint->color.alpha);
+		append_shader(snapshot, draw->bounds, draw->paint->shader, draw->paint->color.alpha, draw->paint->filter_bitmap);
 	else
 		gtk_snapshot_append_color(snapshot, &draw->paint->color, draw->bounds);
 }
@@ -792,13 +834,13 @@ static void draw_texture(GtkSnapshot *snapshot, const struct gsk_draw *draw, enu
 		GdkTexture *padded = padded_texture(bitmap->bitmap, x0, y0, x1, y1, pad);
 		drawn = GRAPHENE_RECT_INIT(dst->origin.x - (src.left - x0 + pad) * xscale, dst->origin.y - (src.top - y0 + pad) * yscale,
 		                           (x1 - x0 + 2 * pad) * xscale, (y1 - y0 + 2 * pad) * yscale);
-		gtk_snapshot_append_texture(snapshot, padded, &drawn);
+		gsk_append_bitmap_texture(snapshot, draw->paint->filter_bitmap, padded, &drawn);
 		g_object_unref(padded);
 	} else if (!bitmap->src) {
-		gtk_snapshot_append_texture(snapshot, bitmap->texture, dst);
+		gsk_append_bitmap_texture(snapshot, draw->paint->filter_bitmap, bitmap->texture, dst);
 	} else {
 		gtk_snapshot_push_clip(snapshot, dst);
-		gtk_snapshot_append_texture(snapshot, bitmap->texture, &GRAPHENE_RECT_INIT(dst->origin.x - src.left * xscale, dst->origin.y - src.top * yscale, width * xscale, height * yscale));
+		gsk_append_bitmap_texture(snapshot, draw->paint->filter_bitmap, bitmap->texture, &GRAPHENE_RECT_INIT(dst->origin.x - src.left * xscale, dst->origin.y - src.top * yscale, width * xscale, height * yscale));
 		gtk_snapshot_pop(snapshot);
 	}
 	if (mask) {

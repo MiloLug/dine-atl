@@ -18,6 +18,25 @@ public class DrawClipTest extends android.test.InstrumentationTestCase {
 		assertTrue("draws: " + list.size(), list.size() >= size);
 	}
 
+	// AOSP: a view's canvas answers its view's size
+	public void testCanvasHasTheViewsSize() throws Exception {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), WindowActivity.class);
+		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(intent);
+		final List<Rect> sizes = Collections.synchronizedList(new ArrayList<Rect>());
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				activity.root.addView(new View(activity) {
+					@Override
+					public void onDraw(Canvas canvas) {
+						sizes.add(new Rect(0, 0, canvas.getWidth(), canvas.getHeight()));
+					}
+				}, new FrameLayout.LayoutParams(40, 30));
+			}
+		});
+		waitFor(sizes, 1);
+		assertEquals(new Rect(0, 0, 40, 30), sizes.get(0));
+	}
+
 	public void testEachDrawStartsAtTheViewsSize() throws Exception {
 		Intent intent = new Intent(getInstrumentation().getTargetContext(), WindowActivity.class);
 		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(intent);

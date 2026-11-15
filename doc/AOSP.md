@@ -46,6 +46,10 @@ name another project.
 | `graphics/Bitmap.java` | `graphics/java/android/graphics/Bitmap.java` | `checkRecycled`, `checkPixelAccess`, `checkPixelsAccess`; the checks of `getPixels`, `setPixels`, `getPixel`, `setPixel`, `eraseColor`, `copy` and `copyPixelsToBuffer`'s buffer size, `compress`'s recycled check; `createBitmap(Bitmap)` returning an immutable source itself |
 | `graphics/Canvas.java` | `graphics/java/android/graphics/Canvas.java` | the three `drawPicture` |
 | `graphics/Canvas.java` | `graphics/java/android/graphics/BaseCanvas.java` | `throwIfCannotDraw`'s recycled check |
+| `atl/ATLCanvas.java` | `graphics/java/android/graphics/BaseCanvas.java` | `checkRange` (as `atlCheckRange`, without its overflow) |
+| `graphics/Canvas.java` | `external/skia`: `src/core/SkDraw.cpp` | `drawPoint`'s shapes, after `SkDraw::drawPoints` |
+| `graphics/Paint.java` | `graphics/java/android/graphics/Paint.java` | `HIDDEN_DEFAULT_PAINT_FLAGS` (the constructor's and `reset`'s), `setFlags` and `getFlags` keeping the bits nothing here acts on, the filter flag, the letter spacing's default |
+| `graphics/Bitmap.java` | `graphics/java/android/graphics/Bitmap.java` | `createBitmap(Bitmap, int, int, int, int, Matrix, boolean)`'s size from the transformed bounds, its translation and its paint |
 | `opengl/GLUtils.java` | `opengl/java/android/opengl/GLUtils.java` | `texImage2D`'s null and recycled checks |
 | `graphics/drawable/PictureDrawable.java` | `graphics/java/android/graphics/drawable/PictureDrawable.java` | `draw`, the intrinsic size, `getPicture`, `setPicture`, `getOpacity` |
 | `graphics/drawable/ScaleDrawable.java` | `graphics/java/android/graphics/drawable/ScaleDrawable.java` | the whole file without documentation, theme attributes and `getOpacity` |

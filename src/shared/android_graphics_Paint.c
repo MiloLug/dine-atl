@@ -103,6 +103,16 @@ JNIEXPORT jfloat JNICALL Java_android_graphics_Paint_native_1get_1text_1size(JNI
 	return gfx_paint_get_text_size(_PTR(paint_ptr));
 }
 
+JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1filter_1bitmap(JNIEnv *env, jclass clazz, jlong paint_ptr, jboolean filter)
+{
+	gfx_paint_set_filter_bitmap(_PTR(paint_ptr), filter);
+}
+
+JNIEXPORT jboolean JNICALL Java_android_graphics_Paint_native_1get_1filter_1bitmap(JNIEnv *env, jclass clazz, jlong paint_ptr)
+{
+	return gfx_paint_get_filter_bitmap(_PTR(paint_ptr));
+}
+
 JNIEXPORT void JNICALL Java_android_graphics_Paint_native_1set_1text_1align(JNIEnv *env, jclass clazz, jlong paint_ptr, jint align)
 {
 	gfx_paint_set_text_align(_PTR(paint_ptr), align);

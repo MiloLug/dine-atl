@@ -54,3 +54,12 @@ void gfx_bitmap_image_free(void *image) {}
 
 // record keeps nothing on its ops
 void record_op_cache_free(void *cache) {}
+
+#ifdef ATL_TEST_HOOKS
+// headless dumps a list and never draws it
+bool gfx_test_render_view(struct gfx_canvas *canvas, struct gfx_bitmap *target, float scale)
+{
+	gfx_canvas_free(canvas);
+	return false;
+}
+#endif

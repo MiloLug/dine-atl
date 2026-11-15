@@ -1420,13 +1420,10 @@ public class VectorDrawable extends Drawable {
 		}
 
 		/**
-		 * @return null when there is no need for alpha paint.
+		 * @return the paint of the cached bitmap's draw, always filtering as AOSP's hardware path
+		 *         (VectorDrawable.cpp getPaintFor); AOSP's software path returns null here.
 		 */
 		public Paint getPaint(ColorFilter filter) {
-			if (!hasTranslucentRoot() && filter == null) {
-				return null;
-			}
-
 			if (mTempPaint == null) {
 				mTempPaint = new Paint();
 				mTempPaint.setFilterBitmap(true);

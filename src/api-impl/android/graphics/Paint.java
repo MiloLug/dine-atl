@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/Paint.java at android-security-10.0.0_r75,
+ * Apache License 2.0; see doc/AOSP.md.
+ */
 package android.graphics;
 
 import java.util.Locale;
@@ -25,13 +30,17 @@ public class Paint {
 	private ColorFilter color_filter;
 	private Typeface typeface;
 
+	/* Copyright (C) 2006 The Android Open Source Project */
+	// always set on a new or reset Paint, whatever flags it is given
+	private static final int HIDDEN_DEFAULT_PAINT_FLAGS = DEV_KERN_TEXT_FLAG | EMBEDDED_BITMAP_TEXT_FLAG | FILTER_BITMAP_FLAG;
+
 	public Paint() {
-		paint = native_create();
+		this(0);
 	}
 
 	public Paint(int flags) {
-		this();
-		setFlags(flags);
+		paint = native_create();
+		setFlags(flags | HIDDEN_DEFAULT_PAINT_FLAGS);
 	}
 
 	public Paint(Paint paint) {
@@ -45,6 +54,14 @@ public class Paint {
 	private boolean fake_bold_text;
 	private float text_scale_x = 1;
 	private float text_skew_x;
+	private float letter_spacing;
+	// the flag bits nothing here acts on, reported as set; the ones above and the filter flag are kept apart
+	private int passive_flags;
+	private static final int ACTIVE_FLAGS = FILTER_BITMAP_FLAG | UNDERLINE_TEXT_FLAG | STRIKE_THRU_TEXT_FLAG | FAKE_BOLD_TEXT_FLAG;
+
+	private void setFlag(int flag, boolean on) {
+		passive_flags = on ? passive_flags | flag : passive_flags & ~flag;
+	}
 
 	private void copyJavaState(Paint src) {
 		underline_text = src.underline_text;
@@ -52,6 +69,8 @@ public class Paint {
 		fake_bold_text = src.fake_bold_text;
 		text_scale_x = src.text_scale_x;
 		text_skew_x = src.text_skew_x;
+		letter_spacing = src.letter_spacing;
+		passive_flags = src.passive_flags;
 		xfermode = src.xfermode;
 		shader = src.shader;
 		native_shader = src.native_shader;
@@ -91,10 +110,12 @@ public class Paint {
 	}
 
 	public void setAntiAlias(boolean aa) {
+		setFlag(ANTI_ALIAS_FLAG, aa);
 	}
 
+	// the flag only: every backend antialiases (ATL-137)
 	public boolean isAntiAlias() {
-		return true;
+		return (passive_flags & ANTI_ALIAS_FLAG) != 0;
 	}
 
 	public boolean setFontVariationSettings(String fvs) {
@@ -147,11 +168,13 @@ public class Paint {
 	public int getTextWidths(char[] text, int index, int count, float[] widths) {
 		return getTextWidths(new String(text, index, count), 0, count, widths);
 	}
-	public void setFilterBitmap(boolean filter) {}
+	public void setFilterBitmap(boolean filter) {
+		native_set_filter_bitmap(paint, filter);
+	}
 
 	public void setFlags(int flags) {
-		if ((flags & ANTI_ALIAS_FLAG) != 0)
-			setAntiAlias(true);
+		passive_flags = flags & ~ACTIVE_FLAGS;
+		setFilterBitmap((flags & FILTER_BITMAP_FLAG) != 0);
 		underline_text = (flags & UNDERLINE_TEXT_FLAG) != 0;
 		strike_thru_text = (flags & STRIKE_THRU_TEXT_FLAG) != 0;
 		fake_bold_text = (flags & FAKE_BOLD_TEXT_FLAG) != 0;
@@ -270,19 +293,25 @@ public class Paint {
 	}
 
 	public int getFlags() {
-		return (underline_text ? UNDERLINE_TEXT_FLAG : 0) | (strike_thru_text ? STRIKE_THRU_TEXT_FLAG : 0) | (fake_bold_text ? FAKE_BOLD_TEXT_FLAG : 0);
+		return passive_flags | (isFilterBitmap() ? FILTER_BITMAP_FLAG : 0) | (underline_text ? UNDERLINE_TEXT_FLAG : 0) | (strike_thru_text ? STRIKE_THRU_TEXT_FLAG : 0) | (fake_bold_text ? FAKE_BOLD_TEXT_FLAG : 0);
 	}
 
 	public /*native*/ int getHinting() { return 0; }
 	public /*native*/ void setHinting(int mode) {}
 
-	public /*native*/ void setDither(boolean dither) {}
+	public void setDither(boolean dither) {
+		setFlag(DITHER_FLAG, dither);
+	}
 	public boolean isDither() {
-		return false;
+		return (passive_flags & DITHER_FLAG) != 0;
 	}
 
-	public /*native*/ void setLinearText(boolean linearText) {}
-	public /*native*/ void setSubpixelText(boolean subpixelText) {}
+	public void setLinearText(boolean linearText) {
+		setFlag(LINEAR_TEXT_FLAG, linearText);
+	}
+	public void setSubpixelText(boolean subpixelText) {
+		setFlag(SUBPIXEL_TEXT_FLAG, subpixelText);
+	}
 	public void setUnderlineText(boolean underlineText) {
 		underline_text = underlineText;
 	}
@@ -360,7 +389,9 @@ public class Paint {
 		return null;
 	}
 
-	public void setLetterSpacing(float spacing) {}
+	public void setLetterSpacing(float spacing) {
+		letter_spacing = spacing;
+	}
 
 	public enum Cap {
 		/**
@@ -490,7 +521,9 @@ public class Paint {
 		copyJavaState(paint);
 	}
 
-	public boolean isFilterBitmap() { return false; }
+	public boolean isFilterBitmap() {
+		return native_get_filter_bitmap(paint);
+	}
 
 	public Cap getStrokeCap() {
 		return Cap.values[native_get_stroke_cap(paint)];
@@ -502,7 +535,9 @@ public class Paint {
 
 	public Locale getTextLocale() { return Locale.getDefault(); }
 
-	public float getLetterSpacing() { return 1.0f; }
+	public float getLetterSpacing() {
+		return letter_spacing;
+	}
 
 	public Style getStyle() {
 		return Style.values[native_get_style(paint)];
@@ -529,6 +564,7 @@ public class Paint {
 	public void reset() {
 		native_recycle(paint);
 		paint = native_create();
+		setFlags(HIDDEN_DEFAULT_PAINT_FLAGS);
 		xfermode = null;
 		shader = null;
 		native_shader = 0;
@@ -538,6 +574,7 @@ public class Paint {
 		underline_text = strike_thru_text = fake_bold_text = false;
 		text_scale_x = 1;
 		text_skew_x = 0;
+		letter_spacing = 0;
 	}
 
 	private static native long native_create();
@@ -565,6 +602,8 @@ public class Paint {
 	private static native void native_get_text_widths(long paint, String text, int start, int end, float[] widths);
 	private static native void native_get_text_bounds(long paint, String text, int start, int end, Rect bounds);
 	private static native void native_set_text_align(long paint, int align);
+	private static native void native_set_filter_bitmap(long paint, boolean filter);
+	private static native boolean native_get_filter_bitmap(long paint);
 	private static native float native_get_font_metrics(long paint, FontMetrics metrics);
 	private static native int native_get_font_metrics_int(long paint, FontMetricsInt metrics);
 }

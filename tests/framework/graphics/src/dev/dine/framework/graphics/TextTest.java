@@ -29,6 +29,16 @@ public class TextTest extends TestCase {
 		assertEquals(small.measureText("abc"), small.measureText(new char[] {'x', 'a', 'b', 'c'}, 1, 3));
 	}
 
+	/* Paint.measureText and Canvas.drawText treat a line separator as a character of one line:
+	 * Layout splits paragraphs before it asks for widths. Android's advance for the separator itself
+	 * is unverified; the test only needs the two halves side by side. */
+	public void testLineSeparatorsStayOnOneLine() {
+		Paint paint = paint(20);
+		float halves = paint.measureText("ab") + paint.measureText("cd");
+		for (String separator : new String[] {"\n", "\r", "\r\n", "\u2028", "\u2029"})
+			assertTrue(separator.length() + " units: " + paint.measureText("ab" + separator + "cd"), paint.measureText("ab" + separator + "cd") >= halves);
+	}
+
 	public void testDefaultSizeIsTwelve() {
 		Paint paint = new Paint();
 		assertEquals(12f, paint.getTextSize());

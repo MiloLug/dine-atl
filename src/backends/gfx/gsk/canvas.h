@@ -25,6 +25,8 @@ struct gsk_draw {
 };
 
 GskPath *gsk_path_from_gfx(const struct gfx_path *path);
+// the texture over bounds, bilinear (a paint's FILTER_BITMAP_FLAG) or at the nearest texel
+void gsk_append_bitmap_texture(GtkSnapshot *snapshot, bool filter_bitmap, GdkTexture *texture, const graphene_rect_t *bounds);
 /* draw's part (content or source) through filter's color filter (a paint's or a drawable's) */
 void gsk_filtered(GtkSnapshot *snapshot, const struct AndroidPaint *filter, const struct gsk_draw *draw, enum gsk_part part);
 /* A bitmap drawable's color filter and bitmap; NULL for any other paintable */

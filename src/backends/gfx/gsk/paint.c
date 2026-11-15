@@ -14,6 +14,7 @@ struct gfx_paint *gfx_paint_new(void)
 	paint->font = pango_font_description_new();
 	pango_font_description_set_absolute_size(paint->font, 12 * PANGO_SCALE); // Android's default
 	paint->is_fill = true;
+	paint->filter_bitmap = true;
 	paint->filter = GFX_NO_COLOR_FILTER;
 	paint->blend = GFX_BLEND_SRC_OVER;
 	return (struct gfx_paint *)paint;
@@ -22,6 +23,16 @@ struct gfx_paint *gfx_paint_new(void)
 void gfx_paint_set_blend(struct gfx_paint *gfx_paint, enum gfx_blend blend)
 {
 	((struct AndroidPaint *)gfx_paint)->blend = blend;
+}
+
+void gfx_paint_set_filter_bitmap(struct gfx_paint *gfx_paint, bool filter)
+{
+	((struct AndroidPaint *)gfx_paint)->filter_bitmap = filter;
+}
+
+bool gfx_paint_get_filter_bitmap(const struct gfx_paint *gfx_paint)
+{
+	return ((const struct AndroidPaint *)gfx_paint)->filter_bitmap;
 }
 
 struct gfx_paint *gfx_paint_clone(const struct gfx_paint *gfx_paint)
@@ -95,7 +106,7 @@ void gfx_paint_set_stroke_width(struct gfx_paint *gfx_paint, float width)
 {
 	struct AndroidPaint *paint = (struct AndroidPaint *)gfx_paint;
 	paint->stroke_width = width;
-	// 0 is no width for gsk_stroke_set_line_width; a hairline should also stay one pixel under a scale
+	// gsk_stroke_set_line_width takes no 0: a hairline is 1 user unit, so a canvas scale widens it (ATL-46)
 	gsk_stroke_set_line_width(paint->gsk_stroke, width > 0 ? width : 1);
 }
 

@@ -88,32 +88,32 @@ static cairo_pattern_t *sweep_pattern(const struct gfx_shader *shader)
 	return mesh;
 }
 
-static cairo_pattern_t *shader_pattern(cairo_t *cr, const struct gfx_shader *shader);
+static cairo_pattern_t *shader_pattern(cairo_t *cr, const struct gfx_shader *shader, bool filter_bitmap);
 
 // cairo extends both axes alike: tile_y is taken as tile x
-static cairo_pattern_t *bitmap_pattern(const struct gfx_shader *shader)
+static cairo_pattern_t *bitmap_pattern(const struct gfx_shader *shader, bool filter_bitmap)
 {
 	cairo_surface_t *surface = cpainter_bitmap_surface(shader->bitmap);
 	cairo_pattern_t *pattern = cairo_pattern_create_for_surface(surface);
 	cairo_surface_destroy(surface);
-	cairo_pattern_set_filter(pattern, CAIRO_FILTER_GOOD);
+	cairo_pattern_set_filter(pattern, filter_bitmap ? CAIRO_FILTER_GOOD : CAIRO_FILTER_NEAREST);
 	return pattern;
 }
 
 // dst painted, then src over it in the mode, in the compose's space; an empty child paints nothing
-static cairo_pattern_t *compose_pattern(cairo_t *cr, const struct gfx_shader *shader)
+static cairo_pattern_t *compose_pattern(cairo_t *cr, const struct gfx_shader *shader, bool filter_bitmap)
 {
 	cairo_push_group(cr);
 	cairo_matrix_t local = cpainter_affine(&shader->matrix);
 	cairo_transform(cr, &local);
 	if (shader->dst) {
-		cairo_pattern_t *child = shader_pattern(cr, shader->dst);
+		cairo_pattern_t *child = shader_pattern(cr, shader->dst, filter_bitmap);
 		cairo_set_source(cr, child);
 		cairo_paint(cr);
 		cairo_pattern_destroy(child);
 	}
 	if (shader->src) {
-		cairo_pattern_t *child = shader_pattern(cr, shader->src);
+		cairo_pattern_t *child = shader_pattern(cr, shader->src, filter_bitmap);
 		cpainter_draw_in_mode(cr, shader->mode, paint_source, paint_white, child);
 		cairo_pattern_destroy(child);
 	}
@@ -121,13 +121,13 @@ static cairo_pattern_t *compose_pattern(cairo_t *cr, const struct gfx_shader *sh
 }
 
 // in the shader's own space: its local matrix maps that to the op's
-static cairo_pattern_t *shader_pattern(cairo_t *cr, const struct gfx_shader *shader)
+static cairo_pattern_t *shader_pattern(cairo_t *cr, const struct gfx_shader *shader, bool filter_bitmap)
 {
 	if (shader->kind == SHADER_COMPOSE)
-		return compose_pattern(cr, shader);
+		return compose_pattern(cr, shader, filter_bitmap);
 	cairo_pattern_t *pattern;
 	if (shader->kind == SHADER_BITMAP)
-		pattern = bitmap_pattern(shader);
+		pattern = bitmap_pattern(shader, filter_bitmap);
 	else if (shader->kind == SHADER_LINEAR)
 		pattern = cairo_pattern_create_linear(shader->x0, shader->y0, shader->x1, shader->y1);
 	else if (shader->kind == SHADER_RADIAL)
@@ -174,7 +174,7 @@ static void paint_path(cairo_t *cr, const struct gfx_paint *paint, bool even_odd
 	cairo_rectangle(cr, floor(x0), floor(y0), ceil(x1) - floor(x0), ceil(y1) - floor(y0));
 	cairo_clip(cr);
 	cairo_push_group(cr);
-	cairo_pattern_t *pattern = shader_pattern(cr, paint->shader);
+	cairo_pattern_t *pattern = shader_pattern(cr, paint->shader, paint->filter_bitmap);
 	cairo_set_source(cr, pattern);
 	cairo_paint_with_alpha(cr, (paint->color >> 24) / 255.);
 	cairo_pattern_destroy(pattern);
@@ -258,8 +258,8 @@ static void draw_op_plain(cairo_t *cr, const void *data)
 		paint_path(cr, &op->paint, false, true);
 		break;
 	case OP_BITMAP: {
-		cairo_pattern_t *shader = op->paint.shader && op->bitmap->config == GFX_BITMAP_ALPHA_8 ? shader_pattern(cr, op->paint.shader) : NULL;
-		cpainter_draw_bitmap(cr, op->bitmap, &(struct gfx_rect){a[0], a[1], a[2], a[3]}, &(struct gfx_rect){a[4], a[5], a[6], a[7]},
+		cairo_pattern_t *shader = op->paint.shader && op->bitmap->config == GFX_BITMAP_ALPHA_8 ? shader_pattern(cr, op->paint.shader, op->paint.filter_bitmap) : NULL;
+		cpainter_draw_bitmap(cr, op->bitmap, &(struct gfx_rect){a[0], a[1], a[2], a[3]}, &(struct gfx_rect){a[4], a[5], a[6], a[7]}, op->paint.filter_bitmap,
 		                     (op->paint.color >> 24) / 255.f, &op->paint.filter, op->paint.color, shader);
 		if (shader)
 			cairo_pattern_destroy(shader);
