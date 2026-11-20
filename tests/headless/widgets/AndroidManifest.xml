@@ -13,5 +13,8 @@
 		<activity android:name=".DrawActivity"/>
 		<activity android:name=".DrawStayActivity"/>
 		<activity android:name=".ListsActivity"/>
+		<activity android:name=".FramesActivity"/>
+		<activity android:name=".PassesActivity"/>
+		<activity android:name=".ScrolledActivity"/>
 	</application>
 </manifest>

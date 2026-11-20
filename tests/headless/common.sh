@@ -16,10 +16,10 @@ fail() {
 }
 
 # faults <log>: what ATL prints and survives: an upcall prints and clears a Java exception, the
-# finalizer daemon logs one, the layout loop gives up after its passes.
+# finalizer daemon logs one.
 faults() {
   local line
-  line=$(grep -m1 -E $'^\tat |UnsatisfiedLinkError|JNI DETECTED ERROR|Runtime aborting|hacky_uncaught_exception_handler|^records ui: layout still requested' "$1") || return 0
+  line=$(grep -m1 -E $'^\tat |UnsatisfiedLinkError|JNI DETECTED ERROR|Runtime aborting|hacky_uncaught_exception_handler' "$1") || return 0
   fail "in the log: $line"
 }
 

@@ -81,10 +81,12 @@ struct ui_window {
 	struct atl_app *app;
 	struct ui_view *shown;
 	struct ui_observation *observations;
-	bool layout_pending;
+	bool layout_pending; // a layout is requested: a pass is posted or waits for the next frame
+	bool pass_posted;    // layout_pass waits in the loop
 	bool draw_pending;
+	bool frame_pending;  // the Choreographer's frame is asked for: ui_window_frame runs the pass again
 	bool frames_moved; // a view laid out or moved since the frames last went out (a list's scroll or fill)
-	int passes_in_a_row;
+	bool in_pass;      // a pass runs: a layout it is asked for only waits, and its end sends the frames
 	bool ready;
 	struct ui_frame frame;
 	struct ui_dialog_state *dialog; // an alert's (ui_dialog_new); NULL for the app's window

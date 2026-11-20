@@ -22,6 +22,11 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1title(JNIEnv *env, jobject 
 	free(title);
 }
 
+JNIEXPORT void JNICALL Java_android_view_Window_atlFrame(JNIEnv *env, jclass class, jlong window)
+{
+	ui_window_frame(_PTR(window));
+}
+
 JNIEXPORT void JNICALL Java_android_view_Window_clear_1background(JNIEnv *env, jobject this, jlong window)
 {
 	ui_window_clear_background(_PTR(window));

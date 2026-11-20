@@ -4,9 +4,12 @@
 # memory, so a free that corrupts the heap likely crashes; only uikit walks the records after a
 # free (iOS atl-views).
 # --headless: no display, and the tree and the view, dialog and drawable frees are checked; then
-# RemovedActivity through the cli host's -c: the tree after a laid-out view's removal
-# (views-removed.viewtree). Without it (gtk): the dialog's free and the gsk drawables', a nine-patch
-# and a StateListDrawable among them.
+# the activities of the cli host's -c runs, each under MALLOC_PERTURB_ and dumped: the tree after a
+# laid-out view's removal (RemovedActivity, views-removed.viewtree), after a translation and nothing
+# else (TranslateActivity, views-translated.viewtree), after a dialog dismissed from another's
+# measure (RootsActivity, views-roots.viewtree), with a view in each state the dump words
+# (StateActivity, views-state.viewtree). Without it (gtk): the dialog's free and the gsk
+# drawables', a nine-patch and a StateListDrawable among them.
 # Usage: run-views.sh [--headless] <build dir> <views.apk>
 set -euo pipefail
 
@@ -62,22 +65,30 @@ fi
 [[ $rc == 0 ]] || fail "exit status $rc"
 
 if ((headless)); then
-  log="$work/removed.log"
-  : >"$log"
-  coproc ATL {
-    cd "$build"
-    exec env "${headless_env[@]}" DINE_PREFIX="$work/data" timeout 60 \
-      ./android-translation-layer -c "$apk" -l dev/dine/views/RemovedActivity -X -Xint 2>&1
-  }
-  session
-  while :; do
-    IFS= read -r -t 30 line <&"$atl_out" || fail "no \"views removed\""
-    printf '%s\n' "$line" >>"$log"
-    [[ $line == *": views removed" ]] && break
-  done
-  send dump
-  read_dump
-  printf '%s\n' "${dump[@]}" | diff -u "$here/views-removed.viewtree" - || fail "view tree differs from views-removed.viewtree"
-  end_session
+  # activity|the line it logs once its step is done|the tree the step leaves
+  while IFS='|' read -r activity marker golden; do
+    log="$work/$activity.log"
+    : >"$log"
+    coproc ATL {
+      cd "$build"
+      exec env "${headless_env[@]}" DINE_PREFIX="$work/data" MALLOC_PERTURB_=85 timeout 60 \
+        ./android-translation-layer -c "$apk" -l "dev/dine/views/$activity" -X -Xint 2>&1
+    }
+    session
+    while :; do
+      IFS= read -r -t 30 line <&"$atl_out" || fail "no \"$marker\" from $activity"
+      printf '%s\n' "$line" >>"$log"
+      [[ $line == *": $marker" ]] && break
+    done
+    send dump
+    read_dump
+    printf '%s\n' "${dump[@]}" | diff -u "$here/$golden" - || fail "view tree differs from $golden"
+    end_session
+  done <<'LIST'
+RemovedActivity|views removed|views-removed.viewtree
+TranslateActivity|views translated|views-translated.viewtree
+RootsActivity|views roots dismissed true|views-roots.viewtree
+StateActivity|views state|views-state.viewtree
+LIST
 fi
 echo "PASS"

@@ -1,0 +1,20 @@
+viewtree: android.widget.FrameLayout 0,0 960x540
+viewtree:   android.widget.LinearLayout 0,0 960x540
+viewtree:     android.widget.CheckBox 0,0 960x17 "checked" checked
+viewtree:     android.widget.CheckBox 0,17 960x17 "unchecked"
+viewtree:     android.widget.TextView 0,34 960x17 "disabled" disabled
+viewtree:     android.widget.TextView 0,51 960x17 "invisible" invisible
+viewtree:     android.widget.TextView 0,0 0x0 "gone" gone
+viewtree:     android.widget.ScrollView 0,68 960x100 scroll 0,20
+viewtree:       android.widget.LinearLayout 0,0 960x170
+viewtree:         android.widget.TextView 0,0 960x17 "row 0"
+viewtree:         android.widget.TextView 0,17 960x17 "row 1"
+viewtree:         android.widget.TextView 0,34 960x17 "row 2"
+viewtree:         android.widget.TextView 0,51 960x17 "row 3"
+viewtree:         android.widget.TextView 0,68 960x17 "row 4"
+viewtree:         android.widget.TextView 0,85 960x17 "row 5"
+viewtree:         android.widget.TextView 0,102 960x17 "row 6"
+viewtree:         android.widget.TextView 0,119 960x17 "row 7"
+viewtree:         android.widget.TextView 0,136 960x17 "row 8"
+viewtree:         android.widget.TextView 0,153 960x17 "row 9"
+viewtree: end

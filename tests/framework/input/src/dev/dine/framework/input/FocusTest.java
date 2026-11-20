@@ -1,10 +1,12 @@
 package dev.dine.framework.input;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -150,6 +152,62 @@ public class FocusTest extends android.test.InstrumentationTestCase {
 		});
 		assertFalse(b.isFocused());
 		assertNull(column.findFocus());
+	}
+
+	// a view in a window with the global listener's list, which names what it hears
+	private List<String> listen(final InputActivity activity, final View field) {
+		final List<String> heard = new ArrayList<String>();
+		activity.root.getViewTreeObserver().addOnGlobalFocusChangeListener(new ViewTreeObserver.OnGlobalFocusChangeListener() {
+			public void onGlobalFocusChanged(View oldFocus, View newFocus) {
+				heard.add((oldFocus == null ? "null" : oldFocus == field ? "field" : "root") + " -> "
+				          + (newFocus == null ? "null" : newFocus == field ? "field" : "root"));
+			}
+		});
+		return heard;
+	}
+
+	private InputActivity shown() {
+		Intent intent = new Intent(context, InputActivity.class);
+		return (InputActivity)getInstrumentation().startActivitySync(intent);
+	}
+
+	// AOSP's clearFocusInternal: when no refocus follows, the global listener hears (old, null)
+	public void testGlobalListenerHearsFocusClearedWithNoNewFocus() {
+		getInstrumentation().setInTouchMode(true);
+		final InputActivity activity = shown();
+		final List<String>[] heard = new List[1];
+		onMain(new Runnable() {
+			public void run() {
+				View field = new View(activity);
+				field.setFocusable(true);
+				field.setFocusableInTouchMode(true);
+				activity.root.addView(field);
+				heard[0] = listen(activity, field);
+				field.requestFocus();
+				activity.root.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS); // nothing to refocus
+				field.clearFocus();
+			}
+		});
+		assertEquals("[null -> field, field -> null]", heard[0].toString());
+	}
+
+	// and for a focused child that leaves a group: AOSP names the group
+	public void testGlobalListenerHearsTheFocusedChildLeaving() {
+		getInstrumentation().setInTouchMode(true);
+		final InputActivity activity = shown();
+		final List<String>[] heard = new List[1];
+		onMain(new Runnable() {
+			public void run() {
+				View field = new View(activity);
+				field.setFocusable(true);
+				field.setFocusableInTouchMode(true);
+				activity.root.addView(field);
+				heard[0] = listen(activity, field);
+				field.requestFocus();
+				activity.root.removeView(field);
+			}
+		});
+		assertEquals("[null -> field, root -> null]", heard[0].toString());
 	}
 
 	public void testBlockedDescendantsTakeNoFocus() {

@@ -304,11 +304,6 @@ void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, b
 		gtk_widget_set_sensitive(wrapper, enabled && visibility != UI_VIEW_INVISIBLE && alpha != 0.0f);
 }
 
-void ui_view_children_moved(struct ui_view *view)
-{
-	atl_safe_gtk_widget_queue_allocate(GTK_WIDGET(view));
-}
-
 void ui_view_invalidate(struct ui_view *view)
 {
 	wrapper_widget_queue_draw(WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(view))));

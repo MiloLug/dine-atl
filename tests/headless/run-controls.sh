@@ -7,8 +7,8 @@
 # Button, the disabled "locked" takes no click, a CheckBox and a Switch toggle, a RadioButton checks
 # and unchecks the group's other one but never itself, a ToggleButton shows its on text, the
 # ImageButton clicks, Tab then Enter clicks the focused first button, ESC is Back on the task root.
-# The toggled text must also reach the toolkit: a dump shows it. The checked lines must come in
-# order: one that must not come is caught by the next ones.
+# The toggled text and the states must also reach the toolkit: a dump shows them (checked, pressed,
+# disabled). The checked lines must come in order: one that must not come is caught by the next ones.
 # Usage: run-controls.sh <headless build dir> <widgets.apk>
 set -euo pipefail
 
@@ -29,9 +29,9 @@ coproc ATL {
 session
 
 # the dump's frames are relative to the parent: each depth's origin, window px
-declare -A x y w h runs
+declare -A x y w h runs states
 origin_x=() origin_y=()
-dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
+dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"
@@ -49,7 +49,7 @@ while :; do
   name=${BASH_REMATCH[8]}
   [[ ${BASH_REMATCH[2]} == android.widget.ImageButton ]] && name=image
   if [[ -n $name ]]; then
-    x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]}
+    x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]} states[$name]=${BASH_REMATCH[9]}
   fi
 done
 for control in PUSH locked framed check red green switch "lamp off" image "BOLD & CAPS"; do
@@ -57,6 +57,7 @@ for control in PUSH locked framed check red green switch "lamp off" image "BOLD 
 done
 # 160 dpi: a dp is a px, and framed's shape pads 6dp above and below
 ((h[framed] == h[PUSH] + 12)) || fail "framed is ${h[framed]} high, PUSH ${h[PUSH]}: not the shape's padding"
+[[ ${states[locked]} == " disabled" && -z ${states[PUSH]} ]] || fail "the toolkit's states: locked \"${states[locked]}\", PUSH \"${states[PUSH]}\""
 [[ -n ${bold_run:-} ]] || fail "no bold text run over \"BOLD\""
 [[ -n ${up_shift:-} ]] || fail "no superscript shift logged"
 [[ ${runs["twice up"]:-} == "textruns: 0-5 40px; 6-8 shift $up_shift;" ]] || fail "twice up runs: ${runs["twice up"]:-none}"
@@ -91,29 +92,58 @@ tap() {
 
 key() { send "key down $1"; send "key up $1"; }
 
-tap PUSH
+# the toolkit's state of the control with that text, as a dump words it (" checked", " pressed", or none), into REPLY
+state_of() {
+  local line
+  send dump
+  read_dump 'controls (click|checked|radio) |^host: task '
+  for line in "${dump[@]}"; do
+    if [[ $line =~ $dump_re && ${BASH_REMATCH[8]} == "$1" ]]; then
+      REPLY=${BASH_REMATCH[9]}
+      return 0
+    fi
+  done
+  fail "no \"$1\" in the dump"
+}
+
+# a state the toolkit holds
+expect_state() {
+  state_of "$1"
+  [[ $REPLY == "$2" ]] || fail "the toolkit's \"$1\" is \"$REPLY\", want \"$2\""
+}
+
+# a press is the toolkit's state until the finger lifts
+send "touch down 0 $((x[PUSH] + w[PUSH] / 2)) $((y[PUSH] + h[PUSH] / 2))"
+expect_state PUSH " pressed"
+send "touch up 0 $((x[PUSH] + w[PUSH] / 2)) $((y[PUSH] + h[PUSH] / 2))"
 expect "controls click push"
+expect_state PUSH ""
 
 tap locked
 tap check
 expect "controls checked check true"
+expect_state check " checked"
 tap check
 expect "controls checked check false"
+expect_state check ""
 
 tap red
 expect "controls checked red true" "controls radio red"
 tap green
 expect "controls checked green true" "controls checked red false" "controls radio green"
+expect_state green " checked"
+expect_state red ""
 tap green
 
 tap switch
 expect "controls checked switch true"
+expect_state switch " checked"
 
 tap "lamp off"
 expect "controls click toggle lamp on"
 send dump
 read_dump 'controls (click|checked|radio) |^host: task '
-printf '%s\n' "${dump[@]}" | grep -q '^viewtree: *android.widget.ToggleButton .* "lamp on"$' || fail "the toolkit's ToggleButton doesn't show \"lamp on\""
+printf '%s\n' "${dump[@]}" | grep -q '^viewtree: *android.widget.ToggleButton .* "lamp on" checked$' || fail "the toolkit's ToggleButton doesn't show \"lamp on\" checked"
 
 tap image
 expect "controls click image"

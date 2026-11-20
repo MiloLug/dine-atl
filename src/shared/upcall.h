@@ -63,8 +63,14 @@ bool atl_upcall_dialog_result(struct atl_ref *dialog, int which);
 /* The toolkit's own activation of a control (iOS accessibility): View.performClick, as AOSP's
  * ACTION_CLICK, only for a clickable view. */
 void atl_upcall_click(struct atl_ref *view);
-/* ViewTreeObserver.dispatchOnGlobalLayout and dispatchOnPreDraw (ui_window_observe). */
+/* ViewTreeObserver.dispatchOnGlobalLayout and dispatchOnPreDraw (ui_window_observe); the latter
+ * returns whether a listener cancelled the frame. */
 void atl_upcall_global_layout(struct atl_ref *observer);
-void atl_upcall_pre_draw(struct atl_ref *observer);
+bool atl_upcall_pre_draw(struct atl_ref *observer);
+/* Asks the app's Choreographer for its next frame, on the app's main thread: ui_window_frame(window)
+ * then runs there. Only an app's own window asks (views bind to atl_thread_app_window(); a dialog's
+ * window, ui_dialog_free's, never traverses) and it lives as long as the app, so the pointer stays
+ * valid until the frame comes. */
+void atl_upcall_frame_request(struct ui_window *window);
 
 #endif

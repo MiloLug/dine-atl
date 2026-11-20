@@ -12,6 +12,7 @@ public class AttachTest extends android.test.InstrumentationTestCase {
 
 	private class Probe extends View {
 		final String name;
+		boolean logVisibility;
 
 		Probe(String name) {
 			super(getInstrumentation().getTargetContext());
@@ -28,6 +29,13 @@ public class AttachTest extends android.test.InstrumentationTestCase {
 		protected void onDetachedFromWindow() {
 			super.onDetachedFromWindow();
 			events.add(name + " detached " + isAttachedToWindow());
+		}
+
+		@Override
+		protected void onWindowVisibilityChanged(int visibility) {
+			super.onWindowVisibilityChanged(visibility);
+			if (logVisibility)
+				events.add(name + " visibility " + visibility);
 		}
 	}
 
@@ -69,6 +77,21 @@ public class AttachTest extends android.test.InstrumentationTestCase {
 		assertTrue(state[1]);
 		assertFalse(state[2]);
 		assertEquals("[a attached true, b attached true, a detached true, b detached true]", events.toString());
+	}
+
+	// a view that leaves a shown window hears GONE before it detaches, as AOSP's dispatchDetachedFromWindow
+	public void testRemovalFromAShownWindowSendsGone() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), WindowActivity.class);
+		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(intent);
+		onMain(new Runnable() {
+			public void run() {
+				Probe a = new Probe("a");
+				a.logVisibility = true;
+				activity.root.addView(a);
+				activity.root.removeView(a);
+			}
+		});
+		assertEquals("[a attached true, a visibility 0, a visibility 8, a detached true]", events.toString());
 	}
 
 	public void testDetachedChildLeavesTheWindow() {

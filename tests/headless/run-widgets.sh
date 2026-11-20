@@ -30,7 +30,7 @@ session
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
 origin_x=() origin_y=()
-dump_re='^viewtree: ( *)[^ ]+ (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
+dump_re='^viewtree: ( *)[^ ]+ (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"
@@ -82,6 +82,13 @@ expect() {
 
 key() { send "key down $1"; send "key up $1"; }
 
+# the scroll node's offset as the toolkit holds it: the dump words it after the node's frame
+expect_scroll() {
+  send dump
+  read_dump 'widgets (click|longclick|selector|shared|scroll|focus|key|cancel) |^host: (exclusion|task) '
+  printf '%s\n' "${dump[@]}" | grep -q "MainActivity\$2 [^ ]* [0-9]*x[0-9]* scroll 0,$1\$" || fail "the toolkit's scroll isn't 0,$1"
+}
+
 # "x" spans its 40 dp on both edges' strips; dp = px at the default density
 exclusion() {
   local top=$((y[x] + $1))
@@ -121,6 +128,7 @@ send "touch move 0 $one_x $((one_y - 50))"
 send "touch move 0 $one_x $((one_y - 150))"
 send "touch up 0 $one_x $((one_y - 150))"
 expect "widgets focus one false" "widgets cancel one" "widgets scroll 0 50" "$(exclusion -50)" "widgets scroll 0 150" "$(exclusion -150)"
+expect_scroll 150
 
 key 48 # T
 expect "widgets key 48" "$(exclusion -110)"
@@ -130,6 +138,7 @@ send "touch down 0 $row_x $((row_y - 150))"
 send "touch move 0 $row_x $((row_y - 5150))"
 send "touch up 0 $row_x $((row_y - 5150))"
 expect "widgets scroll 0 $end" "widgets scroll end" "host: exclusion left - right -"
+expect_scroll "$end"
 
 key 111 # Escape
 expect "host: task back app"

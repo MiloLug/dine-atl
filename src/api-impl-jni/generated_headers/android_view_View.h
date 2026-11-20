@@ -279,14 +279,6 @@ JNIEXPORT void JNICALL Java_android_view_View_native_1setBackgroundDrawable
 
 /*
  * Class:     android_view_View
- * Method:    native_childrenMoved
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     android_view_View
  * Method:    native_setTextAlignment
  * Signature: (JI)V
  */

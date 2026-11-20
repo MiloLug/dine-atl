@@ -1,0 +1,6 @@
+viewtree: android.widget.FrameLayout 0,0 960x540
+viewtree:   android.widget.TextView 0,0 960x540 ""
+viewtree: window dialog 414,229 132x82
+viewtree:   android.widget.FrameLayout 0,0 132x82
+viewtree:     dev.dine.views.RootsActivity$Dismisser 16,16 100x50
+viewtree: end

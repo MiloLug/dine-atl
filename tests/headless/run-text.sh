@@ -29,7 +29,7 @@ declare -A x y w h
 origin_x=() origin_y=()
 fields=(name notes pin enter capped)
 field=0
-dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?$'
+dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"

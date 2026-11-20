@@ -7,6 +7,7 @@ dev.dine.framework.basics.ActionBarTest#testWindowTitleUntilTheAppSetsOne
 dev.dine.framework.basics.AppThreadTest#testThreadsJoinTheAppsGroup
 dev.dine.framework.basics.AsyncTaskTest#testPoolThreadsAreTheApps
 dev.dine.framework.basics.AttachTest#testDetachedChildLeavesTheWindow
+dev.dine.framework.basics.AttachTest#testRemovalFromAShownWindowSendsGone
 dev.dine.framework.basics.AttachTest#testSubtreeFollowsTheWindow
 dev.dine.framework.basics.CleanupTest#testCleanerRunsInTheApp
 dev.dine.framework.basics.CleanupTest#testFinalizerRunsInTheApp
@@ -317,6 +318,8 @@ dev.dine.framework.input.FocusTest#testClearFocusRefocusesFromTheRoot
 dev.dine.framework.input.FocusTest#testFocusMovesAndListenersHearIt
 dev.dine.framework.input.FocusTest#testFocusSearch
 dev.dine.framework.input.FocusTest#testFocusedStateSelectsTheSelectorsChild
+dev.dine.framework.input.FocusTest#testGlobalListenerHearsFocusClearedWithNoNewFocus
+dev.dine.framework.input.FocusTest#testGlobalListenerHearsTheFocusedChildLeaving
 dev.dine.framework.input.FocusTest#testListViewHearsItsFocus
 dev.dine.framework.input.FocusTest#testRemovedFocusedChildLosesFocus
 dev.dine.framework.input.FocusTest#testTouchModeRefusesPlainFocusables
@@ -340,6 +343,7 @@ dev.dine.framework.input.TouchTest#testDisallowInterceptKeepsTheTarget
 dev.dine.framework.input.TouchTest#testHapticFeedbackWithoutAVibrator
 dev.dine.framework.input.TouchTest#testInterceptCancelsTheTarget
 dev.dine.framework.input.TouchTest#testPressedStateSelectsTheSelectorsChild
+dev.dine.framework.input.TouchTest#testRemoveDetachedViewCancelsTheTouchTarget
 dev.dine.framework.input.TouchTest#testSecondPointerSplitsToItsOwnTarget
 dev.dine.framework.input.TouchTest#testSiblingBeneathGetsDownTheTopOneLeaves
 dev.dine.framework.input.TouchTest#testTargetIsPinnedAtDown

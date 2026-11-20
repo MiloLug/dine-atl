@@ -240,9 +240,12 @@ static CGFloat scale(void);
 static NSAttributedString *styled(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color, NSTextAlignment alignment);
 static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFont *base_font, UIColor *base_color);
 
-// a node's display list (background, onDraw) under its subviews, drawn asynchronously by CA
+/* a node's display list (background, onDraw) under its subviews, drawn asynchronously by CA. The
+ * layer covers the part of the list the view shows: framed at the view's bounds' origin (the scroll
+ * offset, in the view's content space), with the list drawn back from there. */
 @interface ATLDrawLayer : CALayer
 @property(nonatomic) struct gfx_canvas *list; // a ref of its own
+@property(nonatomic) CGPoint origin;          // pt
 @end
 
 @implementation ATLDrawLayer
@@ -268,8 +271,10 @@ static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFo
 
 - (void)drawInContext:(CGContextRef)context
 {
-	if (_list)
-		cg_list_draw(_list, context, self.contentsScale);
+	if (!_list)
+		return;
+	CGContextTranslateCTM(context, -_origin.x, -_origin.y);
+	cg_list_draw(_list, context, self.contentsScale);
 }
 @end
 
@@ -630,6 +635,8 @@ static void deliver_report(void *data)
 	atl_upcall_scrolled(view->ref, x, y);
 }
 
+static void reframe_draw_layer(UIView *view);
+
 /* the toolkit's offset is the truth: each one UIKit reaches goes to Java, the newest while one waits.
  * The user's bounce past an end stays UIKit's (AOSP overflings 6 dp at most); Java's own requests go
  * back unclamped, since a scrollTo made in a layout pass reaches UIKit before its contentSize. */
@@ -666,6 +673,7 @@ FORWARD_TOUCHES
 		offset.x = MAX(0, MIN(offset.x, content.width - size.width));
 		offset.y = MAX(0, MIN(offset.y, content.height - size.height));
 	}
+	reframe_draw_layer(self);
 	pthread_mutex_lock(&report_lock);
 	_report->x = lround(offset.x * s);
 	_report->y = lround(offset.y * s);
@@ -1574,7 +1582,7 @@ static ATLDrawLayer *draw_layer(UIView *view, bool create)
 }
 
 /* UIKit's thread: what the view's last draw recorded (NULL: nothing), size in points, s px per
- * point; at the bounds' origin, so it scrolls with the view's subviews as Android's content does */
+ * point; the layer is framed at the bounds' origin (ATLDrawLayer) */
 static void show_list(UIView *view, struct gfx_canvas *list, CGSize size, CGFloat s)
 {
 	if ([view isKindOfClass:[ATLLabel class]]) {
@@ -1589,8 +1597,22 @@ static void show_list(UIView *view, struct gfx_canvas *list, CGSize size, CGFloa
 		[layer removeFromSuperlayer];
 		return;
 	}
+	CGPoint origin = view.bounds.origin;
 	layer.contentsScale = s;
-	layer.frame = CGRectMake(0, 0, size.width, size.height);
+	layer.origin = origin;
+	layer.frame = CGRectMake(origin.x, origin.y, size.width, size.height);
+	[layer setNeedsDisplay];
+}
+
+// UIKit's thread: the view scrolled, so its draw layer shows another part of the list
+static void reframe_draw_layer(UIView *view)
+{
+	ATLDrawLayer *layer = draw_layer(view, false);
+	CGPoint origin = view.bounds.origin;
+	if (!layer || !layer.list || CGPointEqualToPoint(layer.origin, origin))
+		return;
+	layer.origin = origin;
+	layer.frame = CGRectMake(origin.x, origin.y, layer.bounds.size.width, layer.bounds.size.height);
 	[layer setNeedsDisplay];
 }
 
@@ -1647,6 +1669,7 @@ void records_scroll_changed(struct ui_view *view, bool animated)
 				CGRect bounds = scrolled.bounds;
 				bounds.origin = offset;
 				scrolled.bounds = bounds;
+				reframe_draw_layer(scrolled);
 			}
 		});
 	}

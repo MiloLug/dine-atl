@@ -226,6 +226,8 @@ bool ui_window_is_multi_window(struct ui_window *window)
 	return !gtk_window_is_maximized(GTK_WINDOW(window));
 }
 
+void ui_window_frame(struct ui_window *window) {}
+
 // on the header bar the host set as the titlebar; one provider, reloaded, so frames don't stack
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -278,7 +280,7 @@ static void on_layout(GdkFrameClock *clock, struct ui_observation *observation)
 
 static void on_paint(GdkFrameClock *clock, struct ui_observation *observation)
 {
-	atl_upcall_pre_draw(observation->observer);
+	atl_upcall_pre_draw(observation->observer); // GTK's frame is under way: a cancel can't stop it
 }
 
 struct ui_observation *ui_window_observe(struct ui_window *window, struct atl_ref *observer, enum ui_observe what)

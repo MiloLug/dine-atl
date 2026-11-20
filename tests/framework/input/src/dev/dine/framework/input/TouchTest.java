@@ -167,6 +167,55 @@ public class TouchTest extends android.test.InstrumentationTestCase {
 		assertLog("a DOWN 10,10", "b DOWN 10,20", "a MOVE 10,10", "b UP 10,20", "a MOVE 10,10", "a UP 10,10");
 	}
 
+	// a ViewGroup that scraps a child, as AbsListView and RecyclerView do
+	private class Scrap extends FrameLayout {
+		Scrap() {
+			super(context);
+		}
+
+		void scrap(View child) {
+			detachViewFromParent(child);
+			removeDetachedView(child, false);
+		}
+	}
+
+	// removeDetachedView drops the child as a touch target, as the other removals do
+	public void testRemoveDetachedViewCancelsTheTouchTarget() {
+		final Scrap root = new Scrap();
+		final View[] row = new View[1];
+		final List<String> heard = new ArrayList<String>();
+		final int[] clicks = new int[1];
+		onMain(new Runnable() {
+			public void run() {
+				row[0] = new View(context) {
+					@Override
+					public boolean onTouchEvent(MotionEvent event) {
+						heard.add(Input.name(event));
+						return super.onTouchEvent(event);
+					}
+				};
+				row[0].setOnClickListener(new View.OnClickListener() {
+					public void onClick(View v) {
+						clicks[0]++;
+					}
+				});
+				root.addView(row[0]);
+				root.layout(0, 0, 100, 100);
+				row[0].layout(0, 0, 50, 50);
+			}
+		});
+		dispatch(root, Input.touch(MotionEvent.ACTION_DOWN, 10, 10));
+		onMain(new Runnable() {
+			public void run() {
+				root.scrap(row[0]);
+			}
+		});
+		dispatch(root, Input.touch(MotionEvent.ACTION_UP, 10, 10));
+		Input.settle(getInstrumentation(), 50);
+		assertEquals("[DOWN, CANCEL]", heard.toString());
+		assertEquals("a removed row's click ran", 0, clicks[0]);
+	}
+
 	public void testClickOnUpInside() {
 		final FrameLayout root = new FrameLayout(context);
 		final int[] clicks = new int[1];

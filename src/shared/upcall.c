@@ -103,25 +103,35 @@ void atl_upcall_window_ready(struct atl_app *app)
 	activity_window_ready(app);
 }
 
-static void call_observer(struct atl_ref *observer, jmethodID method)
+void atl_upcall_global_layout(struct atl_ref *observer)
 {
 	JNIEnv *env = get_jni_env();
 	jobject observer_obj = (*env)->NewLocalRef(env, (jobject)observer);
 	if (!observer_obj)
 		return;
-	(*env)->CallVoidMethod(env, observer_obj, method);
+	(*env)->CallVoidMethod(env, observer_obj, handle_cache.view_tree_observer.dispatchOnGlobalLayout);
 	clear_app_exception(env);
 	(*env)->DeleteLocalRef(env, observer_obj);
 }
 
-void atl_upcall_global_layout(struct atl_ref *observer)
+bool atl_upcall_pre_draw(struct atl_ref *observer)
 {
-	call_observer(observer, handle_cache.view_tree_observer.dispatchOnGlobalLayout);
+	JNIEnv *env = get_jni_env();
+	jobject observer_obj = (*env)->NewLocalRef(env, (jobject)observer);
+	if (!observer_obj)
+		return false;
+	bool cancelled = (*env)->CallBooleanMethod(env, observer_obj, handle_cache.view_tree_observer.dispatchOnPreDraw);
+	if (clear_app_exception(env))
+		cancelled = false;
+	(*env)->DeleteLocalRef(env, observer_obj);
+	return cancelled;
 }
 
-void atl_upcall_pre_draw(struct atl_ref *observer)
+void atl_upcall_frame_request(struct ui_window *window)
 {
-	call_observer(observer, handle_cache.view_tree_observer.dispatchOnPreDraw);
+	JNIEnv *env = get_jni_env();
+	(*env)->CallStaticVoidMethod(env, handle_cache.window.class, handle_cache.window.atlPostFrame, _INTPTR(window));
+	exit_on_exception(env);
 }
 
 bool atl_upcall_dialog_result(struct atl_ref *dialog, int which)

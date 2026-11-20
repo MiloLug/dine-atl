@@ -333,9 +333,9 @@ public final class ViewTreeObserver {
 			dispatchOnGlobalLayout();
 	}
 
-	private void atlDispatchOnPreDraw() {
-		if (owner == null || owner.atlDrawn())
-			dispatchOnPreDraw();
+	// true: a listener cancelled the frame
+	private boolean atlDispatchOnPreDraw() {
+		return (owner == null || owner.atlDrawn()) && dispatchOnPreDraw();
 	}
 
 	/**

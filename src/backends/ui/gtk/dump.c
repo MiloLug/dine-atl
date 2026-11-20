@@ -8,6 +8,35 @@
 
 #include "gtk_ui.h"
 
+// what differs from a new view's, after the text; records' dump prints the same words (GTK can't
+// tell an INVISIBLE view's insensitivity from a disabled one's: a disabled one prints only when visible)
+static void dump_state(FILE *out, GtkWidget *wrapper, GtkWidget *inner)
+{
+	GtkWidget *control = g_object_get_data(G_OBJECT(inner), "atl-button-control");
+	if (control) {
+		bool checked = GTK_IS_TOGGLE_BUTTON(control) ? gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(control))
+		               : GTK_IS_CHECK_BUTTON(control) ? gtk_check_button_get_active(GTK_CHECK_BUTTON(control))
+		               : GTK_IS_SWITCH(control)       ? gtk_switch_get_active(GTK_SWITCH(control))
+		                                              : false;
+		if (checked)
+			fputs(" checked", out);
+		if (gtk_widget_get_state_flags(control) & GTK_STATE_FLAG_ACTIVE)
+			fputs(" pressed", out);
+	}
+	if (GTK_IS_SCROLLED_WINDOW(inner)) {
+		long x = lround(gtk_adjustment_get_value(gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(inner))));
+		long y = lround(gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(inner))));
+		if (x || y)
+			fprintf(out, " scroll %ld,%ld", x, y);
+	}
+	if (!gtk_widget_get_visible(wrapper))
+		fputs(" gone", out);
+	else if (gtk_widget_get_opacity(wrapper) == 0)
+		fputs(" invisible", out);
+	else if (!gtk_widget_get_sensitive(wrapper))
+		fputs(" disabled", out);
+}
+
 static void dump_view(FILE *out, GtkWidget *wrapper, GtkWidget *parent, int depth)
 {
 	WrapperWidget *wrapper_widget = WRAPPER_WIDGET(wrapper);
@@ -24,6 +53,7 @@ static void dump_view(FILE *out, GtkWidget *wrapper, GtkWidget *parent, int dept
 	        lroundf(bounds.origin.x), lroundf(bounds.origin.y), width, height);
 	if (text_class)
 		fprintf(out, " \"%s\"", gtk_label_get_text(text_get_label(inner)));
+	dump_state(out, wrapper, inner);
 	fputc('\n', out);
 
 	if (!ATL_IS_ANDROID_LAYOUT(gtk_widget_get_layout_manager(inner)))

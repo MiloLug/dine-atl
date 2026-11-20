@@ -21,8 +21,6 @@
 
 #define DEFAULT_TEXT_SIZE_SP 14.f
 
-#define MAX_PASSES_IN_A_ROW  8
-
 void ui_display_get(struct ui_display *display)
 {
 	const struct atl_window_config *config = atl_screen_get();
@@ -32,15 +30,28 @@ void ui_display_get(struct ui_display *display)
 	display->keys = UI_DISPLAY_KEYS_SOFT;
 }
 
-// a window over the activity as the window manager places it on the screen
-static void lay_out_root(struct ui_root *root, int screen_width, int screen_height)
+static const struct ui_root *root_of(const struct ui_window *window, const struct ui_view *view)
+{
+	for (size_t i = 0; i < window->n_roots; i++) {
+		if (window->roots[i].view == view)
+			return &window->roots[i];
+	}
+	return NULL;
+}
+
+/* A window over the activity as the window manager places it on the screen. Its upcalls (an
+ * onMeasure, an insets listener) may show or dismiss windows and so replace window->roots: root is
+ * a copy, and a root that went meanwhile is not laid out. */
+static void lay_out_root(struct ui_window *window, struct ui_root root, int screen_width, int screen_height)
 {
 	struct atl_window_frame frame;
-	windows_place(root->window, screen_width, screen_height, &frame);
-	root->view->left = root->view->top = 0;
-	root->view->right = frame.width;
-	root->view->bottom = frame.height;
-	atl_upcall_view_layout(root->view->ref, frame.width, frame.height);
+	windows_place(root.window, screen_width, screen_height, &frame);
+	if (!root_of(window, root.view))
+		return;
+	root.view->left = root.view->top = 0;
+	root.view->right = frame.width;
+	root.view->bottom = frame.height;
+	atl_upcall_view_layout(root.view->ref, frame.width, frame.height);
 }
 
 static void lay_out(struct ui_window *window)
@@ -48,10 +59,6 @@ static void lay_out(struct ui_window *window)
 	struct ui_view *root = window->shown;
 	if (!root && !window->n_roots)
 		return;
-	if (++window->passes_in_a_row > MAX_PASSES_IN_A_ROW) {
-		fprintf(stderr, "records ui: layout still requested after %d passes, giving up\n", MAX_PASSES_IN_A_ROW);
-		return;
-	}
 
 	int width, height;
 	if (root) {
@@ -67,8 +74,9 @@ static void lay_out(struct ui_window *window)
 	for (size_t i = 0; i < window->n_roots; i++) {
 		if (!window->roots[i].view)
 			continue;
-		windows_area(window->app, window->roots[i].window, &width, &height);
-		lay_out_root(&window->roots[i], width, height);
+		struct ui_root root = window->roots[i];
+		windows_area(window->app, root.window, &width, &height);
+		lay_out_root(window, root, width, height);
 	}
 	if (!root)
 		return;
@@ -79,27 +87,30 @@ static void lay_out(struct ui_window *window)
 	}
 }
 
-// the observers of one kind, as of now: a listener may add or remove observations
-static void notify_observers(struct ui_window *window, enum ui_observe what)
+// the observers of one kind, as of now: a listener may add or remove observations. Whether a
+// pre-draw listener cancelled the frame.
+static bool notify_observers(struct ui_window *window, enum ui_observe what)
 {
 	size_t count = 0;
 	for (struct ui_observation *o = window->observations; o; o = o->next)
 		count += o->what == what;
 	if (!count)
-		return;
+		return false;
 	struct atl_ref **observers = malloc(count * sizeof(*observers)), **next = observers;
 	for (struct ui_observation *o = window->observations; o; o = o->next) {
 		if (o->what == what)
 			*next++ = atl_ref_dup(o->observer);
 	}
+	bool cancelled = false;
 	for (size_t i = 0; i < count; i++) {
 		if (what == UI_OBSERVE_LAYOUT)
 			atl_upcall_global_layout(observers[i]);
 		else
-			atl_upcall_pre_draw(observers[i]);
+			cancelled |= atl_upcall_pre_draw(observers[i]);
 		atl_ref_free(observers[i]);
 	}
 	free(observers);
+	return cancelled;
 }
 
 static void draw_view(struct ui_view *view)
@@ -150,25 +161,61 @@ static void draw_frame(struct ui_window *window)
 		records_test_frame_drawn(&start, &end);
 }
 
+/* The next frame of the app's Choreographer, ui_window_frame; what a pass leaves undone goes
+ * there. */
+static void next_frame(struct ui_window *window)
+{
+	if (window->frame_pending)
+		return;
+	window->frame_pending = true;
+	atl_upcall_frame_request(window);
+}
+
+/* AOSP's performTraversals: the layout that is requested, and once more at once when something
+ * asked for another while it ran (what is still requested then waits for the next frame), the
+ * pre-draw observers, the draw. A frame an observer cancelled draws nothing and comes again at the
+ * next frame; so does a layout requested after the layout, from the draw or an observer. */
+static void traverse(struct ui_window *window)
+{
+	window->in_pass = true;
+	for (int round = 0; round < 2 && window->layout_pending; round++) {
+		window->layout_pending = false;
+		lay_out(window);
+		notify_observers(window, UI_OBSERVE_LAYOUT);
+	}
+	bool cancelled = notify_observers(window, UI_OBSERVE_DRAW);
+	if (!cancelled)
+		draw_frame(window);
+	window->in_pass = false;
+	if (cancelled || window->layout_pending)
+		next_frame(window);
+}
+
 // a layout pass stands in for the frame, its draws included
 static void layout_pass(void *data)
 {
 	struct ui_window *window = data;
-	window->layout_pending = false;
-	lay_out(window);
-	notify_observers(window, UI_OBSERVE_LAYOUT);
-	notify_observers(window, UI_OBSERVE_DRAW);
-	draw_frame(window);
-	if (!window->layout_pending) // a listener that keeps requesting layout counts too
-		window->passes_in_a_row = 0;
+	window->pass_posted = false;
+	traverse(window);
 	records_layout_done(window);
+}
+
+void ui_window_frame(struct ui_window *window)
+{
+	window->frame_pending = false;
+	bool laid_out = window->layout_pending;
+	traverse(window);
+	if (laid_out)
+		records_layout_done(window);
+	else
+		records_draw_done(window);
 }
 
 void records_draw_pass(struct ui_window *window)
 {
 	window->draw_pending = false;
 	if (!window->layout_pending) // else the layout pass draws
-		draw_frame(window);
+		traverse(window);
 	records_draw_done(window);
 }
 
@@ -180,11 +227,13 @@ static void schedule_draw(struct ui_window *window)
 	records_draw_wanted(window);
 }
 
+// while a pass runs or a frame is asked for, a request only records
 static void schedule_layout(struct ui_window *window)
 {
-	if (window->layout_pending)
-		return;
 	window->layout_pending = true;
+	if (window->in_pass || window->pass_posted || window->frame_pending)
+		return;
+	window->pass_posted = true;
 	loop_main_post(atl_app_loop(window->app), layout_pass, window);
 }
 
@@ -194,15 +243,6 @@ struct ui_window *ui_window_new(struct atl_app *app, void *surface)
 	window->app = app;
 	records_window_created(window, surface);
 	return window;
-}
-
-static const struct ui_root *root_of(const struct ui_window *window, const struct ui_view *view)
-{
-	for (size_t i = 0; i < window->n_roots; i++) {
-		if (window->roots[i].view == view)
-			return &window->roots[i];
-	}
-	return NULL;
 }
 
 /* ACTION_OUTSIDE to the windows above target that watch for it, each in its own coordinates; they
@@ -566,12 +606,6 @@ bool ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas) { ret
 void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas) {}
 void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas) {}
 
-// layout applies the translations: a pass moves the frames
-void ui_view_children_moved(struct ui_view *view)
-{
-	ui_view_request_layout(view);
-}
-
 void ui_view_request_layout(struct ui_view *view)
 {
 	if (view->window)
@@ -723,8 +757,12 @@ void ui_view_layout(struct ui_view *view, int left, int top, int right, int bott
 	view->bottom = bottom + (int)translation_y;
 	if (relayout && (view->kind == NODE_VIEW || view->kind == NODE_SCROLL))
 		atl_upcall_view_layout(view->ref, right - left, bottom - top);
-	if (view->window)
-		view->window->frames_moved = true;
+	struct ui_window *window = view->window;
+	if (!window)
+		return;
+	window->frames_moved = true;
+	if (!window->in_pass) // a move outside a pass (offsetLeftAndRight): the next draw pass sends the frames
+		schedule_draw(window);
 }
 
 struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, const char *text)

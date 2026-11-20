@@ -1024,6 +1024,17 @@ public class Window {
 		layoutChanged();
 	}
 
+	// the records ui backends' next frame (ui_window_frame), at the traversal's place in AOSP's frame
+	private static void atlPostFrame(final long window) {
+		Choreographer.getInstance().postCallback(Choreographer.CALLBACK_TRAVERSAL, new Runnable() {
+			public void run() {
+				atlFrame(window);
+			}
+		}, null);
+	}
+
+	private static native void atlFrame(long window);
+
 	private native void set_title(String title);
 	public native void take_input_queue(long native_window, InputQueue.Callback callback, InputQueue queue);
 	private native void set_layout(long subwindow, int type, int flags, int gravity, int x, int y, int width, int height, int min_width, float dim_amount);

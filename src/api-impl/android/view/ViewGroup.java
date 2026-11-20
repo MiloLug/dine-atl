@@ -184,7 +184,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 			onHierarchyChangeListener.onChildViewRemoved(this, child);
 		}
 		if (clearChildFocus)
-			lostFocusedChild(child);
+			lostFocusedChild(child, this);
 	}
 
 	// a child leaves: its touch target goes, and its focus; true when it held the focus
@@ -196,9 +196,11 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 		return true;
 	}
 
-	private void lostFocusedChild(View child) {
+	// the global listener hears the old focus AOSP names: the group for one child, the child for removeAllViews
+	private void lostFocusedChild(View child, View heard) {
 		clearChildFocus(child);
-		rootViewRequestFocus();
+		if (!rootViewRequestFocus())
+			notifyGlobalFocusCleared(heard);
 	}
 
 	public void removeView(View child) {
@@ -230,7 +232,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 			}
 		}
 		if (focused != null)
-			lostFocusedChild(focused);
+			lostFocusedChild(focused, focused);
 		requestLayout();
 	}
 
@@ -257,6 +259,7 @@ public class ViewGroup extends View implements ViewParent, ViewManager {
 	protected void removeDetachedView(View child, boolean animate) {
 		if (!detachedChildren.remove(child))
 			return;
+		cancelTouchTarget(child);
 		if (child == focusedChild) {
 			child.unFocus(null);
 			clearChildFocus(child);

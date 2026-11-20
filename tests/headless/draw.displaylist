@@ -171,4 +171,8 @@ displaylist:   path M 16,0 L 29.44,0 C 30.854,0 32,1.466 32,2.56 L 32,29.44 C 32
 displaylist:   bitmap 64x64 src 0,0 64,64 dst 600,330 632,362 #ff000000 filter matrix [0.213,0.715,0.072,0,0,0.213,0.715,0.072,0,0,0.213,0.715,0.072,0,0,0,0,0,1,0]
 displaylist:   text "picture" 0,14 #ff000000 fill size 20 matrix [2,0,10;0,2,400;0,0,1]
 displaylist: end
+displaylist: android.view.View 60x40
+displaylist:   rect 0,0 60,40 #ff808080 fill matrix [1,0,0;0,1,10;0,0,1]
+displaylist: end
+widgets draw resized
 widgets draw done

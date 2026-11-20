@@ -112,6 +112,7 @@ struct handle_cache {
 		jmethodID atlSetFrame;
 		jmethodID atlSetVisible;
 		jmethodID atlLeaked;
+		jmethodID atlPostFrame;
 	} window;
 	struct {
 		jclass class;

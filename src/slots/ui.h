@@ -81,10 +81,15 @@ struct atl_app *ui_window_app(struct ui_window *window);
 void ui_window_get_size(struct ui_window *window, int *width, int *height);
 /* The window shares the screen with others (Activity.isInMultiWindowMode). */
 bool ui_window_is_multi_window(struct ui_window *window);
+/* The frame the window asked for with atl_upcall_frame_request has come, on the app's main thread
+ * (records only; gtk has its own frame clock and never asks). */
+void ui_window_frame(struct ui_window *window);
+
 /* A ViewTreeObserver with listeners: the window calls atl_upcall_global_layout (UI_OBSERVE_LAYOUT,
  * after each layout pass) or atl_upcall_pre_draw (UI_OBSERVE_DRAW, before a frame) with the
- * observer, which the observation owns, until ui_window_unobserve. An observation outlives its
- * window: ui_window_unobserve may come after the window is freed. */
+ * observer, which the observation owns, until ui_window_unobserve. A pre-draw listener may cancel
+ * the frame (records: no draw, a new try at the next frame; gtk's frame goes on). An observation
+ * outlives its window: ui_window_unobserve may come after the window is freed. */
 enum ui_observe {
 	UI_OBSERVE_LAYOUT,
 	UI_OBSERVE_DRAW,
@@ -227,8 +232,6 @@ bool ui_view_draw_background(struct ui_view *view, struct gfx_canvas *canvas);
 bool ui_view_draw_content(struct ui_view *view, struct gfx_canvas *canvas);
 void ui_view_draw_children(struct ui_view *view, struct gfx_canvas *canvas);
 void ui_view_draw_child(struct ui_view *view, struct ui_view *child, struct gfx_canvas *canvas);
-/* A child's translation changed: its frame moves. */
-void ui_view_children_moved(struct ui_view *view);
 void ui_view_request_layout(struct ui_view *view);
 /* Size for the MeasureSpecs, from the toolkit (views whose Java class doesn't measure itself). */
 void ui_view_measure(struct ui_view *view, int width_spec, int height_spec, int *width, int *height);

@@ -9,5 +9,8 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".RemovedActivity"/>
+		<activity android:name=".TranslateActivity"/>
+		<activity android:name=".RootsActivity"/>
+		<activity android:name=".StateActivity"/>
 	</application>
 </manifest>

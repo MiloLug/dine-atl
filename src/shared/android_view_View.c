@@ -117,11 +117,6 @@ JNIEXPORT jboolean JNICALL Java_android_view_View_native_1drawContent(JNIEnv *en
 	return !canvas || ui_view_draw_content(_PTR(widget), _PTR(canvas));
 }
 
-JNIEXPORT void JNICALL Java_android_view_View_native_1childrenMoved(JNIEnv *env, jobject this, jlong widget_ptr)
-{
-	ui_view_children_moved(_PTR(widget_ptr));
-}
-
 JNIEXPORT void JNICALL Java_android_view_View_native_1measure(JNIEnv *env, jobject this, jlong widget_ptr, jint width_spec, jint height_spec)
 {
 	int width, height;

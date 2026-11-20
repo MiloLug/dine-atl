@@ -1612,7 +1612,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	protected native void native_layout(long widget, int l, int t, int r, int b, boolean relayout);
 	protected native void native_requestLayout(long widget);
 	protected native void native_setBackgroundDrawable(long widget, long paintable);
-	protected native void native_childrenMoved(long widget);
 
 	private native void native_setTextAlignment(long widget, int alignment);
 
@@ -1756,9 +1755,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			onFocusChanged(false, 0, null);
 			refreshDrawableState();
 
-			if (propagate && refocus)
-				rootViewRequestFocus();
+			if (propagate && (!refocus || !rootViewRequestFocus()))
+				notifyGlobalFocusCleared(this);
 		}
+	}
+
+	// the focus went and no other came: OnGlobalFocusChangeListener hears (old, null)
+	void notifyGlobalFocusCleared(View oldFocus) {
+		if (oldFocus != null && attachedWindow != null && attachedWindow.view_tree_observer != null)
+			attachedWindow.view_tree_observer.dispatchOnGlobalFocusChange(oldFocus, null);
 	}
 
 	boolean rootViewRequestFocus() {
@@ -2446,7 +2451,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {}
 
-	boolean layouted = false;
+	boolean layouted = false; // upstream's: layoutInternal clears it for each child before onLayout
+	private boolean laidOut; // layout() ran once
 	private boolean layoutRequired; // AOSP's PFLAG_LAYOUT_REQUIRED: measured since its last layout
 	// what layout() asks of the toolkit's layoutInternal upcall: onLayout, setFrame's changed, the
 	// frame before
@@ -2457,7 +2463,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	// onLayout runs (through the toolkit's upcall) for a new frame or a measure
 	public void layout(int l, int t, int r, int b) {
 		boolean changed = l != left || t != top || r != right || b != bottom;
-		boolean relayout = changed || layoutRequired || !layouted;
+		boolean relayout = changed || layoutRequired || !laidOut;
 		if (relayout && !on_layout_pending) {
 			old_left = left;
 			old_top = top;
@@ -2465,6 +2471,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 			old_bottom = bottom;
 		}
 		this.layouted = true;
+		laidOut = true;
 		this.left = l;
 		this.top = t;
 		this.right = r;
@@ -2782,16 +2789,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		return translationY;
 	}
 
+	// the frame native_layout sends includes the translation; a view not laid out yet gets it with its first layout
 	public void setTranslationX(float translationX) {
 		this.translationX = translationX;
-		if (parent instanceof View)
-			((View)parent).native_childrenMoved(((View)parent).widget);
+		if (parent instanceof View && laidOut)
+			place();
 	}
 
 	public void setTranslationY(float translationY) {
 		this.translationY = translationY;
-		if (parent instanceof View)
-			((View)parent).native_childrenMoved(((View)parent).widget);
+		if (parent instanceof View && laidOut)
+			place();
 	}
 
 	public void setX(float x) {
@@ -3024,6 +3032,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 	public void dispatchDetachedFromWindow() {
 		if (!attachedToWindow)
 			return;
+		if (getWindowVisibility() != GONE) // AOSP's: a view that leaves a shown window hears it go
+			onWindowVisibilityChanged(GONE);
 		onDetachedFromWindow();
 		removeUnsetPressCallback();
 		removeLongPressCallback();

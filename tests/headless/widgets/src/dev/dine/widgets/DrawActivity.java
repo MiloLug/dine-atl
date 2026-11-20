@@ -51,6 +51,7 @@ import android.widget.ImageView;
 public class DrawActivity extends Activity {
 	static final String TAG = "widgets";
 	protected FrameLayout root;
+	private View scrolled;
 
 	private class DrawView extends View {
 		private final Bitmap photo = BitmapFactory.decodeResource(getResources(), R.drawable.photo);
@@ -200,11 +201,23 @@ public class DrawActivity extends Activity {
 			} else if (draws == 3) {
 				post(new Runnable() {
 					public void run() {
-						Log.i(TAG, "widgets draw done");
-						done();
+						resize();
 					}
 				});
 			}
+		}
+
+		// the 40x40 background view gets a wider frame and nothing invalidates it: the draw pass
+		// finds the new size
+		private void resize() {
+			scrolled.setLayoutParams(new FrameLayout.LayoutParams(60, 40, Gravity.BOTTOM));
+			afterLayout(new Runnable() {
+				public void run() {
+					Log.i(TAG, "widgets draw resized");
+					Log.i(TAG, "widgets draw done");
+					done();
+				}
+			});
 		}
 
 		private void hide() {
@@ -749,7 +762,7 @@ public class DrawActivity extends Activity {
 		logViewPixels();
 		root = new FrameLayout(this);
 		root.addView(new DrawView(this));
-		View scrolled = new View(this);
+		scrolled = new View(this);
 		scrolled.setBackgroundResource(R.drawable.shared_selector);
 		scrolled.scrollTo(0, 10);
 		root.addView(scrolled, new FrameLayout.LayoutParams(40, 40, Gravity.BOTTOM));

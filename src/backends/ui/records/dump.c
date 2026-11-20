@@ -38,12 +38,30 @@ static void dump_runs(FILE *out, const struct ui_view *view)
 	fputc('\n', out);
 }
 
+// what differs from a new view's, after the text; gtk's dump prints the same words
+static void dump_state(FILE *out, const struct ui_view *view)
+{
+	if (view->checked)
+		fputs(" checked", out);
+	if (view->pressed)
+		fputs(" pressed", out);
+	if (view->scroll_x || view->scroll_y)
+		fprintf(out, " scroll %d,%d", view->scroll_x, view->scroll_y);
+	if (view->visibility == UI_VIEW_INVISIBLE)
+		fputs(" invisible", out);
+	else if (view->visibility == UI_VIEW_GONE)
+		fputs(" gone", out);
+	if (!view->enabled)
+		fputs(" disabled", out);
+}
+
 static void dump_view(FILE *out, struct ui_view *view, int depth)
 {
 	fprintf(out, "viewtree: %*s%s %d,%d %dx%d", depth * 2, "", view->class_name,
 	        view->left, view->top, view->right - view->left, view->bottom - view->top);
 	if (view->kind == NODE_TEXT)
 		fprintf(out, " \"%s\"", view->text);
+	dump_state(out, view);
 	fputc('\n', out);
 	if (view->n_runs) // a line of its own: the viewtree goldens keep only viewtree lines
 		dump_runs(out, view);

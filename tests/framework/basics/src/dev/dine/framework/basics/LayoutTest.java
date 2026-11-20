@@ -80,7 +80,8 @@ public class LayoutTest extends android.test.InstrumentationTestCase {
 		assertEquals(3, got[2]);
 	}
 
-	// a parent's layout pass leaves an unmoved child unchanged (AbsListView relays out on changed)
+	// a parent's layout pass lays an unmoved, unmeasured child out again without onLayout: AOSP's
+	// layout() runs it only for a changed frame or a measure
 	public void testParentPassKeepsAnUnmovedChildUnchanged() throws InterruptedException {
 		final WindowActivity activity = start();
 		final Probe[] probe = new Probe[1];
@@ -111,6 +112,6 @@ public class LayoutTest extends android.test.InstrumentationTestCase {
 		}
 		assertFalse("the parent's pass never reached the child", calls.isEmpty());
 		for (String call : calls)
-			assertFalse(calls.toString(), call.startsWith("onLayout true"));
+			assertFalse(calls.toString(), call.startsWith("onLayout"));
 	}
 }

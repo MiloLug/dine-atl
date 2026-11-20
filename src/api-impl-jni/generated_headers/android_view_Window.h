@@ -91,6 +91,14 @@ JNIEXPORT jobject JNICALL Java_android_view_Window_nativeKeyWindow
 
 /*
  * Class:     android_view_Window
+ * Method:    atlFrame
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_android_view_Window_atlFrame
+  (JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     android_view_Window
  * Method:    set_title
  * Signature: (Ljava/lang/String;)V
  */
