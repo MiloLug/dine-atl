@@ -35,6 +35,11 @@ static void dump_state(FILE *out, GtkWidget *wrapper, GtkWidget *inner)
 		fputs(" invisible", out);
 	else if (!gtk_widget_get_sensitive(wrapper))
 		fputs(" disabled", out);
+	// what the label applies: a label of more than one line takes none (ATL-153)
+	GtkLabel *label = text_get_label(inner);
+	PangoEllipsizeMode ellipsize = label ? gtk_label_get_ellipsize(label) : PANGO_ELLIPSIZE_NONE;
+	if (ellipsize != PANGO_ELLIPSIZE_NONE)
+		fputs(ellipsize == PANGO_ELLIPSIZE_START ? " ellipsize start" : ellipsize == PANGO_ELLIPSIZE_MIDDLE ? " ellipsize middle" : " ellipsize end", out);
 }
 
 static void dump_view(FILE *out, GtkWidget *wrapper, GtkWidget *parent, int depth)

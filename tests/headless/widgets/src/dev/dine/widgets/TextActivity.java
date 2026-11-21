@@ -5,12 +5,16 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.text.TextWatcher;
+import android.text.method.PasswordTransformationMethod;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -21,13 +25,40 @@ import android.widget.TextView;
 public class TextActivity extends Activity {
 	private static final String TAG = "edits";
 
-	private EditText name;
+	private EditText name, notes;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		LinearLayout column = new LinearLayout(this);
 		column.setOrientation(LinearLayout.VERTICAL);
+
+		// a password a toggle shows and hides again
+		final EditText reveal = field(column, "reveal");
+		reveal.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+		reveal.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+
+		// a custom keypad's display: a tap focuses it and shows no keyboard; the app shows one itself
+		final EditText calc = field(column, "calc");
+		calc.setInputType(InputType.TYPE_CLASS_TEXT);
+		calc.setImeOptions(EditorInfo.IME_ACTION_DONE);
+		calc.setShowSoftInputOnFocus(false);
+
+		// no input type: a tap focuses it and shows no keyboard, the toolkit's edits are refused
+		final EditText locked = field(column, "locked");
+		locked.setImeOptions(EditorInfo.IME_ACTION_DONE);
+		locked.setKeyListener(null);
+
+		// a field no tap focuses
+		EditText nofocus = field(column, "nofocus");
+		nofocus.setInputType(InputType.TYPE_CLASS_TEXT);
+		nofocus.setImeOptions(EditorInfo.IME_ACTION_DONE);
+		nofocus.setFocusable(false);
+
+		// a date: the key listener keeps digits and the separators, the keyboard is the one with them
+		EditText date = field(column, "date");
+		date.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE);
+		date.setImeOptions(EditorInfo.IME_ACTION_DONE);
 
 		name = field(column, "name");
 		name.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -46,6 +77,14 @@ public class TextActivity extends Activity {
 				Log.i(TAG, "text after \"" + escaped(s) + "\"");
 			}
 		});
+		// what a hardware Enter finds in the field
+		name.setOnKeyListener(new View.OnKeyListener() {
+			public boolean onKey(View v, int keyCode, KeyEvent event) {
+				if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)
+					Log.i(TAG, "text enter-key \"" + escaped(name.getText()) + "\"");
+				return false;
+			}
+		});
 		name.setOnEditorActionListener(new TextView.OnEditorActionListener() {
 			public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
 				Log.i(TAG, "text action name " + actionId);
@@ -53,7 +92,7 @@ public class TextActivity extends Activity {
 			}
 		});
 
-		EditText notes = field(column, "notes");
+		notes = field(column, "notes");
 		final EditText pin = field(column, "pin");
 		pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
 		pin.setImeOptions(EditorInfo.IME_ACTION_DONE);
@@ -99,6 +138,23 @@ public class TextActivity extends Activity {
 		});
 		column.addView(show);
 
+		// a red first word: making it selectable swaps its native view, and the rest stays the default color
+		final TextView marked = new TextView(this);
+		SpannableString error = new SpannableString("Error: disk full");
+		error.setSpan(new ForegroundColorSpan(0xffff0000), 0, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		marked.setText(error);
+		column.addView(marked);
+
+		Button select = new Button(this);
+		select.setText("select");
+		select.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				marked.setTextIsSelectable(true);
+				Log.i(TAG, "text selectable");
+			}
+		});
+		column.addView(select);
+
 		// on top: the capped field's growth moves what is below it
 		Button size = new Button(this);
 		size.setText("size");
@@ -109,7 +165,55 @@ public class TextActivity extends Activity {
 		});
 		column.addView(size, 0);
 
+		Button eye = new Button(this);
+		eye.setText("eye");
+		eye.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				boolean hidden = reveal.getTransformationMethod() != null;
+				reveal.setTransformationMethod(hidden ? null : PasswordTransformationMethod.getInstance());
+				Log.i(TAG, "text eye " + (hidden ? "shown" : "hidden"));
+			}
+		});
+		column.addView(eye, 1);
+
+		column.addView(keysButton("calckeys", calc), 2);
+		column.addView(keysButton("lockedkeys", locked), 3);
+
+		// the keyboard on name, focus moves away and back at once: the keyboard stays on name
+		Button swap = new Button(this);
+		swap.setText("swap");
+		swap.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				notes.requestFocus();
+				name.requestFocus();
+			}
+		});
+		column.addView(swap, 4);
+
+		Button hide = new Button(this);
+		hide.setText("hide");
+		hide.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+				Log.i(TAG, "text hide " + imm.hideSoftInputFromWindow(name.getWindowToken(), 0));
+			}
+		});
+		column.addView(hide, 5);
+
 		setContentView(column);
+	}
+
+	// the app shows the keyboard on a field itself, as a custom keypad's "abc" key does
+	private Button keysButton(String text, final EditText field) {
+		Button keys = new Button(this);
+		keys.setText(text);
+		keys.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+				Log.i(TAG, "text " + field.getHint() + "keys " + imm.showSoftInput(field, 0));
+			}
+		});
+		return keys;
 	}
 
 	// the hint is the debug agent's label; name has its own watcher, the others log their text

@@ -262,11 +262,27 @@ static void get_labels(void *data)
 	*(char **)data = g_strdup(labels->str);
 }
 
+struct feed_key {
+	int action;
+	guint keyval, keycode;
+	GdkModifierType state;
+	bool handled;
+};
+
+static void feed_key(void *data)
+{
+	struct feed_key *feed = data;
+	GtkWindow *app_window = GTK_WINDOW(window);
+	feed->handled = input_key(app_window, GTK_PHASE_CAPTURE, feed->keyval, feed->keycode, feed->state, feed->action)
+	                || input_key(app_window, GTK_PHASE_BUBBLE, feed->keyval, feed->keycode, feed->state, feed->action);
+}
+
 struct action {
 	enum { ACTION_TAP, ACTION_TYPE, ACTION_BACK } kind;
 	int n;
 	char *label; // the element's, as the caller saw it
 	char *text;
+	guint keyval, keycode; // ACTION_TYPE: a key pressed and released right after the text, in the same main-loop call; 0: none
 	GtkWidget *widget;
 };
 
@@ -285,8 +301,13 @@ static gboolean run_action(gpointer data)
 		result = atl_nav_back(host_app);
 	else if (action->kind == ACTION_TAP)
 		result = tap(action->widget);
-	else
+	else {
 		result = type(action->widget, action->text);
+		if (result && action->keyval) {
+			feed_key(&(struct feed_key){.action = ATL_KEY_DOWN, .keyval = action->keyval, .keycode = action->keycode});
+			feed_key(&(struct feed_key){.action = ATL_KEY_UP, .keyval = action->keyval, .keycode = action->keycode});
+		}
+	}
 	action_free(action);
 	return G_SOURCE_REMOVE;
 }
@@ -327,21 +348,6 @@ struct feed {
 	double x, y;
 	bool claimed;
 };
-
-struct feed_key {
-	int action;
-	guint keyval, keycode;
-	GdkModifierType state;
-	bool handled;
-};
-
-static void feed_key(void *data)
-{
-	struct feed_key *feed = data;
-	GtkWindow *app_window = GTK_WINDOW(window);
-	feed->handled = input_key(app_window, GTK_PHASE_CAPTURE, feed->keyval, feed->keycode, feed->state, feed->action)
-	                || input_key(app_window, GTK_PHASE_BUBBLE, feed->keyval, feed->keycode, feed->state, feed->action);
-}
 
 static void feed_pointer(void *data)
 {
@@ -525,8 +531,13 @@ static void handle(int fd)
 		}
 	} else if (g_str_has_prefix(line, "type ") && (rest = line + 5) && index_arg(&rest, &n)) {
 		char *label = NULL, *text = NULL;
-		if (*rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ',' && (text = parse_json_string(&rest)) && *rest == ']')
-			ask(fd, g_memdup2(&(struct action){.kind = ACTION_TYPE, .n = n, .label = label, .text = text}, sizeof(struct action)));
+		unsigned keyval = 0, keycode = 0;
+		int parsed = 0;
+		// ["LABEL", "TEXT"], or ["LABEL", "TEXT", KEYVAL, KEYCODE]: the key follows the text in one call
+		if (*rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ',' && (text = parse_json_string(&rest))
+		    && (*rest == ']' || (sscanf(rest, ",%u,%u]%n", &keyval, &keycode, &parsed) == 2 && rest[parsed] == '\0')))
+			ask(fd, g_memdup2(&(struct action){.kind = ACTION_TYPE, .n = n, .label = label, .text = text, .keyval = keyval, .keycode = keycode},
+			                  sizeof(struct action)));
 		else {
 			g_free(label);
 			g_free(text);

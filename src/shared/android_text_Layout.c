@@ -69,12 +69,8 @@ static struct line *add_line(struct layout *layout, size_t start, size_t content
 	return line;
 }
 
-static bool is_low_surrogate(uint16_t unit)
-{
-	return unit >= 0xDC00 && unit < 0xE000;
-}
-
-// the cut that fits ellipsize_width with the ellipsis, never inside a surrogate pair
+// the cut that fits ellipsize_width with the ellipsis, always on a cluster's edge: a unit inside a
+// cluster has the caret of the cluster's start
 static void ellipsize(struct layout *layout, struct line *line)
 {
 	const uint16_t *text = layout->text + line->start;
@@ -98,9 +94,9 @@ static void ellipsize(struct layout *layout, struct line *line)
 				keep_end--;
 		}
 	}
-	if (keep_start && keep_start < len && is_low_surrogate(text[keep_start]))
+	while (keep_start > 0 && keep_start < len && x[keep_start] == x[keep_start - 1])
 		keep_start--;
-	if (keep_end < len && is_low_surrogate(text[keep_end]))
+	while (keep_end > keep_start && keep_end < len && x[keep_end] == x[keep_end - 1])
 		keep_end++;
 	line->ellipsis_start = keep_start;
 	line->ellipsis_count = keep_end - keep_start;
@@ -258,17 +254,17 @@ JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1descent(JNIEn
 	return get(layout)->metrics.descent;
 }
 
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1left(JNIEnv *env, jobject object, jlong layout, jint line)
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1left(JNIEnv *env, jobject object, jlong layout, jint line)
 {
 	return line_left(get(layout), line_of(layout, line));
 }
 
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1right(JNIEnv *env, jobject object, jlong layout, jint line)
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1right(JNIEnv *env, jobject object, jlong layout, jint line)
 {
 	return line_left(get(layout), line_of(layout, line)) + line_of(layout, line)->width;
 }
 
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1width(JNIEnv *env, jobject object, jlong layout, jint line)
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1width(JNIEnv *env, jobject object, jlong layout, jint line)
 {
 	return line_of(layout, line)->width;
 }

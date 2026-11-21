@@ -125,4 +125,37 @@ public class EditTextTest extends android.test.InstrumentationTestCase {
 		assertEquals(InputType.TYPE_CLASS_TEXT, types[1]);
 		assertEquals(InputType.TYPE_CLASS_NUMBER, types[2]);
 	}
+
+	// a focus move leaves the selection where it was (gtk's grab selects the field's contents)
+	public void testRequestFocusKeepsTheSelection() {
+		final TextActivity activity = (TextActivity)getInstrumentation().startActivitySync(new android.content.Intent(context(), TextActivity.class));
+		final EditText[] edit = new EditText[1];
+		onMain(new Runnable() {
+			public void run() {
+				edit[0] = new EditText(context());
+				edit[0].setText("abc");
+				edit[0].setSelection(1);
+				activity.root.addView(edit[0]);
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		android.os.SystemClock.sleep(500); // the toolkit's field takes Java's state
+		onMain(new Runnable() {
+			public void run() {
+				edit[0].requestFocus();
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		android.os.SystemClock.sleep(500); // a report the focus move caused arrives
+		final int[] selection = new int[2];
+		onMain(new Runnable() {
+			public void run() {
+				selection[0] = edit[0].getSelectionStart();
+				selection[1] = edit[0].getSelectionEnd();
+				activity.root.removeAllViews();
+			}
+		});
+		assertEquals(1, selection[0]);
+		assertEquals(1, selection[1]);
+	}
 }

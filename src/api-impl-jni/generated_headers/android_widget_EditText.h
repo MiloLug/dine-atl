@@ -249,6 +249,14 @@ extern "C" {
 #define android_widget_EditText_RUN_BASELINE 128L
 #undef android_widget_EditText_RUN_SCALE_X
 #define android_widget_EditText_RUN_SCALE_X 256L
+#undef android_widget_EditText_ELLIPSIZE_NONE
+#define android_widget_EditText_ELLIPSIZE_NONE 0L
+#undef android_widget_EditText_ELLIPSIZE_START
+#define android_widget_EditText_ELLIPSIZE_START 1L
+#undef android_widget_EditText_ELLIPSIZE_MIDDLE
+#define android_widget_EditText_ELLIPSIZE_MIDDLE 2L
+#undef android_widget_EditText_ELLIPSIZE_END
+#define android_widget_EditText_ELLIPSIZE_END 3L
 #undef android_widget_EditText_KEYBOARD_TEXT
 #define android_widget_EditText_KEYBOARD_TEXT 0L
 #undef android_widget_EditText_KEYBOARD_NUMBER
@@ -261,6 +269,8 @@ extern "C" {
 #define android_widget_EditText_KEYBOARD_EMAIL 4L
 #undef android_widget_EditText_KEYBOARD_URL
 #define android_widget_EditText_KEYBOARD_URL 5L
+#undef android_widget_EditText_KEYBOARD_DATETIME
+#define android_widget_EditText_KEYBOARD_DATETIME 6L
 #undef android_widget_EditText_RETURN_DEFAULT
 #define android_widget_EditText_RETURN_DEFAULT 0L
 #undef android_widget_EditText_RETURN_DONE
@@ -273,6 +283,14 @@ extern "C" {
 #define android_widget_EditText_RETURN_NEXT 4L
 #undef android_widget_EditText_RETURN_SEND
 #define android_widget_EditText_RETURN_SEND 5L
+#undef android_widget_EditText_AUTOCAP_NONE
+#define android_widget_EditText_AUTOCAP_NONE 0L
+#undef android_widget_EditText_AUTOCAP_WORDS
+#define android_widget_EditText_AUTOCAP_WORDS 1L
+#undef android_widget_EditText_AUTOCAP_SENTENCES
+#define android_widget_EditText_AUTOCAP_SENTENCES 2L
+#undef android_widget_EditText_AUTOCAP_CHARACTERS
+#define android_widget_EditText_AUTOCAP_CHARACTERS 3L
 /*
  * Class:     android_widget_EditText
  * Method:    native_constructor
@@ -284,10 +302,10 @@ JNIEXPORT jlong JNICALL Java_android_widget_EditText_native_1constructor
 /*
  * Class:     android_widget_EditText
  * Method:    native_setConfig
- * Signature: (IIIZZZLjava/lang/String;)V
+ * Signature: (IIIZZZZZZZLjava/lang/String;)V
  */
 JNIEXPORT void JNICALL Java_android_widget_EditText_native_1setConfig
-  (JNIEnv *, jobject, jint, jint, jint, jboolean, jboolean, jboolean, jstring);
+  (JNIEnv *, jobject, jint, jint, jint, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jboolean, jstring);
 
 /*
  * Class:     android_widget_EditText

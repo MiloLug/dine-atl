@@ -12,8 +12,13 @@ import android.text.style.StyleSpan;
 import android.text.style.UnderlineSpan;
 import android.os.SystemClock;
 import android.util.TypedValue;
+import android.text.TextUtils;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.TextView;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 @SuppressWarnings("deprecation")
 public class TextViewTest extends android.test.InstrumentationTestCase {
@@ -393,5 +398,235 @@ public class TextViewTest extends android.test.InstrumentationTestCase {
 				return seen.toString();
 			}
 		}));
+	}
+
+	// the overridable hooks AOSP calls from setText, the ChangeWatcher and the selection spans; no
+	// @Override and no super call, so that the class compiles against a TextView without them
+	private static class HookedEdit extends EditText {
+		final List<String> calls = new ArrayList<String>(); // null while TextView's constructor runs
+
+		HookedEdit(Context context) {
+			super(context);
+		}
+
+		protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {
+			if (calls != null)
+				calls.add("text " + start + " " + lengthBefore + " " + lengthAfter);
+		}
+
+		protected void onSelectionChanged(int selStart, int selEnd) {
+			if (calls != null)
+				calls.add("sel " + selStart + " " + selEnd);
+		}
+	}
+
+	public void testSubclassHooksRun() {
+		final String[] got = new String[3];
+		onMain(new OnMain() {
+			public Object run() {
+				HookedEdit view = new HookedEdit(context());
+				view.calls.clear();
+				view.setText("ab");
+				got[0] = view.calls.contains("text 0 0 2") ? "ok" : view.calls.toString();
+				view.calls.clear();
+				view.getText().append("c");
+				got[1] = view.calls.toString();
+				view.calls.clear();
+				view.setSelection(1);
+				got[2] = view.calls.toString();
+				return null;
+			}
+		});
+		assertEquals("ok", got[0]);
+		assertEquals("[text 2 0 1]", got[1]);
+		assertEquals("[sel 1 1]", got[2]);
+	}
+
+	private TextActivity activity() {
+		return (TextActivity)getInstrumentation().startActivitySync(new android.content.Intent(context(), TextActivity.class));
+	}
+
+	private TextView attached(final TextActivity activity, final String text, final CharSequence hint) {
+		final TextView[] view = new TextView[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				view[0] = new TextView(activity);
+				view[0].setText(text);
+				if (hint != null)
+					view[0].setHint(hint);
+				activity.root.addView(view[0], new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+			}
+		});
+		settled(view[0]);
+		return view[0];
+	}
+
+	// the next layout pass has run
+	private void settled(TextView view) {
+		getInstrumentation().waitForIdleSync();
+		for (int i = 0; i < 100 && (view.isLayoutRequested() || view.getWidth() == 0 && view.getHeight() == 0 && view.getText().length() > 0); i++)
+			SystemClock.sleep(20);
+	}
+
+	private static void assertAsksForLayout(String what, boolean asked) {
+		assertTrue(what + " asks for a layout", asked);
+	}
+
+	public void testTextSizeRequestsALayoutAndGrows() {
+		final TextActivity activity = activity();
+		final TextView view = attached(activity, "abc", null);
+		final int height = view.getHeight();
+		final boolean[] asked = new boolean[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.getTextSize() * 2);
+				asked[0] = view.isLayoutRequested();
+			}
+		});
+		assertAsksForLayout("setTextSize", asked[0]);
+		settled(view);
+		assertTrue(height + " then " + view.getHeight(), view.getHeight() > height);
+	}
+
+	public void testTypefaceRequestsALayout() {
+		final TextActivity activity = activity();
+		final TextView view = attached(activity, "abc", null);
+		final boolean[] asked = new boolean[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				view.setTypeface(null, android.graphics.Typeface.BOLD);
+				asked[0] = view.isLayoutRequested();
+			}
+		});
+		assertAsksForLayout("setTypeface", asked[0]);
+	}
+
+	public void testAllCapsRequestsALayoutAndIsAllCaps() {
+		final TextActivity activity = activity();
+		final TextView view = attached(activity, "abc", null);
+		final boolean[] got = new boolean[2];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				view.setAllCaps(true);
+				got[0] = view.isLayoutRequested();
+				got[1] = view.isAllCaps();
+			}
+		});
+		assertAsksForLayout("setAllCaps", got[0]);
+		assertTrue("isAllCaps", got[1]);
+	}
+
+	public void testEllipsizeIsKeptAndRead() {
+		final Object[] got = new Object[3];
+		onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				got[0] = view.getEllipsize();
+				view.setEllipsize(TextUtils.TruncateAt.END);
+				got[1] = view.getEllipsize();
+				view.setEllipsize(null);
+				got[2] = view.getEllipsize();
+				return null;
+			}
+		});
+		assertNull(got[0]);
+		assertEquals(TextUtils.TruncateAt.END, got[1]);
+		assertNull(got[2]);
+	}
+
+	public void testEllipsizeAttribute() {
+		final Object[] got = new Object[2];
+		onMain(new OnMain() {
+			public Object run() {
+				android.view.View root = android.view.LayoutInflater.from(context()).inflate(R.layout.ellipsized, null);
+				got[0] = ((TextView)root.findViewById(R.id.title)).getEllipsize();
+				got[1] = ((TextView)root.findViewById(R.id.middle)).getEllipsize();
+				return null;
+			}
+		});
+		assertEquals(TextUtils.TruncateAt.END, got[0]);
+		assertEquals(TextUtils.TruncateAt.MIDDLE, got[1]);
+	}
+
+	// AOSP's updateTextColors from drawableStateChanged
+	public void testColorStateListFollowsTheDrawableState() {
+		final int[] colors = new int[3];
+		onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setTextColor(new ColorStateList(new int[][] {{-android.R.attr.state_enabled}, {}}, new int[] {0xff112233, 0xff445566}));
+				colors[0] = view.getCurrentTextColor();
+				view.setEnabled(false);
+				colors[1] = view.getCurrentTextColor();
+				view.setEnabled(true);
+				colors[2] = view.getCurrentTextColor();
+				return null;
+			}
+		});
+		assertEquals(0xff445566, colors[0]);
+		assertEquals(0xff112233, colors[1]);
+		assertEquals(0xff445566, colors[2]);
+	}
+
+	// a TextView with no text shows its hint (an EditText's field takes it as its placeholder)
+	public void testHintShowsWhileTheTextIsEmpty() {
+		final TextActivity activity = activity();
+		TextView hinted = attached(activity, "", "Pick a date");
+		TextView bare = attached(activity, "", null);
+		assertTrue("hinted width " + hinted.getWidth(), hinted.getWidth() > 0);
+		assertEquals(0, bare.getWidth());
+		assertEquals("", hinted.getText().toString());
+	}
+
+	// a hint set after the first layout changes what the view measures
+	public void testHintRequestsALayoutAndTakesItsSize() {
+		final TextActivity activity = activity();
+		final TextView view = attached(activity, "", null);
+		assertEquals(0, view.getWidth());
+		final boolean[] asked = new boolean[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				view.setHint("Pick a date");
+				asked[0] = view.isLayoutRequested();
+			}
+		});
+		assertAsksForLayout("setHint", asked[0]);
+		settled(view);
+		assertTrue("width " + view.getWidth(), view.getWidth() > 0);
+	}
+
+	// AOSP's updateTextColors for the hint, from the drawable state
+	public void testHintColorFollowsTheDrawableState() {
+		final int[] colors = new int[3];
+		onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(context());
+				view.setHintTextColor(new ColorStateList(new int[][] {{-android.R.attr.state_enabled}, {}}, new int[] {0xff112233, 0xff445566}));
+				colors[0] = view.getCurrentHintTextColor();
+				view.setEnabled(false);
+				colors[1] = view.getCurrentHintTextColor();
+				view.setHintTextColor(0xff778899);
+				colors[2] = view.getCurrentHintTextColor();
+				return null;
+			}
+		});
+		assertEquals(0xff445566, colors[0]);
+		assertEquals(0xff112233, colors[1]);
+		assertEquals(0xff778899, colors[2]);
+	}
+
+	// a view with no textColor answers AOSP's default, which its default text appearance would replace
+	public void testNoTextColorAnswersTheDefault() {
+		final int[] colors = new int[2];
+		onMain(new OnMain() {
+			public Object run() {
+				TextView view = new TextView(new android.view.ContextThemeWrapper(context(), R.style.BareText));
+				colors[0] = view.getCurrentTextColor();
+				colors[1] = view.getTextColors().getDefaultColor();
+				return null;
+			}
+		});
+		assertEquals(0xff000000, colors[0]);
+		assertEquals(0xff000000, colors[1]);
 	}
 }

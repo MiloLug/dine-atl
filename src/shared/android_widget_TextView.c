@@ -78,6 +78,15 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setLines(JNIEnv *env
 	ui_text_set_lines(text_view(env, this), min, max);
 }
 
+_Static_assert(UI_ELLIPSIZE_NONE == android_widget_TextView_ELLIPSIZE_NONE && UI_ELLIPSIZE_START == android_widget_TextView_ELLIPSIZE_START
+               && UI_ELLIPSIZE_MIDDLE == android_widget_TextView_ELLIPSIZE_MIDDLE && UI_ELLIPSIZE_END == android_widget_TextView_ELLIPSIZE_END,
+               "TextView's ELLIPSIZE_* are the slot's ui_ellipsize");
+
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setEllipsize(JNIEnv *env, jobject this, jint ellipsize)
+{
+	ui_text_set_ellipsize(text_view(env, this), ellipsize);
+}
+
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle(JNIEnv *env, jobject this, jint style)
 {
 	ui_text_set_style(text_view(env, this), style);

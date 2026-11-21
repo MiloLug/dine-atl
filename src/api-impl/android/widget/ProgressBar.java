@@ -18,9 +18,13 @@ public class ProgressBar extends View {
 	private Drawable progressDrawable = new Drawable();
 
 	public ProgressBar(Context context, AttributeSet attrs, int defStyle) {
-		super(context, attrs, defStyle);
+		this(context, attrs, defStyle, 0);
+	}
+
+	public ProgressBar(Context context, AttributeSet attrs, int defStyle, int defStyleRes) {
+		super(context, attrs, defStyle, defStyleRes);
 		haveCustomMeasure = false;
-		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.ProgressBar, defStyle, 0);
+		TypedArray a = context.obtainStyledAttributes(attrs, com.android.internal.R.styleable.ProgressBar, defStyle, defStyleRes);
 		setIndeterminateDrawable(a.getDrawable(com.android.internal.R.styleable.ProgressBar_indeterminateDrawable));
 		Drawable progressDrawable = a.getDrawable(com.android.internal.R.styleable.ProgressBar_progressDrawable);
 		if (progressDrawable != null)

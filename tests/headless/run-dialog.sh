@@ -317,7 +317,7 @@ if ((headless)); then
   send "tap Inner"
   wait_for 'view inner click$'
   touch_at $field_x $field_y
-  wait_for '^keyboard: on android.widget.EditText "name"$'
+  wait_for '^keyboard: on android.widget.EditText "name" kind=text return=default autocap=none secure=0 hidden=0 multiline=1 autocorrect=1 tap_focus=1 tap_keyboard=1 editable=1$'
   send "text commit hey"
   wait_for '^edit: "hey" 3,3$'
   send "answer OK"

@@ -22,10 +22,14 @@ public class Spinner extends AbsSpinner {
 	}
 
 	public Spinner(Context context, AttributeSet attributeSet, int defStyle) {
-		super(context, attributeSet, defStyle);
+		this(context, attributeSet, defStyle, 0);
+	}
+
+	public Spinner(Context context, AttributeSet attributeSet, int defStyle, int defStyleRes) {
+		super(context, attributeSet, defStyle, defStyleRes);
 		haveCustomMeasure = false;
 
-		TypedArray a = context.obtainStyledAttributes(attributeSet, R.styleable.Spinner, defStyle, 0);
+		TypedArray a = context.obtainStyledAttributes(attributeSet, R.styleable.Spinner, defStyle, defStyleRes);
 		popupBackground = a.getDrawable(R.styleable.Spinner_popupBackground);
 		a.recycle();
 	}

@@ -282,9 +282,9 @@ public class Layout {
 	protected native int native_get_line_end(long layout, int line);
 	protected native int native_get_line_top(long layout, int line);
 	protected native int native_get_line_bottom(long layout, int line);
-	protected native int native_get_line_left(long layout, int line);
-	protected native int native_get_line_right(long layout, int line);
-	protected native int native_get_line_width(long layout, int line);
+	protected native float native_get_line_left(long layout, int line);
+	protected native float native_get_line_right(long layout, int line);
+	protected native float native_get_line_width(long layout, int line);
 	protected native int native_get_line_baseline(long layout, int line);
 	protected native int native_get_line_ascent(long layout, int line);
 	protected native int native_get_line_descent(long layout, int line);

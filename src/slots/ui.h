@@ -279,6 +279,15 @@ float ui_text_get_size(struct ui_view *view);
 /* TextView's line counts, in the measured height and in what shows: min pads, max cuts the lines
  * past it off, as Android does without an ellipsize. 0: no min, -1: no max. */
 void ui_text_set_lines(struct ui_view *view, int min, int max);
+/* TextView.setEllipsize: where the last line that doesn't fit ends in "..." instead of being cut off.
+ * Marquee is NONE (it scrolls only while focused). */
+enum ui_ellipsize {
+	UI_ELLIPSIZE_NONE,
+	UI_ELLIPSIZE_START,
+	UI_ELLIPSIZE_MIDDLE,
+	UI_ELLIPSIZE_END,
+};
+void ui_text_set_ellipsize(struct ui_view *view, enum ui_ellipsize ellipsize);
 /* Typeface.NORMAL, BOLD, ITALIC or BOLD_ITALIC; any view node: gtk's EditText widget takes it too. */
 void ui_text_set_style(struct ui_view *view, int style);
 #define UI_TEXT_BOLD   1
@@ -305,6 +314,7 @@ enum ui_keyboard {
 	UI_KEYBOARD_PHONE,
 	UI_KEYBOARD_EMAIL,
 	UI_KEYBOARD_URL,
+	UI_KEYBOARD_DATETIME, // digits and the separators of dates and times
 };
 // the return key of a single-line field; DEFAULT: a plain return
 enum ui_return_key {
@@ -325,9 +335,18 @@ struct ui_edit_config {
 	enum ui_keyboard keyboard;
 	enum ui_return_key return_key;
 	enum ui_autocap autocap;
-	bool secure; // a password: hidden, nothing learned
+	bool secure; // a password input: nothing learned
+	bool hidden; // the text shows as dots
 	bool multiline;
 	bool autocorrect;
+	/* What a tap the toolkit takes itself does, as Android's own rule gives it (View.onTouchEvent's
+	 * focus in touch mode, Editor.onTouchUpEvent's keyboard): tap_focus: the field takes the tap's
+	 * focus, else it takes no tap; tap_keyboard: the tap shows the toolkit's keyboard, else the field
+	 * has focus and a caret and no keyboard, until ui_edit_set_keyboard shows one; editable: the
+	 * toolkit's own edits apply, else it refuses them. */
+	bool tap_focus;
+	bool tap_keyboard;
+	bool editable;
 	const char *hint; // NULL: none
 };
 void ui_edit_set_config(struct ui_view *view, const struct ui_edit_config *config);

@@ -23,7 +23,11 @@ public class HorizontalScrollView extends FrameLayout {
 	}
 
 	public HorizontalScrollView(Context context, AttributeSet attributeSet, int defStyleAttr) {
-		super(context, attributeSet, defStyleAttr);
+		this(context, attributeSet, defStyleAttr, 0);
+	}
+
+	public HorizontalScrollView(Context context, AttributeSet attributeSet, int defStyleAttr, int defStyleRes) {
+		super(context, attributeSet, defStyleAttr, defStyleRes);
 	}
 
 	@Override

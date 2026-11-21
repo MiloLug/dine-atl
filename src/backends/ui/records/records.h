@@ -40,6 +40,9 @@ struct ui_view {
 	char *text;
 	float text_size; // px
 	int min_lines, max_lines; // ui_text_set_lines'
+	enum ui_ellipsize ellipsize;
+	bool has_text_color; // ui_text_set_color's, kept for a native view that is swapped for another
+	uint32_t text_color;
 	int text_style;  // UI_TEXT_BOLD, UI_TEXT_ITALIC
 	struct ui_text_run *runs; // ui_text_set_styled's, owned
 	size_t n_runs;

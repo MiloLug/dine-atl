@@ -46,18 +46,16 @@ public class InputMethodManager {
 			shown = served.atlSetKeyboard(true);
 			return true;
 		}
-		if (im_context == 0)
-			im_context = nativeInit();
-		if (view == activeView) {
+		if (view == activeView)
 			return nativeShowSoftInput(im_context, view.widget, null, 0);
-		}
 		EditorInfo outAttrs = new EditorInfo();
 		InputConnection ic = view.onCreateInputConnection(outAttrs);
-		if (ic != null) {
-			activeView = view;
-			return nativeShowSoftInput(im_context, view.widget, ic, outAttrs.inputType);
-		}
-		return false;
+		if (ic == null)
+			return false;
+		if (im_context == 0)
+			im_context = nativeInit();
+		activeView = view;
+		return nativeShowSoftInput(im_context, view.widget, ic, outAttrs.inputType);
 	}
 
 	public void toggleSoftInput(int showFlags, int hideFlags) {
@@ -111,11 +109,13 @@ public class InputMethodManager {
 		atlHideKeyboard();
 	}
 
+	// the focused field is the served one, as AOSP's View passes every focus gain to focusIn; the keyboard
+	// moves to it only while a request stands
 	public void atlFocusIn(EditText view) {
-		if (requested && served != view) {
-			served = view;
+		boolean moves = requested && served != view;
+		served = view;
+		if (moves)
 			shown = view.atlSetKeyboard(true);
-		}
 	}
 
 	// after the focus change: the keyboard hides unless another EditText took it
@@ -133,11 +133,17 @@ public class InputMethodManager {
 	 * then: gtk's focus also follows Java's requestFocus) or took it away */
 	public void atlToolkitFocus(EditText view, boolean focused, boolean keyboard) {
 		if (focused) {
+			EditText wasServed = served;
+			boolean wasRequested = requested, wasShown = shown;
 			served = view;
 			requested |= keyboard;
 			shown = keyboard;
-			if (!view.isFocused())
-				view.requestFocus();
+			if (!view.isFocused() && !view.requestFocus()) { // Java refuses the focus: the toolkit's goes back, keyboard or not
+				served = wasServed;
+				requested = wasRequested;
+				shown = wasShown;
+				view.atlSetKeyboard(false);
+			}
 		} else if (served == view && shown) { // gtk's focus follows Java's: atlFocusOut ends its request
 			requested = false;
 			shown = false;

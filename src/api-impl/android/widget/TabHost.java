@@ -4,7 +4,19 @@ import android.view.View;
 
 public class TabHost extends View {
 	public TabHost(android.content.Context context) {
-		super(context);
+		this(context, null);
+	}
+
+	public TabHost(android.content.Context context, android.util.AttributeSet attrs) {
+		this(context, attrs, 0);
+	}
+
+	public TabHost(android.content.Context context, android.util.AttributeSet attrs, int defStyleAttr) {
+		this(context, attrs, defStyleAttr, 0);
+	}
+
+	public TabHost(android.content.Context context, android.util.AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+		super(context, attrs, defStyleAttr, defStyleRes);
 	}
 
 	public static class TabSpec {

@@ -120,4 +120,41 @@ public class KeyListenerTest extends android.test.InstrumentationTestCase {
 			}
 		}));
 	}
+
+	// the datetime class: AOSP's Date, Time and DateTime key listeners, from the locale's patterns
+	public void testDatetimeClassKeepsDatesAndTimes() {
+		assertEquals("1/2", onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE);
+				return typed(edit, "1x/2");
+			}
+		}));
+		assertEquals("1:3", onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
+				return typed(edit, "1x:3");
+			}
+		}));
+		assertEquals("1/2 3:4", onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_NORMAL);
+				return typed(edit, "1x/2 3:4");
+			}
+		}));
+	}
+
+	public void testDatetimeClassHasItsKeyListeners() {
+		assertEquals("DateKeyListener", onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE);
+				return edit.getKeyListener().getClass().getSimpleName();
+			}
+		}));
+		assertEquals("TimeKeyListener", onMain(new Field() {
+			public Object run(EditText edit) {
+				edit.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
+				return edit.getKeyListener().getClass().getSimpleName();
+			}
+		}));
+	}
 }

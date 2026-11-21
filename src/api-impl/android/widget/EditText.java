@@ -14,16 +14,20 @@ import android.text.Selection;
 import android.text.Spannable;
 import android.text.Spanned;
 import android.text.SpannedString;
+import android.text.method.DateKeyListener;
+import android.text.method.DateTimeKeyListener;
 import android.text.method.DialerKeyListener;
 import android.text.method.DigitsKeyListener;
 import android.text.method.KeyListener;
 import android.text.method.PasswordTransformationMethod;
+import android.text.method.TimeKeyListener;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import java.util.Locale;
 
 /* The Editable is the truth: the toolkit's field applies the user's edits and reports them
  * (atlEdited), Java answers with a snapshot when its state differs. Fields have no initializers:
@@ -31,9 +35,10 @@ import android.view.inputmethod.InputMethodManager;
 public class EditText extends TextView {
 	private static final Spanned EMPTY_SPANNED = new SpannedString("");
 
-	// ui_keyboard and ui_return_key
-	private static final int KEYBOARD_TEXT = 0, KEYBOARD_NUMBER = 1, KEYBOARD_DECIMAL = 2, KEYBOARD_PHONE = 3, KEYBOARD_EMAIL = 4, KEYBOARD_URL = 5;
+	// ui_keyboard, ui_return_key and ui_autocap (asserted in android_widget_EditText.c)
+	private static final int KEYBOARD_TEXT = 0, KEYBOARD_NUMBER = 1, KEYBOARD_DECIMAL = 2, KEYBOARD_PHONE = 3, KEYBOARD_EMAIL = 4, KEYBOARD_URL = 5, KEYBOARD_DATETIME = 6;
 	private static final int RETURN_DEFAULT = 0, RETURN_DONE = 1, RETURN_GO = 2, RETURN_SEARCH = 3, RETURN_NEXT = 4, RETURN_SEND = 5;
+	private static final int AUTOCAP_NONE = 0, AUTOCAP_WORDS = 1, AUTOCAP_SENTENCES = 2, AUTOCAP_CHARACTERS = 3;
 
 	private InputFilter[] filters;
 	private KeyListener keyListener;
@@ -116,7 +121,7 @@ public class EditText extends TextView {
 
 	@Override
 	protected native long native_constructor(Context context, AttributeSet attrs);
-	private native void native_setConfig(int keyboard, int returnKey, int autocap, boolean secure, boolean multiline, boolean autocorrect, String hint);
+	private native void native_setConfig(int keyboard, int returnKey, int autocap, boolean secure, boolean hidden, boolean multiline, boolean autocorrect, boolean tapFocus, boolean tapKeyboard, boolean editable, String hint);
 	private native void native_setState(String text, int start, int end, int ack);
 	private native boolean native_setKeyboard(boolean shown);
 
@@ -237,6 +242,15 @@ public class EditText extends TextView {
 	// TextView.setInputType's choice; text fields get none (no TextKeyListener)
 	private static KeyListener keyListenerFor(int type) {
 		switch (type & EditorInfo.TYPE_MASK_CLASS) {
+		case EditorInfo.TYPE_CLASS_DATETIME:
+			switch (type & EditorInfo.TYPE_MASK_VARIATION) {
+			case EditorInfo.TYPE_DATETIME_VARIATION_DATE:
+				return DateKeyListener.getInstance(Locale.getDefault());
+			case EditorInfo.TYPE_DATETIME_VARIATION_TIME:
+				return TimeKeyListener.getInstance(Locale.getDefault());
+			default:
+				return DateTimeKeyListener.getInstance(Locale.getDefault());
+			}
 		case EditorInfo.TYPE_CLASS_NUMBER:
 			return DigitsKeyListener.getInstance(null, (type & EditorInfo.TYPE_NUMBER_FLAG_SIGNED) != 0, (type & EditorInfo.TYPE_NUMBER_FLAG_DECIMAL) != 0);
 		case EditorInfo.TYPE_CLASS_PHONE:
@@ -364,6 +378,19 @@ public class EditText extends TextView {
 	@Override
 	public void setShowSoftInputOnFocus(boolean show) {
 		showSoftInputOnFocus = show;
+		atlSendConfig();
+	}
+
+	@Override
+	public void setFocusable(int focusable) {
+		super.setFocusable(focusable);
+		atlSendConfig();
+	}
+
+	@Override
+	public void setFocusableInTouchMode(boolean focusableInTouchMode) {
+		super.setFocusableInTouchMode(focusableInTouchMode);
+		atlSendConfig();
 	}
 
 	@Override
@@ -385,13 +412,17 @@ public class EditText extends TextView {
 		int variation = type & EditorInfo.TYPE_MASK_VARIATION;
 		boolean text = klass == EditorInfo.TYPE_CLASS_TEXT;
 		boolean multiline = isMultilineInputType(type);
-		boolean secure = isPasswordInputType(type) || getTransformationMethod() instanceof PasswordTransformationMethod;
+		// AOSP keeps what a keyboard learns (the input type) apart from what shows (the transformation)
+		boolean hidden = getTransformationMethod() instanceof PasswordTransformationMethod;
+		boolean secure = isPasswordInputType(type) || hidden;
 
 		int keyboard = KEYBOARD_TEXT;
 		if (klass == EditorInfo.TYPE_CLASS_NUMBER)
 			keyboard = (type & EditorInfo.TYPE_NUMBER_FLAG_DECIMAL) != 0 ? KEYBOARD_DECIMAL : KEYBOARD_NUMBER;
 		else if (klass == EditorInfo.TYPE_CLASS_PHONE)
 			keyboard = KEYBOARD_PHONE;
+		else if (klass == EditorInfo.TYPE_CLASS_DATETIME)
+			keyboard = KEYBOARD_DATETIME;
 		else if (text && (variation == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS || variation == EditorInfo.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS))
 			keyboard = KEYBOARD_EMAIL;
 		else if (text && variation == EditorInfo.TYPE_TEXT_VARIATION_URI)
@@ -408,14 +439,13 @@ public class EditText extends TextView {
 			}
 		}
 
-		// ui_edit_config's autocap: none, words, sentences, characters
-		int autocap = 0;
+		int autocap = AUTOCAP_NONE;
 		if (text && (type & EditorInfo.TYPE_TEXT_FLAG_CAP_CHARACTERS) != 0)
-			autocap = 3;
+			autocap = AUTOCAP_CHARACTERS;
 		else if (text && (type & EditorInfo.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0)
-			autocap = 2;
+			autocap = AUTOCAP_SENTENCES;
 		else if (text && (type & EditorInfo.TYPE_TEXT_FLAG_CAP_WORDS) != 0)
-			autocap = 1;
+			autocap = AUTOCAP_WORDS;
 
 		// Android's keyboards correct plain text unless the field says otherwise
 		boolean autocorrect = text && !secure && (type & EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0
@@ -424,7 +454,11 @@ public class EditText extends TextView {
 		                   && variation != EditorInfo.TYPE_TEXT_VARIATION_FILTER;
 
 		CharSequence hint = getHint();
-		native_setConfig(keyboard, returnKey, autocap, secure, multiline, autocorrect, hint != null ? hint.toString() : null);
+		// View.onTouchEvent takes focus in touch mode; Editor.onTouchUpEvent shows the keyboard
+		boolean tapFocus = isFocusable() && isFocusableInTouchMode();
+		boolean tapKeyboard = showSoftInputOnFocus && onCheckIsTextEditor();
+		native_setConfig(keyboard, returnKey, autocap, secure, hidden, multiline, autocorrect, tapFocus, tapKeyboard, onCheckIsTextEditor(),
+		                 hint != null ? hint.toString() : null);
 	}
 
 	// the field becomes or stops being the keyboard's; false: no keyboard shows on this toolkit
@@ -604,10 +638,11 @@ public class EditText extends TextView {
 				int before = ps - p, after = (prevLen - s) - pe;
 				int st = clamp(Math.min(js, je) - before, 0, length);
 				int en = clamp(Math.max(js, je) + after, st, length);
+				// BaseInputConnection.replaceText: the caret goes in before the replace, and the Editable's spans
+				// and the watchers decide where it ends
+				Selection.setSelection(editable, caretBefore(start, p, newLen - s, st, en, length), caretBefore(end, p, newLen - s, st, en, length));
 				editable.replace(st, en, text, p, newLen - s);
-				int insertedEnd = st + editable.length() - (length - (en - st));
-				Selection.setSelection(editable, mapped(start, p, newLen - s, st, insertedEnd, editable.length()),
-				                       mapped(end, p, newLen - s, st, insertedEnd, editable.length()));
+				placeCaretInsideInsertion(editable, start, end, p, newLen - s, st);
 			} else {
 				Selection.setSelection(editable, clamp(start, 0, length), clamp(end, 0, length));
 			}
@@ -619,13 +654,25 @@ public class EditText extends TextView {
 		sync();
 	}
 
-	// a toolkit position after its change [from, to) to Java's, whose change is [st, insertedEnd)
-	private static int mapped(int position, int from, int to, int st, int insertedEnd, int length) {
+	// the toolkit's caret inside the inserted run [from, to): the replace left it at the end of the run, and
+	// an IME puts it back with a setSelection after commitText. A caret a watcher or filter moved stays.
+	private static void placeCaretInsideInsertion(Editable editable, int start, int end, int from, int to, int st) {
+		int landed = st + (to - from);
+		int a = Selection.getSelectionStart(editable), b = Selection.getSelectionEnd(editable);
+		int na = a == landed && start > from && start < to ? clamp(st + (start - from), st, landed) : a;
+		int nb = b == landed && end > from && end < to ? clamp(st + (end - from), st, landed) : b;
+		if (na != a || nb != b)
+			Selection.setSelection(editable, na, nb);
+	}
+
+	// a toolkit position after its change [from, to) in Java's text before its change [st, en); inside the
+	// change it goes to the end of what is replaced, where the replace moves it past the inserted text
+	private static int caretBefore(int position, int from, int to, int st, int en, int length) {
 		if (position <= from)
 			return clamp(st - (from - position), 0, length);
 		if (position >= to)
-			return clamp(insertedEnd + (position - to), 0, length);
-		return Math.min(st + (position - from), insertedEnd);
+			return clamp(en + (position - to), 0, length);
+		return en;
 	}
 
 	// the Editable or its selection changed: one snapshot per message

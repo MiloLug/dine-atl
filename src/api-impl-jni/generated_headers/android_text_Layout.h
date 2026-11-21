@@ -82,25 +82,25 @@ JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1bottom
 /*
  * Class:     android_text_Layout
  * Method:    native_get_line_left
- * Signature: (JI)I
+ * Signature: (JI)F
  */
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1left
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1left
   (JNIEnv *, jobject, jlong, jint);
 
 /*
  * Class:     android_text_Layout
  * Method:    native_get_line_right
- * Signature: (JI)I
+ * Signature: (JI)F
  */
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1right
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1right
   (JNIEnv *, jobject, jlong, jint);
 
 /*
  * Class:     android_text_Layout
  * Method:    native_get_line_width
- * Signature: (JI)I
+ * Signature: (JI)F
  */
-JNIEXPORT jint JNICALL Java_android_text_Layout_native_1get_1line_1width
+JNIEXPORT jfloat JNICALL Java_android_text_Layout_native_1get_1line_1width
   (JNIEnv *, jobject, jlong, jint);
 
 /*

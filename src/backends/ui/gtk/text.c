@@ -3,6 +3,7 @@
 
 #include "src/api-impl-jni/gtk_util.h"
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
+#include "src/shared/input.h"
 #include "src/slots/ui.h"
 
 #include "gtk_ui.h"
@@ -110,15 +111,6 @@ struct ui_view *ui_text_new(struct atl_ref *view_ref, const char *class_name, co
 
 static void apply_min_lines(GtkLabel *label);
 
-// a UTF-16 index of text as a byte index
-static int byte_index(const char *text, int utf16)
-{
-	const char *at = text;
-	for (int units = 0; *at && units < utf16; at = g_utf8_next_char(at))
-		units += g_utf8_get_char(at) > 0xFFFF ? 2 : 1;
-	return at - text;
-}
-
 static void add(PangoAttrList *attrs, PangoAttribute *attr, int start, int end)
 {
 	attr->start_index = start;
@@ -197,7 +189,7 @@ void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_
 	if (n_runs) {
 		copy = g_array_sized_new(FALSE, FALSE, sizeof(struct byte_run), n_runs);
 		for (size_t i = 0; i < n_runs; i++) {
-			struct byte_run byte_run = {byte_index(text, runs[i].start), byte_index(text, runs[i].end), runs[i]};
+			struct byte_run byte_run = {atl_utf8_offset(text, runs[i].start), atl_utf8_offset(text, runs[i].end), runs[i]};
 			g_array_append_val(copy, byte_run);
 		}
 	}
@@ -268,12 +260,33 @@ float ui_text_get_size(struct ui_view *view)
 	return (float)pango_font_description_get_size(font) / PANGO_SCALE;
 }
 
+// Pango ellipsizes a paragraph to one line, so only a label of one line takes the ellipsis; more
+// lines are TextCapLayout's cut
+static void apply_ellipsize(GtkLabel *label)
+{
+	static const PangoEllipsizeMode modes[] = {[UI_ELLIPSIZE_NONE] = PANGO_ELLIPSIZE_NONE, [UI_ELLIPSIZE_START] = PANGO_ELLIPSIZE_START,
+	                                           [UI_ELLIPSIZE_MIDDLE] = PANGO_ELLIPSIZE_MIDDLE, [UI_ELLIPSIZE_END] = PANGO_ELLIPSIZE_END};
+	int max = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-max-lines")) - 1;
+	gtk_label_set_ellipsize(label, max == 1 ? modes[GPOINTER_TO_INT(g_object_get_data(G_OBJECT(label), "atl-ellipsize"))] : PANGO_ELLIPSIZE_NONE);
+}
+
+void ui_text_set_ellipsize(struct ui_view *view, enum ui_ellipsize ellipsize)
+{
+	GtkLabel *label = text_get_label(GTK_WIDGET(view));
+	if (!label)
+		return;
+	g_object_set_data(G_OBJECT(label), "atl-ellipsize", GINT_TO_POINTER(ellipsize));
+	apply_ellipsize(label);
+	gtk_widget_queue_resize(GTK_WIDGET(label));
+}
+
 void ui_text_set_lines(struct ui_view *view, int min, int max)
 {
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
 	if (!label)
 		return;
 	g_object_set_data(G_OBJECT(label), "atl-max-lines", GINT_TO_POINTER(max + 1)); // 0: unset
+	apply_ellipsize(label);
 	gtk_widget_set_overflow(GTK_WIDGET(view), max >= 0 ? GTK_OVERFLOW_HIDDEN : GTK_OVERFLOW_VISIBLE);
 	g_object_set_data(G_OBJECT(label), "atl-min-lines", GINT_TO_POINTER(min));
 	apply_min_lines(label);
@@ -305,10 +318,14 @@ void ui_text_set_style(struct ui_view *view, int style)
 
 void ui_text_set_alignment(struct ui_view *view, int alignment)
 {
+	static const float xalign[] = {[UI_TEXT_ALIGN_START] = 0.f, [UI_TEXT_ALIGN_CENTER] = .5f, [UI_TEXT_ALIGN_END] = 1.f};
+	if (GTK_IS_TEXT(view)) { // an EditText's field
+		gtk_editable_set_alignment(GTK_EDITABLE(view), xalign[alignment]);
+		return;
+	}
 	GtkLabel *label = text_get_label(GTK_WIDGET(view));
 	if (!label)
 		return;
-	static const float xalign[] = {[UI_TEXT_ALIGN_START] = 0.f, [UI_TEXT_ALIGN_CENTER] = .5f, [UI_TEXT_ALIGN_END] = 1.f};
 	static const GtkJustification justify[] = {[UI_TEXT_ALIGN_START] = GTK_JUSTIFY_LEFT, [UI_TEXT_ALIGN_CENTER] = GTK_JUSTIFY_CENTER,
 	                                           [UI_TEXT_ALIGN_END] = GTK_JUSTIFY_RIGHT};
 	gtk_label_set_xalign(label, xalign[alignment]);

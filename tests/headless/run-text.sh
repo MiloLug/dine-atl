@@ -27,9 +27,9 @@ session
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
 origin_x=() origin_y=()
-fields=(name notes pin enter capped)
+fields=(reveal calc locked nofocus date name notes pin enter capped)
 field=0
-dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
+dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+|ellipsize (start|middle|end)))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"
@@ -50,13 +50,13 @@ while :; do
     x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]}
   fi
 done
-for control in name notes pin enter capped fill show size; do
+for control in name reveal calc locked nofocus date notes pin enter capped fill show size eye calckeys lockedkeys; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
 
 # the next checked line, or a dump's end, into REPLY, without the log prefix
 next() {
-  local line re='(text (before|on|after|focus|action|show|name|notes|pin|enter|capped) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*|^viewtree: end$)'
+  local line re='(text (before|on|after|focus|action|show|eye|calckeys|lockedkeys|name|reveal|calc|locked|nofocus|date|notes|pin|enter|capped) .*|text fill$|^edit: .*|^keyboard: .*|^text: .*|^host: task .*|^viewtree: end$)'
   while IFS= read -r -t 30 line <&"$atl_out"; do
     printf '%s\n' "$line" >>"$log"
     if [[ $line =~ $re ]]; then
@@ -84,7 +84,32 @@ tap() {
   send "touch up 0 $at"
 }
 
-keyboard() { echo "keyboard: $1 android.widget.EditText \"$2\""; }
+# what ui_edit_config says of each field (the hint is the field's name): the keyboard, the return key,
+# autocap, secure (a password input: nothing learned), hidden (the text shows as dots), multiline,
+# autocorrect and what a tap the toolkit takes does (focus, keyboard, edits); as EditText.atlSendConfig
+# resolves them from the input type, the transformation, the focus flags and the IME options
+taps="tap_focus=1 tap_keyboard=1 editable=1"
+declare -A config=(
+  [name]="kind=text return=next autocap=none secure=0 hidden=0 multiline=0 autocorrect=1 $taps"
+  [reveal]="kind=text return=next autocap=none secure=1 hidden=1 multiline=0 autocorrect=0 $taps"
+  [notes]="kind=text return=default autocap=none secure=0 hidden=0 multiline=1 autocorrect=1 $taps"
+  [pin]="kind=number return=done autocap=none secure=1 hidden=1 multiline=0 autocorrect=0 $taps"
+  [enter]="kind=text return=default autocap=none secure=0 hidden=0 multiline=0 autocorrect=1 $taps"
+  [capped]="kind=text return=default autocap=none secure=0 hidden=0 multiline=1 autocorrect=1 $taps"
+  # the password after setTransformationMethod(null): the keyboard still learns nothing
+  [revealed]="kind=text return=next autocap=none secure=1 hidden=0 multiline=0 autocorrect=0 $taps"
+  # showSoftInputOnFocus(false): a tap shows no keyboard
+  [calc]="kind=text return=done autocap=none secure=0 hidden=0 multiline=0 autocorrect=1 tap_focus=1 tap_keyboard=0 editable=1"
+  # setKeyListener(null): no input type, so no keyboard on a tap and no edits
+  [locked]="kind=text return=done autocap=none secure=0 hidden=0 multiline=0 autocorrect=0 tap_focus=1 tap_keyboard=0 editable=0"
+  # a date: the keyboard with digits and separators, no corrections
+  [date]="kind=datetime return=done autocap=none secure=0 hidden=0 multiline=0 autocorrect=0 $taps"
+  # setFocusable(false): a tap takes no focus
+  [nofocus]="kind=text return=done autocap=none secure=0 hidden=0 multiline=0 autocorrect=1 tap_focus=0 tap_keyboard=1 editable=1"
+)
+
+# keyboard on|off <field> [<config key>]: the field's own config unless the second key is given
+keyboard() { echo "keyboard: $1 android.widget.EditText \"$2\" ${config[${3:-$2}]}"; }
 
 # a tap focuses the field through Java and brings the keyboard
 tap name
@@ -178,6 +203,53 @@ send 'text commit a\nb'
 expect 'edit: "a\nb" 3,3' 'text notes "a\nb"'
 send "text action"
 expect 'edit: "a\nb\n" 4,4' 'text notes "a\nb\n"'
+
+# a password's text is hidden as the transformation says, not as the input type: the toggle shows it
+# and hides it again, the keyboard goes on learning nothing
+send "text tap $(center reveal)"
+expect "$(keyboard off notes)" "$(keyboard on reveal)" "text focus notes false" "text focus reveal true"
+tap eye
+expect "text eye shown"
+send "text tap $(center notes)"
+expect "$(keyboard off reveal revealed)" "$(keyboard on notes)" "text focus reveal false" "text focus notes true"
+send "text tap $(center reveal)"
+expect "$(keyboard off notes)" "$(keyboard on reveal revealed)" "text focus notes false" "text focus reveal true"
+tap eye
+expect "text eye hidden"
+send "text tap $(center notes)"
+expect "$(keyboard off reveal)" "$(keyboard on notes)" "text focus reveal false" "text focus notes true"
+
+# Android's own tap rule, for a tap the toolkit takes: a field with showSoftInputOnFocus false or no
+# input type takes the focus and shows no keyboard until the app asks for one (a hardware keyboard
+# types: no input target); one with no input type has its edits refused; a field no tap focuses takes
+# none
+send "text dismiss"
+expect "$(keyboard off notes)"
+send "text tap $(center calc)"
+expect "text focus notes false" "text focus calc true"
+send "text commit x"
+expect "text: no field"
+tap calckeys
+expect "$(keyboard on calc)" "text calckeys true"
+send "text commit 7"
+expect 'edit: "7" 1,1' 'text calc "7"'
+send "text dismiss"
+expect "$(keyboard off calc)"
+send "text tap $(center locked)"
+expect "text focus calc false" "text focus locked true"
+tap lockedkeys
+expect "$(keyboard on locked)" "text lockedkeys true"
+send "text commit x"
+expect "edit: refused"
+send "text dismiss"
+expect "$(keyboard off locked)"
+send "text tap $(center nofocus)"
+send "text tap $(center date)"
+expect "$(keyboard on date)" "text focus locked false" "text focus date true"
+send "text commit 1x/2"
+expect 'edit: "1x/2" 4,4' 'text date "1/2"' 'edit: "1/2" 3,3'
+send "text tap $(center notes)"
+expect "$(keyboard off date)" "$(keyboard on notes)" "text focus date false" "text focus notes true"
 
 # focus moves with the keyboard up: the keyboard follows; the toolkit takes the keyboard away (as
 # uikit does when its field loses focus): the next Back goes back at once

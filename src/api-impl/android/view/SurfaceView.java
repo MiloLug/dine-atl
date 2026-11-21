@@ -25,7 +25,11 @@ public class SurfaceView extends View {
 	}
 
 	public SurfaceView(Context context, AttributeSet attrs, int defStyleAttr) {
-		super(context, attrs, defStyleAttr);
+		this(context, attrs, defStyleAttr, 0);
+	}
+
+	public SurfaceView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+		super(context, attrs, defStyleAttr, defStyleRes);
 
 		mSurface.widget = this.widget;
 	}

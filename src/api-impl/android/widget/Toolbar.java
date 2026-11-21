@@ -11,7 +11,15 @@ public class Toolbar extends View {
 	}
 
 	public Toolbar(Context context, AttributeSet attributeSet) {
-		super(context, attributeSet);
+		this(context, attributeSet, 0);
+	}
+
+	public Toolbar(Context context, AttributeSet attributeSet, int defStyleAttr) {
+		this(context, attributeSet, defStyleAttr, 0);
+	}
+
+	public Toolbar(Context context, AttributeSet attributeSet, int defStyleAttr, int defStyleRes) {
+		super(context, attributeSet, defStyleAttr, defStyleRes);
 	}
 
 	public void setNavigationIcon(int resId) {}

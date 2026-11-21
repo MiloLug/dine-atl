@@ -31,7 +31,7 @@ session
 # the dump's frames are relative to the parent: each depth's origin, window px
 declare -A x y w h
 origin_x=() origin_y=()
-dump_re='^viewtree: ( *)[^ ]+ (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
+dump_re='^viewtree: ( *)[^ ]+ (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+|ellipsize (start|middle|end)))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"

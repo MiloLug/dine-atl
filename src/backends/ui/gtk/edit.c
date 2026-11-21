@@ -71,6 +71,17 @@ static gboolean report(gpointer data)
 	return G_SOURCE_REMOVE;
 }
 
+// the report the focused GtkText has waiting, before the key or touch that came after what it holds
+// reaches Java: the report runs from an idle, below GDK's event priority
+void edit_flush_report(GtkWidget *focus)
+{
+	struct edit *edit = focus ? g_object_get_data(G_OBJECT(focus), "atl-edit") : NULL;
+	if (!edit || !edit->report)
+		return;
+	g_source_remove(edit->report);
+	report(edit);
+}
+
 static void schedule_report(struct edit *edit)
 {
 	if (!edit->applying && !edit->report)
@@ -144,12 +155,17 @@ void ui_edit_set_config(struct ui_view *view, const struct ui_edit_config *confi
 {
 	GtkText *text = GTK_TEXT(view);
 	gtk_text_set_placeholder_text(text, config->hint);
-	gtk_text_set_visibility(text, !config->secure);
+	gtk_text_set_visibility(text, !config->hidden);
+	// a desktop has no keyboard to show: only the focus a click takes and the edits it makes; Java's
+	// own requestFocus grabs focus whatever focus_on_click says
+	gtk_editable_set_editable(GTK_EDITABLE(text), config->editable);
+	gtk_widget_set_focus_on_click(GTK_WIDGET(text), config->tap_focus);
 
 	static const GtkInputPurpose purposes[] = {
 		[UI_KEYBOARD_TEXT] = GTK_INPUT_PURPOSE_FREE_FORM, [UI_KEYBOARD_NUMBER] = GTK_INPUT_PURPOSE_DIGITS,
 		[UI_KEYBOARD_DECIMAL] = GTK_INPUT_PURPOSE_NUMBER, [UI_KEYBOARD_PHONE] = GTK_INPUT_PURPOSE_PHONE,
 		[UI_KEYBOARD_EMAIL] = GTK_INPUT_PURPOSE_EMAIL, [UI_KEYBOARD_URL] = GTK_INPUT_PURPOSE_URL,
+		[UI_KEYBOARD_DATETIME] = GTK_INPUT_PURPOSE_FREE_FORM,
 	};
 	GtkInputPurpose purpose = purposes[config->keyboard];
 	if (config->secure)

@@ -23,7 +23,11 @@ public class ScrollView extends FrameLayout {
 	}
 
 	public ScrollView(Context context, AttributeSet attrs, int defStyleAttr) {
-		super(context, attrs, defStyleAttr);
+		this(context, attrs, defStyleAttr, 0);
+	}
+
+	public ScrollView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+		super(context, attrs, defStyleAttr, defStyleRes);
 	}
 
 	@Override

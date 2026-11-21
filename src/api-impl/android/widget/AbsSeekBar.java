@@ -12,7 +12,15 @@ public abstract class AbsSeekBar extends ProgressBar {
 	}
 
 	public AbsSeekBar(Context context, AttributeSet attributeSet) {
-		super(context, attributeSet);
+		this(context, attributeSet, 0);
+	}
+
+	public AbsSeekBar(Context context, AttributeSet attributeSet, int defStyleAttr) {
+		this(context, attributeSet, defStyleAttr, 0);
+	}
+
+	public AbsSeekBar(Context context, AttributeSet attributeSet, int defStyleAttr, int defStyleRes) {
+		super(context, attributeSet, defStyleAttr, defStyleRes);
 	}
 
 	public Drawable getThumb() {

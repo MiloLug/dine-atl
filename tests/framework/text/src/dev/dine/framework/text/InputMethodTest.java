@@ -55,4 +55,93 @@ public class InputMethodTest extends android.test.InstrumentationTestCase {
 		});
 		assertTrue(hid[0]);
 	}
+
+	// a view with no InputConnection (the default View) gets false, on every build
+	public void testShowSoftInputOnAPlainViewIsFalse() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), TextActivity.class);
+		final TextActivity activity = (TextActivity)getInstrumentation().startActivitySync(intent);
+		final Object[] result = new Object[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				InputMethodManager imm = (InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+				try {
+					result[0] = imm.showSoftInput(new android.view.View(activity), 0);
+				} catch (Throwable t) {
+					result[0] = t;
+				}
+			}
+		});
+		assertEquals(Boolean.FALSE, result[0]);
+	}
+
+	// AOSP's View passes every focus gain to the keyboard: a focused field is the served one, and the app's
+	// toggle shows the keyboard on it
+	public void testFocusedFieldIsServedAndToggleShowsIt() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), TextActivity.class);
+		final TextActivity activity = (TextActivity)getInstrumentation().startActivitySync(intent);
+		final boolean[] results = new boolean[3];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				InputMethodManager imm = (InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+				EditText edit = new EditText(activity);
+				activity.root.addView(edit);
+				edit.requestFocus();
+				results[0] = imm.isActive(edit);
+				imm.toggleSoftInput(0, 0);
+				results[1] = imm.hideSoftInputFromWindow(edit.getWindowToken(), 0);
+				results[2] = imm.hideSoftInputFromWindow(edit.getWindowToken(), 0);
+				activity.root.removeAllViews();
+			}
+		});
+		assertTrue("served after requestFocus", results[0]);
+		assertTrue("the toggle's request", results[1]);
+		assertFalse("hidden twice", results[2]);
+	}
+
+	// what the toolkit was told about the keyboard of a field
+	private static class SpyEdit extends EditText {
+		final java.util.List<Boolean> keyboard = new java.util.ArrayList<Boolean>(); // null while the constructor runs
+
+		SpyEdit(Context context) {
+			super(context);
+		}
+
+		@Override
+		public boolean atlSetKeyboard(boolean shown) {
+			if (keyboard != null)
+				keyboard.add(shown);
+			return super.atlSetKeyboard(shown);
+		}
+	}
+
+	// the toolkit gave its focus to a field Java won't focus: it takes the focus back, with or without the
+	// keyboard it gave (uikit: the field is first responder either way), and no request stands
+	public void testRefusedToolkitFocusRecordsNothing() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), TextActivity.class);
+		final TextActivity activity = (TextActivity)getInstrumentation().startActivitySync(intent);
+		final boolean[] results = new boolean[6];
+		final String[] taken = new String[2];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				InputMethodManager imm = (InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+				boolean[] keyboards = {true, false};
+				for (int i = 0; i < 2; i++) {
+					SpyEdit edit = new SpyEdit(activity);
+					edit.setFocusable(false);
+					activity.root.addView(edit);
+					edit.atlToolkitFocus(true, keyboards[i]);
+					results[i * 3] = imm.hideSoftInputFromWindow(edit.getWindowToken(), 0);
+					results[i * 3 + 1] = imm.isActive(edit);
+					results[i * 3 + 2] = edit.keyboard.size() > 0 && !edit.keyboard.get(edit.keyboard.size() - 1);
+					taken[i] = edit.keyboard.toString();
+					activity.root.removeAllViews();
+				}
+			}
+		});
+		for (int i = 0; i < 2; i++) {
+			assertFalse("a request recorded" + i, results[i * 3]);
+			assertFalse("served" + i, results[i * 3 + 1]);
+			assertTrue("the toolkit's focus stays, calls " + taken[i], results[i * 3 + 2]);
+		}
+	}
 }

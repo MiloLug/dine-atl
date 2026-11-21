@@ -98,7 +98,11 @@ void ui_view_set_focused(struct ui_view *view, bool focused)
 	if (!root)
 		return;
 	if (focused && gtk_widget_get_focusable(widget)) {
-		gtk_widget_grab_focus(widget);
+		// a GtkText's grab selects its contents; Android's focus move leaves the selection where it was
+		if (GTK_IS_TEXT(widget))
+			gtk_text_grab_focus_without_selecting(GTK_TEXT(widget));
+		else
+			gtk_widget_grab_focus(widget);
 		return;
 	}
 	GtkWidget *focus = gtk_root_get_focus(root);

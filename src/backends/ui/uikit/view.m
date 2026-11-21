@@ -102,9 +102,14 @@ struct edit_report_box {
 @property(nonatomic) NSInteger prevStart, prevEnd;
 @property(nonatomic) uint32_t seq;
 @property(nonatomic) bool applying;    // a snapshot's changes don't report
-@property(nonatomic) bool javaFocus;   // Java moves the first responder: no focus upcall
 @property(nonatomic) bool wasMarked;   // the next committed state reports, changed or not
 @property(nonatomic) bool multiline;
+@property(nonatomic) bool tapFocus;    // ui_edit_config's tap_focus, tap_keyboard and editable
+@property(nonatomic) bool tapKeyboard;
+@property(nonatomic) bool editable;
+@property(nonatomic) bool javaKeyboard; // Java showed the keyboard of a field whose tap shows none, until it ends editing
+@property(nonatomic) bool pad;          // a number or phone pad: the return button floats above it
+@property(nonatomic) enum ui_return_key returnKey;
 @property(nonatomic, copy) NSString *hint;
 @property(nonatomic) UIEdgeInsets padding;
 @end
@@ -114,6 +119,18 @@ struct edit_report_box {
 @end
 // UIKit's thread: the field the keyboard types into, as Java asked or the user tapped
 static UIView *keyboard_field;
+
+// UIKit's thread: a first-responder change Java commands is not the user's: no focus upcall, and a
+// field takes it whatever its tap would do. UIKit calls the begin and end delegates inside the change.
+static bool java_moves_responder;
+
+static void java_moves(void (^change)(void))
+{
+	bool was = java_moves_responder;
+	java_moves_responder = true;
+	change();
+	java_moves_responder = was;
+}
 
 // the app of the thread that made the view, NULL for a thread of no app
 static struct atl_app *view_app(struct ui_view *view)
@@ -228,7 +245,8 @@ FORWARD_TOUCHES
 - (void)atlSetPadding:(UIEdgeInsets)padding;
 @optional
 // TextView's max lines, 0: none; the lines past it don't show, without an ellipsis (Android's clip)
-- (void)atlSetMaxLines:(int)max;
+// unless the view ellipsizes
+- (void)atlSetMaxLines:(int)max ellipsize:(enum ui_ellipsize)ellipsize;
 @end
 
 // an edit record's view
@@ -290,6 +308,8 @@ static NSMutableAttributedString *styled_runs(NSString *text, NSData *runs, UIFo
 	UIFont *_atlFont;
 	UIColor *_atlColor;
 	NSTextAlignment _atlAlignment;
+	NSLineBreakMode _atlBreak;
+	bool _atlBreakSet;
 }
 FORWARD_TOUCHES
 
@@ -331,6 +351,7 @@ FORWARD_TOUCHES
 	_atlAlignment = alignment;
 	if (runs) {
 		self.attributedText = styled(text, runs, font, _atlColor ?: UIColor.labelColor, alignment);
+		[self atlKeepBreak];
 		return;
 	}
 	self.text = text;
@@ -339,13 +360,22 @@ FORWARD_TOUCHES
 	self.textColor = _atlColor ?: UIColor.labelColor;
 }
 
+// an attributed text brings a paragraph style with its own line break mode
+- (void)atlKeepBreak
+{
+	if (_atlBreakSet)
+		self.lineBreakMode = _atlBreak;
+}
+
 - (void)atlSetColor:(UIColor *)color
 {
 	_atlColor = color;
-	if (_runs)
+	if (_runs) {
 		self.attributedText = styled(self.text, _runs, _atlFont, color, _atlAlignment);
-	else
+		[self atlKeepBreak];
+	} else {
 		self.textColor = color;
+	}
 }
 
 - (void)atlSetPadding:(UIEdgeInsets)padding
@@ -354,10 +384,15 @@ FORWARD_TOUCHES
 	[self setNeedsDisplay];
 }
 
-- (void)atlSetMaxLines:(int)max
+- (void)atlSetMaxLines:(int)max ellipsize:(enum ui_ellipsize)ellipsize
 {
 	self.numberOfLines = max;
-	self.lineBreakMode = max ? NSLineBreakByWordWrapping : NSLineBreakByTruncatingTail;
+	_atlBreak = !max || ellipsize == UI_ELLIPSIZE_END ? NSLineBreakByTruncatingTail
+	    : ellipsize == UI_ELLIPSIZE_START               ? NSLineBreakByTruncatingHead
+	    : ellipsize == UI_ELLIPSIZE_MIDDLE              ? NSLineBreakByTruncatingMiddle
+	                                                    : NSLineBreakByWordWrapping;
+	_atlBreakSet = true;
+	self.lineBreakMode = _atlBreak;
 }
 
 // at the top left of the padded bounds, TextView's default gravity; UILabel centers vertically
@@ -976,13 +1011,14 @@ void records_view_freed(struct ui_view *view)
 			if ([freed conformsToProtocol:@protocol(ATLEditor)]) {
 				ATLEditState *state = ((id<ATLEditor>)freed).atlState;
 				state.record = NULL;
-				state.javaFocus = true;
 				report = (struct scroll_report *)state.box;
 				state.box = NULL;
 				if (keyboard_field == freed)
 					keyboard_field = nil;
 			}
-			[freed removeFromSuperview];
+			java_moves(^{
+				[freed removeFromSuperview];
+			});
 			view->native = report;
 			if (!loop_main_post(view_loop(view), free_record, view))
 				free_record(view);
@@ -1316,11 +1352,12 @@ void records_text_changed(struct ui_view *view)
 		int style = view->text_style;
 		NSTextAlignment alignment = text_alignment(view->alignment);
 		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
+		enum ui_ellipsize ellipsize = view->ellipsize;
 		uikit_enqueue(view_app(view), ^{
 			UIView<ATLText> *text_view = (UIView<ATLText> *)native(view);
 			[text_view atlSetText:text runs:runs font:font(size, style) alignment:alignment];
-			if ([text_view respondsToSelector:@selector(atlSetMaxLines:)])
-				[text_view atlSetMaxLines:max_lines];
+			if ([text_view respondsToSelector:@selector(atlSetMaxLines:ellipsize:)])
+				[text_view atlSetMaxLines:max_lines ellipsize:ellipsize];
 		});
 	}
 }
@@ -1356,6 +1393,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 		bool edit = view->edit, multiline = view->edit_config.multiline, selectable = view->selectable;
 		int min_lines = view->min_lines, max_lines = view->max_lines > 0 ? view->max_lines : 0;
+		enum ui_ellipsize ellipsize = view->ellipsize;
 		NSString *hint = view->edit_config.hint ? [NSString stringWithUTF8String:view->edit_config.hint] : nil;
 		enum ui_button button = view->button;
 		__block CGSize fit;
@@ -1411,7 +1449,7 @@ void records_text_extent(struct ui_view *view, int max_width, int *width, int *h
 			static ATLLabel *scratch;
 			if (!scratch)
 				scratch = [ATLLabel new];
-			[scratch atlSetMaxLines:max_lines];
+			[scratch atlSetMaxLines:max_lines ellipsize:ellipsize];
 			[scratch atlSetText:text runs:runs font:font(size, style) alignment:NSTextAlignmentNatural];
 			fit = [scratch sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 			if (!text.length) // a TextView keeps one line's height
@@ -1736,7 +1774,7 @@ static void focus_in_post(void *data)
 {
 	struct ui_view *view = data;
 	if (view->ref)
-		atl_upcall_edit_focus(view->ref, true, true);
+		atl_upcall_edit_focus(view->ref, true, view->edit_config.tap_keyboard);
 }
 
 static void focus_out_post(void *data)
@@ -1748,6 +1786,12 @@ static void focus_out_post(void *data)
 
 
 @implementation ATLEditState
+- (instancetype)init
+{
+	if ((self = [super init]))
+		_tapFocus = _tapKeyboard = _editable = true;
+	return self;
+}
 @end
 
 static NSString *editor_text(UIView<UITextInput> *editor)
@@ -1824,8 +1868,16 @@ static void editor_changed(UIView<UITextInput> *editor, ATLEditState *state)
 static void editor_began(UIView *editor, ATLEditState *state)
 {
 	keyboard_field = editor;
-	if (!state.javaFocus)
+	if (!java_moves_responder)
 		edit_post(focus_in_post, state.record);
+}
+
+static void editor_input_view(UIView<UITextInput> *editor, ATLEditState *state);
+
+// the field a tap would take: only one whose focus Java's own rule gives to a tap
+static bool editor_may_begin(ATLEditState *state)
+{
+	return java_moves_responder || state.tapFocus;
 }
 
 // the root takes the hardware keyboard back unless another field took the responder
@@ -1833,8 +1885,12 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 {
 	if (keyboard_field == editor)
 		keyboard_field = nil;
-	if (!state.javaFocus)
+	if (!java_moves_responder)
 		edit_post(focus_out_post, state.record);
+	if (state.javaKeyboard) {
+		state.javaKeyboard = false;
+		editor_input_view((UIView<UITextInput> *)editor, state);
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (keyboard_field)
 			return;
@@ -1873,6 +1929,17 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 - (void)textFieldDidChangeSelection:(UITextField *)textField
 {
 	editor_changed(self, _atlState);
+}
+
+- (BOOL)textFieldShouldBeginEditing:(UITextField *)textField
+{
+	return editor_may_begin(_atlState);
+}
+
+// the field's own edits (typing, a paste, a composition) apply only as Java's input type allows
+- (BOOL)textField:(UITextField *)textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string
+{
+	return _atlState.editable;
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField
@@ -1985,6 +2052,16 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 	editor_changed(self, _atlState);
 }
 
+- (BOOL)textViewShouldBeginEditing:(UITextView *)textView
+{
+	return editor_may_begin(_atlState);
+}
+
+- (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
+{
+	return _atlState.editable;
+}
+
 - (void)textViewDidBeginEditing:(UITextView *)textView
 {
 	editor_began(self, _atlState);
@@ -2071,9 +2148,13 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 	self.textContainerInset = padding;
 }
 
-- (void)atlSetMaxLines:(int)max
+- (void)atlSetMaxLines:(int)max ellipsize:(enum ui_ellipsize)ellipsize
 {
 	self.textContainer.maximumNumberOfLines = max;
+	self.textContainer.lineBreakMode = ellipsize == UI_ELLIPSIZE_END ? NSLineBreakByTruncatingTail
+	    : ellipsize == UI_ELLIPSIZE_START               ? NSLineBreakByTruncatingHead
+	    : ellipsize == UI_ELLIPSIZE_MIDDLE              ? NSLineBreakByTruncatingMiddle
+	                                                    : NSLineBreakByWordWrapping;
 }
 @end
 
@@ -2081,10 +2162,9 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 static void root_take_responder(UIView *root)
 {
 	if (keyboard_field && [keyboard_field isDescendantOfView:root]) {
-		ATLEditState *state = ((id<ATLEditor>)keyboard_field).atlState;
-		state.javaFocus = true;
-		[keyboard_field becomeFirstResponder];
-		state.javaFocus = false;
+		java_moves(^{
+			[keyboard_field becomeFirstResponder];
+		});
 		return;
 	}
 	[root becomeFirstResponder];
@@ -2110,17 +2190,15 @@ static void replace_native(struct ui_view *view, UIView *replacement, bool enabl
 	struct gfx_canvas *list = shown_list(old, &drawn);
 	show_list(replacement, list, drawn, scale());
 	// the old editor's end of editing and the new one's start are the swap's, not the user's
-	ATLEditState *state = [old conformsToProtocol:@protocol(ATLEditor)] ? ((id<ATLEditor>)old).atlState : nil;
-	state.javaFocus = true;
-	if (keyboard_field == old)
-		keyboard_field = replacement;
-	[old removeFromSuperview];
-	CFBridgingRelease(view->native);
-	view->native = (void *)CFBridgingRetain(replacement);
-	if (responder)
-		[replacement becomeFirstResponder];
-	if ([replacement conformsToProtocol:@protocol(ATLEditor)] && ((id<ATLEditor>)replacement).atlState == state)
-		state.javaFocus = false;
+	java_moves(^{
+		if (keyboard_field == old)
+			keyboard_field = replacement;
+		[old removeFromSuperview];
+		CFBridgingRelease(view->native);
+		view->native = (void *)CFBridgingRetain(replacement);
+		if (responder)
+			[replacement becomeFirstResponder];
+	});
 }
 
 // the number and phone pads have no return key: a round button floats above the pad's corner
@@ -2158,6 +2236,22 @@ static UIView *return_button(UIView *field, enum ui_return_key key)
 		[button.bottomAnchor constraintEqualToAnchor:holder.bottomAnchor constant:-gap],
 	]];
 	return holder;
+}
+
+/* UIKit's thread: a field whose tap shows no keyboard gets an empty input view (focus and caret, no
+ * system keyboard); Java's showSoftInput shows the system's until the field ends editing. */
+static void editor_input_view(UIView<UITextInput> *editor, ATLEditState *state)
+{
+	bool bare = !state.tapKeyboard && !state.javaKeyboard;
+	UIView *input = bare ? [UIView new] : nil;
+	if ([editor isKindOfClass:[UITextField class]]) {
+		((UITextField *)editor).inputView = input;
+		((UITextField *)editor).inputAccessoryView = !bare && state.pad ? return_button(editor, state.returnKey) : nil;
+	} else {
+		((UITextView *)editor).inputView = input;
+	}
+	if (editor.isFirstResponder)
+		[editor reloadInputViews];
 }
 
 static UITextAutocapitalizationType autocap_type(enum ui_autocap autocap)
@@ -2200,6 +2294,7 @@ void records_edit_config_changed(struct ui_view *view)
 				[UI_KEYBOARD_TEXT] = UIKeyboardTypeDefault, [UI_KEYBOARD_NUMBER] = UIKeyboardTypeNumberPad,
 				[UI_KEYBOARD_DECIMAL] = UIKeyboardTypeDecimalPad, [UI_KEYBOARD_PHONE] = UIKeyboardTypePhonePad,
 				[UI_KEYBOARD_EMAIL] = UIKeyboardTypeEmailAddress, [UI_KEYBOARD_URL] = UIKeyboardTypeURL,
+				[UI_KEYBOARD_DATETIME] = UIKeyboardTypeNumbersAndPunctuation,
 			};
 			static const UIReturnKeyType returns[] = {
 				[UI_RETURN_DEFAULT] = UIReturnKeyDefault, [UI_RETURN_DONE] = UIReturnKeyDone, [UI_RETURN_GO] = UIReturnKeyGo,
@@ -2210,18 +2305,20 @@ void records_edit_config_changed(struct ui_view *view)
 			editor.autocapitalizationType = autocap_type(config.autocap);
 			editor.autocorrectionType = config.autocorrect ? UITextAutocorrectionTypeDefault : UITextAutocorrectionTypeNo;
 			editor.spellCheckingType = config.autocorrect ? UITextSpellCheckingTypeDefault : UITextSpellCheckingTypeNo;
-			editor.secureTextEntry = config.secure;
+			editor.secureTextEntry = config.hidden;
 			editor.accessibilityLabel = hint;
 			state.hint = hint;
-			if ([editor isKindOfClass:[UITextField class]]) {
+			if ([editor isKindOfClass:[UITextField class]])
 				((UITextField *)editor).placeholder = hint;
-				bool pad = config.keyboard == UI_KEYBOARD_NUMBER || config.keyboard == UI_KEYBOARD_DECIMAL || config.keyboard == UI_KEYBOARD_PHONE;
-				((UITextField *)editor).inputAccessoryView = pad ? return_button(editor, config.return_key) : nil;
-			}
 			else
 				[(ATLEditView *)editor atlShowPlaceholder];
-			if (editor.isFirstResponder)
-				[editor reloadInputViews];
+			state.tapFocus = config.tap_focus;
+			state.tapKeyboard = config.tap_keyboard;
+			state.editable = config.editable;
+			state.pad = [editor isKindOfClass:[UITextField class]]
+			    && (config.keyboard == UI_KEYBOARD_NUMBER || config.keyboard == UI_KEYBOARD_DECIMAL || config.keyboard == UI_KEYBOARD_PHONE);
+			state.returnKey = config.return_key;
+			editor_input_view(editor, state);
 		});
 	}
 }
@@ -2254,14 +2351,17 @@ bool records_edit_keyboard(struct ui_view *view, bool shown)
 		uikit_enqueue(view_app(view), ^{
 			UIView<ATLEditor> *editor = (UIView<ATLEditor> *)native(view);
 			ATLEditState *state = editor.atlState;
-			state.javaFocus = true;
-			if (shown) {
-				keyboard_field = editor;
-				[editor becomeFirstResponder];
-			} else if (editor.isFirstResponder) {
-				[editor resignFirstResponder];
-			}
-			state.javaFocus = false;
+			java_moves(^{
+				if (shown) {
+					keyboard_field = editor;
+					// a field whose tap shows no keyboard shows one as Java asks
+					state.javaKeyboard = !state.tapKeyboard;
+					editor_input_view(editor, state);
+					[editor becomeFirstResponder];
+				} else if (editor.isFirstResponder) {
+					[editor resignFirstResponder];
+				}
+			});
 			if (!shown && keyboard_field == editor)
 				keyboard_field = nil;
 		});
@@ -2281,9 +2381,10 @@ void records_selectable_changed(struct ui_view *view)
 		UIEdgeInsets padding = UIEdgeInsetsMake(view->padding_top / s, view->padding_left / s, view->padding_bottom / s, view->padding_right / s);
 		bool selectable = view->selectable, enabled = view->enabled;
 		int max_lines = view->max_lines > 0 ? view->max_lines : 0;
+		enum ui_ellipsize ellipsize = view->ellipsize;
+		bool has_color = view->has_text_color;
+		uint32_t argb = view->text_color;
 		uikit_enqueue(view_app(view), ^{
-			UIView<ATLText> *old = (UIView<ATLText> *)native(view);
-			UIColor *text_color = [(id)old textColor];
 			UIView<ATLText> *replacement;
 			if (selectable) {
 				replacement = [ATLSelectableText new];
@@ -2293,9 +2394,9 @@ void records_selectable_changed(struct ui_view *view)
 				replacement = label;
 			}
 			[replacement atlSetText:text runs:runs font:font(size, style) alignment:alignment];
-			[replacement atlSetMaxLines:max_lines];
-			if (text_color)
-				[replacement atlSetColor:text_color];
+			[replacement atlSetMaxLines:max_lines ellipsize:ellipsize];
+			if (has_color)
+				[replacement atlSetColor:color(argb)];
 			[replacement atlSetPadding:padding];
 			replace_native(view, replacement, enabled);
 		});

@@ -804,8 +804,11 @@ void ui_text_set_styled(struct ui_view *view, const char *text, const struct ui_
 
 void ui_text_set_color(struct ui_view *view, uint32_t argb)
 {
-	if (view->kind == NODE_TEXT)
-		records_text_color_changed(view, argb);
+	if (view->kind != NODE_TEXT)
+		return;
+	view->has_text_color = true;
+	view->text_color = argb;
+	records_text_color_changed(view, argb);
 }
 
 void ui_text_set_size(struct ui_view *view, float size)
@@ -824,6 +827,13 @@ void ui_text_set_lines(struct ui_view *view, int min, int max)
 {
 	view->min_lines = min;
 	view->max_lines = max;
+	if (view->kind == NODE_TEXT)
+		records_text_changed(view);
+}
+
+void ui_text_set_ellipsize(struct ui_view *view, enum ui_ellipsize ellipsize)
+{
+	view->ellipsize = ellipsize;
 	if (view->kind == NODE_TEXT)
 		records_text_changed(view);
 }

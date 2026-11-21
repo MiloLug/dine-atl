@@ -158,4 +158,36 @@ public class TextTest extends TestCase {
 		assertEquals(paint.measureText("one"), narrow.getPrimaryHorizontal(3), 0.5f);
 		assertEquals(3, narrow.getOffsetForHorizontal(0, paint.measureText("one")));
 	}
+
+	// Layout's line widths are floats end to end: the line's own width is the paint's, with its fraction
+	public void testLineWidthKeepsItsFraction() {
+		TextPaint paint = paint(13.37f);
+		StaticLayout layout = layout("hello", paint, 500);
+		assertEquals(Layout.getDesiredWidth("hello", paint), layout.getLineWidth(0), 0.001f);
+		assertEquals(layout.getLineWidth(0), layout.getLineRight(0) - layout.getLineLeft(0), 0.001f);
+	}
+
+	public void testCenteredLineLeftKeepsItsFraction() {
+		TextPaint paint = paint(13.37f);
+		float width = Layout.getDesiredWidth("hello", paint);
+		StaticLayout layout = new StaticLayout("hello", paint, 101, Layout.Alignment.ALIGN_CENTER, 1, 0, false);
+		assertEquals((101 - width) / 2, layout.getLineLeft(0), 0.001f);
+	}
+
+	private static StaticLayout ellipsized(String text, TextPaint paint, int room) {
+		return new StaticLayout(text, 0, text.length(), paint, room, Layout.Alignment.ALIGN_NORMAL, 1, 0, false, android.text.TextUtils.TruncateAt.END, room);
+	}
+
+	// the cut falls on a cluster's edge: a combining mark stays with its letter or goes with it
+	public void testEllipsisCutsAtAClusterEdge() {
+		TextPaint paint = paint(20);
+		if (paint.measureText("e\u0301") > paint.measureText("e") + 0.01f)
+			return; // the build's carets treat each unit as a cluster (headless): no cluster to cut
+		String text = "cafe\u0301 au lait";
+		float room = paint.measureText("caf") + (paint.measureText("e\u0301") + paint.measureText("\u2026")) * 0.9f;
+		StaticLayout layout = ellipsized(text, paint, (int)room);
+		int start = layout.getEllipsisStart(0);
+		assertTrue("the ellipsis starts at " + start, start == 3 || start == 5);
+		assertTrue("the ellipsized line is " + layout.getLineWidth(0) + " wide in " + (int)room, layout.getLineWidth(0) <= (int)room + 1);
+	}
 }

@@ -53,6 +53,8 @@ static void dump_state(FILE *out, const struct ui_view *view)
 		fputs(" gone", out);
 	if (!view->enabled)
 		fputs(" disabled", out);
+	if (view->kind == NODE_TEXT && view->ellipsize != UI_ELLIPSIZE_NONE)
+		fputs(view->ellipsize == UI_ELLIPSIZE_START ? " ellipsize start" : view->ellipsize == UI_ELLIPSIZE_MIDDLE ? " ellipsize middle" : " ellipsize end", out);
 }
 
 static void dump_view(FILE *out, struct ui_view *view, int depth)
@@ -63,7 +65,10 @@ static void dump_view(FILE *out, struct ui_view *view, int depth)
 		fprintf(out, " \"%s\"", view->text);
 	dump_state(out, view);
 	fputc('\n', out);
-	if (view->n_runs) // a line of its own: the viewtree goldens keep only viewtree lines
+	// a line of its own, as the runs': the viewtree goldens keep only viewtree lines
+	if (view->kind == NODE_TEXT && view->has_text_color)
+		fprintf(out, "textcolor: #%08x\n", view->text_color);
+	if (view->n_runs)
 		dump_runs(out, view);
 	for (size_t i = 0; i < view->n_children; i++)
 		dump_view(out, view->children[i], depth + 1);

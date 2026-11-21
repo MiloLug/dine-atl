@@ -29,15 +29,16 @@ coproc ATL {
 session
 
 # the dump's frames are relative to the parent: each depth's origin, window px
-declare -A x y w h runs states
+declare -A x y w h runs states colors
 origin_x=() origin_y=()
-dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+))*)$'
+dump_re='^viewtree: ( *)([^ ]+) (-?[0-9]+),(-?[0-9]+) ([0-9]+)x([0-9]+)( "(.*)")?(( (checked|pressed|invisible|gone|disabled|scroll -?[0-9]+,-?[0-9]+|ellipsize (start|middle|end)))*)$'
 while :; do
   IFS= read -r -t 30 line <&"$atl_out" || fail "no view-tree dump"
   printf '%s\n' "$line" >>"$log"
   [[ $line == "viewtree: end" ]] && break
   [[ $line == "textruns: 0-4 bold;" ]] && bold_run=1
   [[ $line =~ controls\ superscript\ shift\ (-?[0-9]+) ]] && up_shift=${BASH_REMATCH[1]}
+  [[ $line == textcolor:* && -n ${name:-} ]] && { colors[$name]=${line#textcolor: }; continue; }
   [[ $line == textruns:* && -n ${name:-} ]] && runs[$name]=$line
   [[ $line =~ $dump_re ]] || { name=; continue; }
   depth=$((${#BASH_REMATCH[1]} / 2))
@@ -52,12 +53,14 @@ while :; do
     x[$name]=$left y[$name]=$top w[$name]=${BASH_REMATCH[5]} h[$name]=${BASH_REMATCH[6]} states[$name]=${BASH_REMATCH[9]}
   fi
 done
-for control in PUSH locked framed check red green switch "lamp off" image "BOLD & CAPS"; do
+for control in PUSH locked framed check red green switch "lamp off" image tail tinted "BOLD & CAPS"; do
   [[ -n ${x[$control]:-} ]] || fail "no \"$control\" in the dump"
 done
 # 160 dpi: a dp is a px, and framed's shape pads 6dp above and below
 ((h[framed] == h[PUSH] + 12)) || fail "framed is ${h[framed]} high, PUSH ${h[PUSH]}: not the shape's padding"
 [[ ${states[locked]} == " disabled" && -z ${states[PUSH]} ]] || fail "the toolkit's states: locked \"${states[locked]}\", PUSH \"${states[PUSH]}\""
+[[ ${states[tail]} == " ellipsize end" ]] || fail "the toolkit's ellipsize of tail: \"${states[tail]}\""
+[[ ${colors[tinted]:-} == "#ff336699" ]] || fail "the toolkit's color of tinted: \"${colors[tinted]:-}\", want #ff336699"
 [[ -n ${bold_run:-} ]] || fail "no bold text run over \"BOLD\""
 [[ -n ${up_shift:-} ]] || fail "no superscript shift logged"
 [[ ${runs["twice up"]:-} == "textruns: 0-5 40px; 6-8 shift $up_shift;" ]] || fail "twice up runs: ${runs["twice up"]:-none}"
@@ -158,5 +161,30 @@ expect "host: task back app"
 # a checked line after the last expected one fails here: ATL answers a dump first
 send dump
 expect "viewtree: end"
+end_session
+
+# a theme that gives no text color: the toolkit keeps its own color until a textColor sets one; a hint
+# shows in the theme's hint color
+coproc ATL {
+  exec env "${headless_env[@]}" ATL_DUMP_VIEWTREE=1 DINE_PREFIX="$work/data" timeout 60 \
+    ./android-translation-layer -c "$apk" -l dev/dine/widgets/BareColorActivity -X -Xint 2>&1
+}
+session
+declare -A bare
+name=
+hint_color=
+while IFS= read -r -t 30 line <&"$atl_out"; do
+  printf '%s\n' "$line" >>"$log"
+  [[ $line == "viewtree: end" ]] && break
+  [[ $line =~ bare\ hint\ (#[0-9a-f]+) ]] && hint_color=${BASH_REMATCH[1]}
+  if [[ $line =~ $dump_re ]]; then
+    name=${BASH_REMATCH[8]}
+  elif [[ $line == textcolor:* ]]; then
+    [[ -n $name ]] && bare[$name]=${line#textcolor: }
+  fi
+done
+[[ -z ${bare[bare]:-} && -z ${bare["bare button"]:-} ]] || fail "colors the toolkit got without a textColor: bare \"${bare[bare]:-}\", bare button \"${bare["bare button"]:-}\""
+[[ ${bare["attr hint"]:-} == "#ff123456" ]] || fail "the toolkit's color of a hint with android:textColorHint: \"${bare["attr hint"]:-}\", want #ff123456"
+[[ -n $hint_color && ${bare[pick]:-} == "$hint_color" ]] || fail "the toolkit's color of the hint: \"${bare[pick]:-}\", want \"$hint_color\""
 end_session
 echo "PASS"

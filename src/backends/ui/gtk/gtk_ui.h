@@ -24,6 +24,9 @@ void window_touch_outside(GtkWindow *window, double x, double y, const struct at
 GtkLabel *text_get_label(GtkWidget *handle);
 /* The box with a text node's label; handle: the node's handle holding it, NULL when it is the box. */
 GtkWidget *text_box_new(GtkWidget *handle, const char *class_name, const char *text);
+/* edit.c: the focused GtkText's pending report goes to Java now: a key or touch after the typing sees
+ * its text. NULL or a widget that is no GtkText: nothing. */
+void edit_flush_report(GtkWidget *focus);
 /* A push or toggle button draws GTK's border only while its view has no background of its own. */
 void button_set_has_background(GtkWidget *handle, bool has_background);
 

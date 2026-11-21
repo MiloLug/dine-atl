@@ -97,21 +97,31 @@ public class ImageView extends View {
 		return drawable;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: updateDrawable's state, and the layout and
+	 * invalidate after a drawable of another size */
 	public void setImageDrawable(Drawable drawable) {
+		int oldWidth = -1, oldHeight = -1;
 		if (this.drawable != null) {
+			oldWidth = this.drawable.getIntrinsicWidth();
+			oldHeight = this.drawable.getIntrinsicHeight();
 			this.drawable.setCallback(null);
 		}
 		this.drawable = drawable;
 		applyImageTint();
 		applyColorMod();
 		drawable = this.drawable;
+		int width = -1, height = -1;
 		if (drawable != null) {
 			drawable.setCallback(this);
+			if (drawable.isStateful())
+				drawable.setState(getDrawableState());
+			width = drawable.getIntrinsicWidth();
+			height = drawable.getIntrinsicHeight();
 		}
-		if (drawable != null)
-			native_setDrawable(widget, drawable.paintable, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
-		else
-			native_setDrawable(widget, 0, -1, -1);
+		native_setDrawable(widget, drawable != null ? drawable.paintable : 0, width, height);
+		if ((width != oldWidth || height != oldHeight) && !isLayoutRequested())
+			requestLayout();
+		invalidate();
 	}
 
 	public void setImageMatrix(Matrix matrix) {

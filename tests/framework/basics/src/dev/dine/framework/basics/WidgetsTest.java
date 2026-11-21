@@ -69,4 +69,68 @@ public class WidgetsTest extends android.test.InstrumentationTestCase {
 		assertEquals(Boolean.TRUE, got[2]);
 		assertNull(got[3]);
 	}
+
+	// a wrap_content ImageView that gets its image after its first layout takes the image's size
+	public void testImageViewResizesToItsImage() {
+		final Context context = getInstrumentation().getTargetContext();
+		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(new android.content.Intent(context, WindowActivity.class));
+		final ImageView[] image = new ImageView[1];
+		onMain(new Runnable() {
+			public void run() {
+				image[0] = new ImageView(context);
+				activity.root.addView(image[0], new android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+			}
+		});
+		settled(image[0]);
+		final boolean[] asked = new boolean[1];
+		onMain(new Runnable() {
+			public void run() {
+				image[0].setImageBitmap(android.graphics.Bitmap.createBitmap(100, 80, android.graphics.Bitmap.Config.ARGB_8888));
+				asked[0] = image[0].isLayoutRequested();
+			}
+		});
+		assertTrue("setImageBitmap asks for a layout", asked[0]);
+		settled(image[0]);
+		assertEquals(100, image[0].getWidth());
+		assertEquals(80, image[0].getHeight());
+	}
+
+	private void settled(View view) {
+		getInstrumentation().waitForIdleSync();
+		for (int i = 0; i < 100 && view.isLayoutRequested(); i++)
+			android.os.SystemClock.sleep(20);
+	}
+
+	private static class StatefulDrawable extends ColorDrawable {
+		StatefulDrawable() {
+			super(0xFF00FF00);
+		}
+
+		@Override
+		public boolean isStateful() {
+			return true;
+		}
+
+		@Override
+		protected boolean onStateChange(int[] state) {
+			return true;
+		}
+	}
+
+	// as View.setBackgroundDrawable does: a stateful drawable starts in the view's state
+	public void testImageViewGivesAStatefulDrawableItsState() {
+		final Context context = getInstrumentation().getTargetContext();
+		final Object[] got = new Object[2];
+		onMain(new Runnable() {
+			public void run() {
+				ImageView image = new ImageView(context);
+				StatefulDrawable drawable = new StatefulDrawable();
+				image.setImageDrawable(drawable);
+				got[0] = java.util.Arrays.toString(drawable.getState());
+				got[1] = java.util.Arrays.toString(image.getDrawableState());
+			}
+		});
+		assertEquals(got[1], got[0]);
+		assertFalse("an empty state tells nothing", got[1].equals("[]"));
+	}
 }

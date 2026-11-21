@@ -219,6 +219,8 @@ bool input_tap(GtkWidget *view)
 	graphene_point_t point;
 	if (!gtk_widget_compute_point(view, GTK_WIDGET(root), &GRAPHENE_POINT_INIT(width / 2, height / 2), &point))
 		return false;
+	if (GTK_IS_ROOT(native))
+		edit_flush_report(gtk_root_get_focus(GTK_ROOT(native)));
 	// a gesture of its own on the view's root, with a made-up handle (this tap's address)
 	static const char handle;
 	gesture.root = g_object_ref(root);
@@ -240,6 +242,8 @@ bool input_tap(GtkWidget *view)
 
 gboolean input_pointer(enum input_pointer what, GtkNative *native, GdkEventSequence *sequence, double x, double y)
 {
+	if (GTK_IS_ROOT(native))
+		edit_flush_report(gtk_root_get_focus(GTK_ROOT(native)));
 	if (what == INPUT_POINTER_DOWN)
 		return pointer_down(native, sequence, x, y);
 
@@ -509,6 +513,7 @@ gboolean input_key(GtkWindow *window, GtkPropagationPhase phase, guint keyval, g
 	WrapperWidget *root = root_wrapper(GTK_NATIVE(window));
 	if (!root)
 		return FALSE;
+	edit_flush_report(focus);
 	if (action == ATL_KEY_DOWN)
 		java_key_pressed(keycode);
 	else if (!java_key_released(keycode))

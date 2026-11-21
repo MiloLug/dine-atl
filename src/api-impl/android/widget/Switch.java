@@ -10,7 +10,15 @@ public class Switch extends CompoundButton {
 	}
 
 	public Switch(Context context, AttributeSet attributeSet) {
-		super(context, attributeSet);
+		this(context, attributeSet, 0);
+	}
+
+	public Switch(Context context, AttributeSet attributeSet, int defStyleAttr) {
+		this(context, attributeSet, defStyleAttr, 0);
+	}
+
+	public Switch(Context context, AttributeSet attributeSet, int defStyleAttr, int defStyleRes) {
+		super(context, attributeSet, defStyleAttr, defStyleRes);
 	}
 
 	@Override

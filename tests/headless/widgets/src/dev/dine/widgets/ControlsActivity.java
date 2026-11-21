@@ -109,6 +109,18 @@ public class ControlsActivity extends Activity {
 		centered.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
 		column.addView(centered, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+		// a capped line ends in an ellipsis: the toolkit's state
+		TextView tail = new TextView(this);
+		tail.setText("tail");
+		tail.setMaxLines(1);
+		tail.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		column.addView(tail);
+
+		TextView tinted = new TextView(this);
+		tinted.setText("tinted");
+		tinted.setTextColor(0xff336699);
+		column.addView(tinted);
+
 		// Html's spans as the toolkit's text runs, upper-cased with them
 		TextView marked = new TextView(this);
 		long parse = SystemClock.uptimeMillis(); // the first parse builds TagSoup's schema

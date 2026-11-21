@@ -249,6 +249,14 @@ extern "C" {
 #define android_widget_TextView_RUN_BASELINE 128L
 #undef android_widget_TextView_RUN_SCALE_X
 #define android_widget_TextView_RUN_SCALE_X 256L
+#undef android_widget_TextView_ELLIPSIZE_NONE
+#define android_widget_TextView_ELLIPSIZE_NONE 0L
+#undef android_widget_TextView_ELLIPSIZE_START
+#define android_widget_TextView_ELLIPSIZE_START 1L
+#undef android_widget_TextView_ELLIPSIZE_MIDDLE
+#define android_widget_TextView_ELLIPSIZE_MIDDLE 2L
+#undef android_widget_TextView_ELLIPSIZE_END
+#define android_widget_TextView_ELLIPSIZE_END 3L
 /*
  * Class:     android_widget_TextView
  * Method:    native_constructor
@@ -295,6 +303,14 @@ JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextColor
  * Signature: (I)V
  */
 JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setTextStyle
+  (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     android_widget_TextView
+ * Method:    native_setEllipsize
+ * Signature: (I)V
+ */
+JNIEXPORT void JNICALL Java_android_widget_TextView_native_1setEllipsize
   (JNIEnv *, jobject, jint);
 
 /*

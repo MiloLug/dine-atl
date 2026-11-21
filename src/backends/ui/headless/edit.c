@@ -41,9 +41,30 @@ static void print_state(const struct ui_view *view)
 	fflush(stdout);
 }
 
+// the names follow the enums in ui.h
+static const char *const keyboard_names[] = {
+	[UI_KEYBOARD_TEXT] = "text", [UI_KEYBOARD_NUMBER] = "number", [UI_KEYBOARD_DECIMAL] = "decimal",
+	[UI_KEYBOARD_PHONE] = "phone", [UI_KEYBOARD_EMAIL] = "email", [UI_KEYBOARD_URL] = "url", [UI_KEYBOARD_DATETIME] = "datetime",
+};
+static const char *const return_names[] = {
+	[UI_RETURN_DEFAULT] = "default", [UI_RETURN_DONE] = "done", [UI_RETURN_GO] = "go",
+	[UI_RETURN_SEARCH] = "search", [UI_RETURN_NEXT] = "next", [UI_RETURN_SEND] = "send",
+};
+static const char *const autocap_names[] = {
+	[UI_AUTOCAP_NONE] = "none", [UI_AUTOCAP_WORDS] = "words", [UI_AUTOCAP_SENTENCES] = "sentences", [UI_AUTOCAP_CHARACTERS] = "characters",
+};
+_Static_assert(sizeof(keyboard_names) / sizeof(*keyboard_names) == UI_KEYBOARD_DATETIME + 1, "a name for each ui_keyboard");
+_Static_assert(sizeof(return_names) / sizeof(*return_names) == UI_RETURN_SEND + 1, "a name for each ui_return_key");
+_Static_assert(sizeof(autocap_names) / sizeof(*autocap_names) == UI_AUTOCAP_CHARACTERS + 1, "a name for each ui_autocap");
+
 static void print_keyboard(const struct ui_view *view, bool shown)
 {
-	printf("keyboard: %s %s \"%s\"\n", shown ? "on" : "off", view->class_name, view->edit_config.hint ?: "");
+	const struct ui_edit_config *config = &view->edit_config;
+	printf("keyboard: %s %s \"%s\" kind=%s return=%s autocap=%s secure=%d hidden=%d multiline=%d autocorrect=%d tap_focus=%d "
+	       "tap_keyboard=%d editable=%d\n",
+	       shown ? "on" : "off", view->class_name, config->hint ?: "", keyboard_names[config->keyboard], return_names[config->return_key],
+	       autocap_names[config->autocap], config->secure, config->hidden, config->multiline, config->autocorrect, config->tap_focus,
+	       config->tap_keyboard, config->editable);
 	fflush(stdout);
 }
 
@@ -168,6 +189,11 @@ static void replace(struct ui_view *view, int start, int end, const char *insert
 
 static void edit(struct ui_view *view, const struct headless_text *line)
 {
+	if (!view->edit_config.editable) {
+		printf("edit: refused\n");
+		fflush(stdout);
+		return;
+	}
 	if (line->what != HEADLESS_TEXT_COMPOSE && line->what != HEADLESS_TEXT_COMMIT)
 		unmark(view);
 	char *prev = strdup(view->text);
@@ -237,10 +263,12 @@ static void tap(struct ui_window *window, float x, float y)
 		fflush(stdout);
 		return;
 	}
-	if (!view->enabled)
+	const struct ui_edit_config *config = &view->edit_config;
+	if (!view->enabled || !config->tap_focus)
 		return;
-	records_edit_keyboard(view, true);
-	atl_upcall_edit_focus(view->ref, true, true);
+	if (config->tap_keyboard)
+		records_edit_keyboard(view, true);
+	atl_upcall_edit_focus(view->ref, true, config->tap_keyboard);
 }
 
 struct posted_text {

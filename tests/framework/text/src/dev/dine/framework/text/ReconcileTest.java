@@ -121,4 +121,48 @@ public class ReconcileTest extends android.test.InstrumentationTestCase {
 		assertEquals("a" + beam, text);
 		assertEquals("on 1 2 2", watcher.calls.get(1));
 	}
+
+	// AOSP's BaseInputConnection.replaceText sets the caret before it replaces: the Editable's spans and
+	// the watchers decide where it ends, and a selection a watcher sets inside the replace stays
+	public void testWatcherSetsTheSelection() {
+		EditText[] edit = new EditText[1];
+		final EditText[] holder = edit;
+		report(new Runnable() {
+			public void run() {
+				holder[0].addTextChangedListener(new android.text.TextWatcher() {
+					public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+					public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+					public void afterTextChanged(android.text.Editable s) {
+						if (!s.toString().endsWith(" kg")) {
+							s.append(" kg");
+							Selection.setSelection(s, s.length() - 3);
+						}
+					}
+				});
+			}
+		}, edit, "", 0, 0, "5", 1, 1);
+		assertEquals("5 kg", text);
+		assertEquals(1, start);
+		assertEquals(1, end);
+	}
+
+	// a caret inside the typed run stays there, as an IME's setSelection after commitText puts it
+	public void testCaretInsideTheInsertedRunStaysInside() {
+		EditText[] edit = new EditText[1];
+		report(state(edit, "ab", 2, 2), edit, "ab", 2, 2, "abxyz", 4, 4);
+		assertEquals("abxyz", text);
+		assertEquals(4, start);
+		assertEquals(4, end);
+	}
+
+	// a selection inside it too, both ends
+	public void testSelectionInsideTheInsertedRunStaysInside() {
+		EditText[] edit = new EditText[1];
+		report(state(edit, "ab", 2, 2), edit, "ab", 2, 2, "abxyz", 3, 4);
+		assertEquals("abxyz", text);
+		assertEquals(3, start);
+		assertEquals(4, end);
+	}
 }

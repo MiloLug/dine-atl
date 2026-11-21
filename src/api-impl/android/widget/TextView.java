@@ -51,7 +51,8 @@ import android.view.inputmethod.InputMethodManager;
 import java.util.Locale;
 
 public class TextView extends View {
-	private ColorStateList colors = new ColorStateList(new int[][] {new int[0]}, new int[1]);
+	private ColorStateList colors = ColorStateList.valueOf(0xff000000); // AOSP's default
+	private boolean text_color_set; // a textColor or setTextColor gave one: the toolkit's own color stays until then
 	private CharSequence text = "";
 	private BufferType buffer_type = BufferType.NORMAL; // AOSP's mBufferType
 	static final int CHANGE_WATCHER_PRIORITY = 100;
@@ -70,6 +71,10 @@ public class TextView extends View {
 	private int gravity = Gravity.CENTER;
 	private boolean allCaps;
 	private CharSequence hint;
+	private ColorStateList hint_colors;
+	private int current_hint_color = 0xff808080;
+	private boolean hint_shown;
+	private TextUtils.TruncateAt ellipsize;
 	private boolean selectable;
 	private TransformationMethod transformation;
 	OnEditorActionListener editorActionListener;
@@ -137,6 +142,14 @@ public class TextView extends View {
 			}
 			if (a.getBoolean(com.android.internal.R.styleable.TextView_textIsSelectable, false))
 				setTextIsSelectable(true);
+			if (a.hasValue(com.android.internal.R.styleable.TextView_ellipsize)) {
+				switch (a.getInt(com.android.internal.R.styleable.TextView_ellipsize, -1)) {
+					case 1: setEllipsize(TextUtils.TruncateAt.START); break;
+					case 2: setEllipsize(TextUtils.TruncateAt.MIDDLE); break;
+					case 3: setEllipsize(TextUtils.TruncateAt.END); break;
+					case 4: setEllipsize(TextUtils.TruncateAt.MARQUEE); break;
+				}
+			}
 
 			if (a.hasValue(com.android.internal.R.styleable.TextView_minHeight))
 				setMinHeight(a.getDimensionPixelSize(com.android.internal.R.styleable.TextView_minHeight, 0));
@@ -161,6 +174,16 @@ public class TextView extends View {
 
 		if (link_colors == null) // TextAppearance's ?textColorLink, without a textViewStyle
 			link_colors = themeColor(context, android.R.attr.textColorLink);
+		if (hint_colors == null) {
+			hint_colors = a.hasValue(com.android.internal.R.styleable.TextView_textColorHint)
+			                ? a.getColorStateList(com.android.internal.R.styleable.TextView_textColorHint)
+			                : themeColor(context, android.R.attr.textColorHint);
+			if (hint_colors != null) {
+				current_hint_color = hint_colors.getColorForState(getDrawableState(), hint_colors.getDefaultColor());
+				if (hint_shown) // the hint attribute was set before its color was known
+					native_setTextColor(current_hint_color);
+			}
+		}
 		// AOSP sets the text last, its runs with the colours above
 		BufferType[] types = {BufferType.NORMAL, BufferType.SPANNABLE, BufferType.EDITABLE};
 		int type = a.getInt(com.android.internal.R.styleable.TextView_bufferType, 0);
@@ -227,10 +250,18 @@ public class TextView extends View {
 		if (!isLayoutRequested())
 			requestLayout();
 		sendOnTextChanged(text, 0, oldlen, text.length());
+		onTextChanged(text, 0, oldlen, text.length());
 		if (text instanceof Editable)
 			sendAfterTextChanged((Editable)text);
 		atlTextChanged();
 	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: AOSP calls it from setText and from the
+	 * ChangeWatcher, after the TextWatchers; a subclass overrides it */
+	protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {}
+
+	/* Copyright (C) 2006 The Android Open Source Project: called when the selection spans move */
+	protected void onSelectionChanged(int selStart, int selEnd) {}
 
 	// EditText's hooks: its InputFilters, its Editable's filters and selection, its toolkit state
 	CharSequence atlFiltered(CharSequence text) {
@@ -314,6 +345,7 @@ public class TextView extends View {
 		public void onTextChanged(CharSequence buffer, int start, int before, int after) {
 			text_version++;
 			sendOnTextChanged(buffer, start, before, after);
+			TextView.this.onTextChanged(buffer, start, before, after);
 		}
 
 		public void afterTextChanged(Editable buffer) {
@@ -329,14 +361,20 @@ public class TextView extends View {
 			if (what instanceof android.text.style.MetricAffectingSpan)
 				checkForResize();
 			atlSpanChanged(what);
+			// TextView.spanChange: the selection moved, and not as one step of a longer change
+			if ((what == Selection.SELECTION_START || what == Selection.SELECTION_END) && (buf.getSpanFlags(what) & Spanned.SPAN_INTERMEDIATE) == 0) {
+				int newSelStart = what == Selection.SELECTION_START ? st : Selection.getSelectionStart(buf);
+				int newSelEnd = what == Selection.SELECTION_END ? st : Selection.getSelectionEnd(buf);
+				onSelectionChanged(newSelStart, newSelEnd);
+			}
 		}
 
 		public void onSpanAdded(Spannable buf, Object what, int s, int e) {
-			onSpanChanged(buf, what, -1, s, -1, e);
+			onSpanChanged(buf, what, -1, -1, s, e);
 		}
 
 		public void onSpanRemoved(Spannable buf, Object what, int s, int e) {
-			onSpanChanged(buf, what, s, -1, e, -1);
+			onSpanChanged(buf, what, s, e, -1, -1);
 		}
 	}
 
@@ -364,6 +402,15 @@ public class TextView extends View {
 	// the shown text and, for a Spanned, its CharacterStyles as runs (native_setText's layout); an
 	// EditText's toolkit text is its Editable's (EditText.sync)
 	void sendText() {
+		boolean showHint = hint != null && hint.length() > 0 && text != null && text.length() == 0;
+		if (showHint != hint_shown) {
+			hint_shown = showHint;
+			native_setTextColor(showHint ? current_hint_color : text_color_set ? current_text_color : defaultTextColor());
+		}
+		if (showHint) {
+			native_setText(hint.toString(), null, null);
+			return;
+		}
 		String shown = shown();
 		if (!(text instanceof Spanned) || shown.length() != text.length()) {
 			native_setText(shown, null, null);
@@ -454,9 +501,19 @@ public class TextView extends View {
 	}
 	// the paint first: a subclass's setRawTextSize may not call this one
 	private void applyTextSize(float size) {
+		boolean changed = paint.getTextSize() != size;
 		paint.setTextSize(size);
 		setRawTextSize(size);
 		resendStyled();
+		if (changed)
+			relayout();
+	}
+
+	// what the toolkit measures changed: AOSP's requestLayout and invalidate after nullLayouts
+	private void relayout() {
+		if (!isLayoutRequested())
+			requestLayout();
+		invalidate();
 	}
 	// px; package-private so that subclasses whose widget isn't a text node override it
 	void setRawTextSize(float size) {
@@ -467,17 +524,41 @@ public class TextView extends View {
 
 	public native final void native_setTextColor(int color);
 	public void setTextColor(int color) {
-		current_text_color = color;
-		native_setTextColor(color);
-		resendStyled();
+		setTextColor(ColorStateList.valueOf(color));
 	}
 	public void setTextColor(ColorStateList colors) {
 		if (colors != null) {
 			this.colors = colors;
-			current_text_color = colors.getDefaultColor();
-			native_setTextColor(colors.getDefaultColor()); // TODO: do this properly
-			resendStyled();
+			text_color_set = true;
+			updateTextColors();
 		}
+	}
+
+	/* Copyright (C) 2006 The Android Open Source Project: the colors for the current drawable state;
+	 * the toolkit shows the hint's while the text is empty */
+	private void updateTextColors() {
+		int[] state = getDrawableState();
+		current_text_color = colors.getColorForState(state, colors.getDefaultColor());
+		if (hint_colors != null)
+			current_hint_color = hint_colors.getColorForState(state, hint_colors.getDefaultColor());
+		if (hint_shown)
+			native_setTextColor(current_hint_color);
+		else if (text_color_set)
+			native_setTextColor(current_text_color);
+		resendStyled();
+	}
+
+	// what AOSP's default text appearance gives a view with no textColor: the theme's primary text color
+	private int defaultTextColor() {
+		ColorStateList primary = themeColor(getContext(), android.R.attr.textColorPrimary);
+		return primary != null ? primary.getColorForState(getDrawableState(), primary.getDefaultColor()) : current_text_color;
+	}
+
+	@Override
+	protected void drawableStateChanged() {
+		super.drawableStateChanged();
+		if (colors.isStateful() || hint_colors != null && hint_colors.isStateful())
+			updateTextColors();
 	}
 	/* Copyright (C) 2006 The Android Open Source Project */
 	// without fake bold and skew: a family without the style shows the regular face
@@ -486,9 +567,12 @@ public class TextView extends View {
 	}
 	private native final void native_setTextStyle(int style);
 	public void setTypeface(Typeface tf) {
+		boolean changed = paint.getTypeface() != tf;
 		paint.setTypeface(tf);
 		native_setTextStyle(tf != null ? tf.getStyle() : Typeface.NORMAL);
 		resendStyled();
+		if (changed)
+			relayout();
 	}
 	public void setLineSpacing(float add, float mult) {}
 	public final void setLinksClickable(boolean whether) {}
@@ -563,8 +647,15 @@ public class TextView extends View {
 		return transformation;
 	}
 
-	public void setHintTextColor(ColorStateList colorStateList) {}
-	public void setHintTextColor(int i) {}
+	public final void setHintTextColor(int color) {
+		setHintTextColor(ColorStateList.valueOf(color));
+	}
+	public final void setHintTextColor(ColorStateList colors) {
+		hint_colors = colors;
+		updateTextColors();
+	}
+	public final ColorStateList getHintTextColors() { return hint_colors; }
+	public final int getCurrentHintTextColor() { return hint_colors != null ? current_hint_color : current_text_color; }
 	public void setLinkTextColor(ColorStateList colors) {
 		link_colors = colors;
 		sendText();
@@ -588,7 +679,19 @@ public class TextView extends View {
 		return Selection.getSelectionEnd(getText());
 	}
 
-	public void setEllipsize(TextUtils.TruncateAt truncateAt) {}
+	// ui_ellipsize; marquee scrolls only when focused, and shows the text cut: none
+	private static final int ELLIPSIZE_NONE = 0, ELLIPSIZE_START = 1, ELLIPSIZE_MIDDLE = 2, ELLIPSIZE_END = 3;
+
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public void setEllipsize(TextUtils.TruncateAt where) {
+		if (ellipsize == where)
+			return;
+		ellipsize = where;
+		native_setEllipsize(where == TextUtils.TruncateAt.START ? ELLIPSIZE_START : where == TextUtils.TruncateAt.MIDDLE ? ELLIPSIZE_MIDDLE
+		                    : where == TextUtils.TruncateAt.END ? ELLIPSIZE_END : ELLIPSIZE_NONE);
+		relayout();
+	}
+	private native void native_setEllipsize(int ellipsize);
 
 	public void setTextAppearance(Context context, int appearance) {}
 
@@ -735,8 +838,11 @@ public class TextView extends View {
 	}
 
 	public void setAllCaps(boolean allCaps) {
+		if (this.allCaps == allCaps)
+			return;
 		this.allCaps = allCaps;
 		sendText();
+		relayout();
 	}
 
 	// AllCapsTransformationMethod's upper case, which getText doesn't see; runs stay when it keeps the length
@@ -861,6 +967,10 @@ public class TextView extends View {
 
 	public void setHint(CharSequence hint) {
 		this.hint = hint;
+		if (text == null || text.length() == 0 || hint_shown) {
+			sendText();
+			relayout();
+		}
 	}
 
 	public Drawable[] getCompoundDrawablesRelative() {
@@ -897,7 +1007,7 @@ public class TextView extends View {
 
 	public void setRawInputType(int type) {}
 
-	public TextUtils.TruncateAt getEllipsize() { return null; }
+	public TextUtils.TruncateAt getEllipsize() { return ellipsize; }
 
 
 	public void setSelectAllOnFocus(boolean selectAllOnFocus) {}
@@ -913,7 +1023,8 @@ public class TextView extends View {
 		return paint.getFontMetricsInt(null);
 	}
 
-	public boolean isAllCaps() { return false; }
+	/* Copyright (C) 2006 The Android Open Source Project */
+	public boolean isAllCaps() { return allCaps; }
 
 	public int getAutoSizeStepGranularity() {
 		return -1;
