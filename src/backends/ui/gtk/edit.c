@@ -28,7 +28,7 @@ static struct edit *edit_of(struct ui_view *view)
 
 static struct atl_ref *edit_ref(struct edit *edit)
 {
-	return (struct atl_ref *)WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(edit->text)))->jobj;
+	return wrapper_widget_ref(WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(edit->text))));
 }
 
 static int utf16_of_chars(const char *text, int chars)

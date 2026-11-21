@@ -201,6 +201,7 @@ public class MainActivity extends Activity {
 	@Override
 	public boolean dispatchKeyEvent(KeyEvent event) {
 		int keyCode = event.getKeyCode();
+		Log.i(TAG, "widgets keycode " + (event.getAction() == KeyEvent.ACTION_DOWN ? "down " : "up ") + keyCode + " " + event.getUnicodeChar());
 		if (event.getAction() == KeyEvent.ACTION_DOWN && (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DEL))
 			Log.i(TAG, "widgets keychar " + keyCode + " " + event.getUnicodeChar());
 		return super.dispatchKeyEvent(event);

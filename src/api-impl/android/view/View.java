@@ -1733,6 +1733,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
 		}
 	}
 
+	// the toolkit's focus moves to the view Java holds focused
+	public void atlToolkitRefocus() {
+		native_setFocused(widget, true);
+	}
+
 	public void clearFocus() {
 		final boolean refocus = sAlwaysAssignFocus() || !isInTouchMode();
 		clearFocusInternal(null, true, refocus);

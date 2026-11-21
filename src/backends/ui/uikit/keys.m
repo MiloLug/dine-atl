@@ -1,120 +1,108 @@
 #import "input.h"
 
+#include "src/shared/keys.h"
+
 // USB HID keyboard usages to Android's KeyEvent codes and meta flags
-
-#define KEYCODE_UNKNOWN 0
-#define KEYCODE_0       7
-#define KEYCODE_1       8
-#define KEYCODE_A       29
-#define KEYCODE_F1      131
-#define KEYCODE_NUMPAD_0 144
-#define KEYCODE_NUMPAD_1 145
-
-#define META_SHIFT_ON     0x1
-#define META_ALT_ON       0x2
-#define META_CTRL_ON      0x1000
-#define META_META_ON      0x10000
-#define META_CAPS_LOCK_ON 0x100000
 
 int keys_android_code(UIKeyboardHIDUsage usage)
 {
 	if (usage >= UIKeyboardHIDUsageKeyboardA && usage <= UIKeyboardHIDUsageKeyboardZ)
-		return KEYCODE_A + (usage - UIKeyboardHIDUsageKeyboardA);
+		return ATL_KEYCODE_A + (usage - UIKeyboardHIDUsageKeyboardA);
 	if (usage >= UIKeyboardHIDUsageKeyboard1 && usage <= UIKeyboardHIDUsageKeyboard9)
-		return KEYCODE_1 + (usage - UIKeyboardHIDUsageKeyboard1);
+		return ATL_KEYCODE_0 + 1 + (usage - UIKeyboardHIDUsageKeyboard1);
 	if (usage >= UIKeyboardHIDUsageKeyboardF1 && usage <= UIKeyboardHIDUsageKeyboardF12)
-		return KEYCODE_F1 + (usage - UIKeyboardHIDUsageKeyboardF1);
+		return ATL_KEYCODE_F1 + (usage - UIKeyboardHIDUsageKeyboardF1);
 	if (usage >= UIKeyboardHIDUsageKeypad1 && usage <= UIKeyboardHIDUsageKeypad9)
-		return KEYCODE_NUMPAD_1 + (usage - UIKeyboardHIDUsageKeypad1);
+		return ATL_KEYCODE_NUMPAD_0 + 1 + (usage - UIKeyboardHIDUsageKeypad1);
 	switch (usage) {
 		case UIKeyboardHIDUsageKeyboard0:
-			return KEYCODE_0;
+			return ATL_KEYCODE_0;
 		case UIKeyboardHIDUsageKeypad0:
-			return KEYCODE_NUMPAD_0;
+			return ATL_KEYCODE_NUMPAD_0;
 		case UIKeyboardHIDUsageKeyboardReturnOrEnter:
-			return 66; // ENTER
+			return ATL_KEYCODE_ENTER;
 		case UIKeyboardHIDUsageKeyboardEscape:
-			return 111; // ESCAPE
+			return ATL_KEYCODE_ESCAPE;
 		case UIKeyboardHIDUsageKeyboardDeleteOrBackspace:
-			return 67; // DEL
+			return ATL_KEYCODE_DEL;
 		case UIKeyboardHIDUsageKeyboardTab:
-			return 61; // TAB
+			return ATL_KEYCODE_TAB;
 		case UIKeyboardHIDUsageKeyboardSpacebar:
-			return 62; // SPACE
+			return ATL_KEYCODE_SPACE;
 		case UIKeyboardHIDUsageKeyboardHyphen:
-			return 69; // MINUS
+			return ATL_KEYCODE_MINUS;
 		case UIKeyboardHIDUsageKeyboardEqualSign:
-			return 70; // EQUALS
+			return ATL_KEYCODE_EQUALS;
 		case UIKeyboardHIDUsageKeyboardOpenBracket:
-			return 71; // LEFT_BRACKET
+			return ATL_KEYCODE_LEFT_BRACKET;
 		case UIKeyboardHIDUsageKeyboardCloseBracket:
-			return 72; // RIGHT_BRACKET
+			return ATL_KEYCODE_RIGHT_BRACKET;
 		case UIKeyboardHIDUsageKeyboardBackslash:
-			return 73; // BACKSLASH
+			return ATL_KEYCODE_BACKSLASH;
 		case UIKeyboardHIDUsageKeyboardSemicolon:
-			return 74; // SEMICOLON
+			return ATL_KEYCODE_SEMICOLON;
 		case UIKeyboardHIDUsageKeyboardQuote:
-			return 75; // APOSTROPHE
+			return ATL_KEYCODE_APOSTROPHE;
 		case UIKeyboardHIDUsageKeyboardGraveAccentAndTilde:
-			return 68; // GRAVE
+			return ATL_KEYCODE_GRAVE;
 		case UIKeyboardHIDUsageKeyboardComma:
-			return 55; // COMMA
+			return ATL_KEYCODE_COMMA;
 		case UIKeyboardHIDUsageKeyboardPeriod:
-			return 56; // PERIOD
+			return ATL_KEYCODE_PERIOD;
 		case UIKeyboardHIDUsageKeyboardSlash:
-			return 76; // SLASH
+			return ATL_KEYCODE_SLASH;
 		case UIKeyboardHIDUsageKeyboardCapsLock:
-			return 115; // CAPS_LOCK
+			return ATL_KEYCODE_CAPS_LOCK;
 		case UIKeyboardHIDUsageKeyboardInsert:
-			return 124; // INSERT
+			return ATL_KEYCODE_INSERT;
 		case UIKeyboardHIDUsageKeyboardHome:
-			return 122; // MOVE_HOME
+			return ATL_KEYCODE_MOVE_HOME;
 		case UIKeyboardHIDUsageKeyboardPageUp:
-			return 92; // PAGE_UP
+			return ATL_KEYCODE_PAGE_UP;
 		case UIKeyboardHIDUsageKeyboardDeleteForward:
-			return 112; // FORWARD_DEL
+			return ATL_KEYCODE_FORWARD_DEL;
 		case UIKeyboardHIDUsageKeyboardEnd:
-			return 123; // MOVE_END
+			return ATL_KEYCODE_MOVE_END;
 		case UIKeyboardHIDUsageKeyboardPageDown:
-			return 93; // PAGE_DOWN
+			return ATL_KEYCODE_PAGE_DOWN;
 		case UIKeyboardHIDUsageKeyboardRightArrow:
-			return 22; // DPAD_RIGHT
+			return ATL_KEYCODE_DPAD_RIGHT;
 		case UIKeyboardHIDUsageKeyboardLeftArrow:
-			return 21; // DPAD_LEFT
+			return ATL_KEYCODE_DPAD_LEFT;
 		case UIKeyboardHIDUsageKeyboardDownArrow:
-			return 20; // DPAD_DOWN
+			return ATL_KEYCODE_DPAD_DOWN;
 		case UIKeyboardHIDUsageKeyboardUpArrow:
-			return 19; // DPAD_UP
+			return ATL_KEYCODE_DPAD_UP;
 		case UIKeyboardHIDUsageKeypadSlash:
-			return 154; // NUMPAD_DIVIDE
+			return ATL_KEYCODE_NUMPAD_DIVIDE;
 		case UIKeyboardHIDUsageKeypadAsterisk:
-			return 155; // NUMPAD_MULTIPLY
+			return ATL_KEYCODE_NUMPAD_MULTIPLY;
 		case UIKeyboardHIDUsageKeypadHyphen:
-			return 156; // NUMPAD_SUBTRACT
+			return ATL_KEYCODE_NUMPAD_SUBTRACT;
 		case UIKeyboardHIDUsageKeypadPlus:
-			return 157; // NUMPAD_ADD
+			return ATL_KEYCODE_NUMPAD_ADD;
 		case UIKeyboardHIDUsageKeypadEnter:
-			return 160; // NUMPAD_ENTER
+			return ATL_KEYCODE_NUMPAD_ENTER;
 		case UIKeyboardHIDUsageKeypadPeriod:
-			return 158; // NUMPAD_DOT
+			return ATL_KEYCODE_NUMPAD_DOT;
 		case UIKeyboardHIDUsageKeyboardLeftControl:
-			return 113; // CTRL_LEFT
+			return ATL_KEYCODE_CTRL_LEFT;
 		case UIKeyboardHIDUsageKeyboardLeftShift:
-			return 59; // SHIFT_LEFT
+			return ATL_KEYCODE_SHIFT_LEFT;
 		case UIKeyboardHIDUsageKeyboardLeftAlt:
-			return 57; // ALT_LEFT
+			return ATL_KEYCODE_ALT_LEFT;
 		case UIKeyboardHIDUsageKeyboardLeftGUI:
-			return 117; // META_LEFT
+			return ATL_KEYCODE_META_LEFT;
 		case UIKeyboardHIDUsageKeyboardRightControl:
-			return 114; // CTRL_RIGHT
+			return ATL_KEYCODE_CTRL_RIGHT;
 		case UIKeyboardHIDUsageKeyboardRightShift:
-			return 60; // SHIFT_RIGHT
+			return ATL_KEYCODE_SHIFT_RIGHT;
 		case UIKeyboardHIDUsageKeyboardRightAlt:
-			return 58; // ALT_RIGHT
+			return ATL_KEYCODE_ALT_RIGHT;
 		case UIKeyboardHIDUsageKeyboardRightGUI:
-			return 118; // META_RIGHT
+			return ATL_KEYCODE_META_RIGHT;
 		default:
-			return KEYCODE_UNKNOWN;
+			return ATL_KEYCODE_UNKNOWN;
 	}
 }
 
@@ -122,14 +110,14 @@ int keys_android_meta(UIKeyModifierFlags flags)
 {
 	int meta = 0;
 	if (flags & UIKeyModifierShift)
-		meta |= META_SHIFT_ON;
+		meta |= ATL_META_SHIFT_ON;
 	if (flags & UIKeyModifierAlternate)
-		meta |= META_ALT_ON;
+		meta |= ATL_META_ALT_ON;
 	if (flags & UIKeyModifierControl)
-		meta |= META_CTRL_ON;
+		meta |= ATL_META_CTRL_ON;
 	if (flags & UIKeyModifierCommand)
-		meta |= META_META_ON;
+		meta |= ATL_META_META_ON;
 	if (flags & UIKeyModifierAlphaShift)
-		meta |= META_CAPS_LOCK_ON;
+		meta |= ATL_META_CAPS_LOCK_ON;
 	return meta;
 }

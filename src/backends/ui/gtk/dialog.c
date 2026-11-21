@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include <stdlib.h>
 
+#include "src/shared/alert.h"
 #include "src/shared/test_hooks.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
@@ -10,8 +11,7 @@
 
 /* A plain alert is a GtkWindow over the app window; a panel is a box in the app window's overlay
  * around its window's root (window.c). Java decides when it closes: close-request and a tap outside
- * become cancel results. ATL_DIALOG_ANSWERS answers alerts through their widgets, as they are when
- * the answer comes. */
+ * become cancel results. ATL_DIALOG_ANSWERS answers the alert as it is when the answer comes. */
 
 extern GtkWidget *window; // the gtk host's app window
 
@@ -21,16 +21,15 @@ struct dialog_state {
 	GtkWindow *dialog;
 	bool shown;
 	bool answer_posted; // a listener's dismiss() and show() would post a second one
+	struct ui_alert alert; // the shown one
 	GtkEventController *touch_outside; // on the app window while set
 	GtkWidget *buttons[3];             // the shown alert's, as in ui_alert; hidden without a label
 	GtkListBox *items;
 	// a panel's: the box, its parts above and below the root, its rows' checks
 	GtkWidget *panel, *header, *footer;
-	GtkScrolledWindow *rows; // its rows, scrolling when the window can't hold them
-	bool content;            // ui_alert.content
+	GtkScrolledWindow *scroller; // the message or the rows, scrolling when the window can't hold them
+	GtkWidget *scrolled;         // the scroller's message or rows
 	GtkWidget **checks;
-	int n_checks;
-	enum ui_alert_check check;
 	GtkWidget *progress;
 	enum ui_alert_progress progress_style;
 };
@@ -75,14 +74,12 @@ static void on_button_clicked(GtkButton *button, struct dialog_state *state)
 	result(state, GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "which")));
 }
 
-// a row's check moves as GTK's would, then Java hears it
+// a row's check moves, then Java hears it
 static void on_row_activated(GtkListBox *list, GtkListBoxRow *row, struct dialog_state *state)
 {
 	int index = gtk_list_box_row_get_index(row);
-	if (state->check != UI_ALERT_CHECK_NONE && index < state->n_checks) {
-		GtkCheckButton *check = GTK_CHECK_BUTTON(state->checks[index]);
-		gtk_check_button_set_active(check, state->check == UI_ALERT_CHECK_MULTI ? !gtk_check_button_get_active(check) : TRUE);
-	}
+	if (state->checks && index < state->alert.n_items)
+		gtk_check_button_set_active(GTK_CHECK_BUTTON(state->checks[index]), atl_alert_tap_row(&state->alert, index));
 	result(state, index);
 }
 
@@ -92,13 +89,7 @@ static GtkWidget *rows_new(struct dialog_state *state, const struct ui_alert *al
 	state->items = GTK_LIST_BOX(list);
 	gtk_list_box_set_activate_on_single_click(GTK_LIST_BOX(list), TRUE);
 	g_free(state->checks);
-	state->checks = NULL;
-	state->n_checks = 0;
-	state->check = alert->check;
-	if (alert->check != UI_ALERT_CHECK_NONE) {
-		state->checks = g_new0(GtkWidget *, alert->n_items);
-		state->n_checks = alert->n_items;
-	}
+	state->checks = alert->check != UI_ALERT_CHECK_NONE ? g_new0(GtkWidget *, alert->n_items ? alert->n_items : 1) : NULL;
 	for (int i = 0; i < alert->n_items; i++) {
 		if (alert->check == UI_ALERT_CHECK_NONE) {
 			gtk_list_box_append(GTK_LIST_BOX(list), gtk_label_new(alert->items[i]));
@@ -173,8 +164,8 @@ static void set_progress(struct dialog_state *state, int value, int max, bool in
 		gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(state->progress), max > 0 ? (double)value / max : 0);
 }
 
-/* The panel: the title, message, rows and progress above the root, the buttons below it; the root's
- * wrapper lies over the space between (window.c places both). */
+/* The panel: the title, the message or the rows, and the progress above the root, the buttons below
+ * it; the root's wrapper lies over the space between (window.c places both). */
 static void panel_fill(struct dialog_state *state, const struct ui_alert *alert)
 {
 	if (!state->panel) {
@@ -195,14 +186,28 @@ static void panel_fill(struct dialog_state *state, const struct ui_alert *alert)
 		GtkWidget *title = gtk_label_new(alert->title);
 		gtk_widget_add_css_class(title, "ATL-panel-title");
 		gtk_label_set_wrap(GTK_LABEL(title), TRUE);
+		gtk_label_set_lines(GTK_LABEL(title), 2); // AOSP's DialogTitle
+		gtk_label_set_ellipsize(GTK_LABEL(title), PANGO_ELLIPSIZE_END);
 		gtk_box_append(GTK_BOX(header), title);
 	}
+	state->items = NULL;
+	state->scroller = NULL;
+	state->scrolled = NULL;
 	if (alert->message) {
-		GtkWidget *message = gtk_label_new(alert->message);
-		gtk_label_set_wrap(GTK_LABEL(message), TRUE);
-		gtk_box_append(GTK_BOX(header), message);
+		state->scrolled = gtk_label_new(alert->message);
+		gtk_label_set_wrap(GTK_LABEL(state->scrolled), TRUE);
+		gtk_label_set_xalign(GTK_LABEL(state->scrolled), 0);
+	} else if (alert->items) {
+		state->scrolled = rows_new(state, alert);
 	}
-	state->content = alert->content;
+	if (state->scrolled) {
+		GtkWidget *scroller = gtk_scrolled_window_new();
+		state->scroller = GTK_SCROLLED_WINDOW(scroller);
+		gtk_scrolled_window_set_policy(state->scroller, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+		gtk_scrolled_window_set_propagate_natural_height(state->scroller, TRUE);
+		gtk_scrolled_window_set_child(state->scroller, state->scrolled);
+		gtk_box_append(GTK_BOX(header), scroller);
+	}
 	state->progress = NULL;
 	state->progress_style = alert->progress;
 	if (alert->progress != UI_ALERT_PROGRESS_NONE)
@@ -210,16 +215,6 @@ static void panel_fill(struct dialog_state *state, const struct ui_alert *alert)
 	if (state->progress) {
 		gtk_box_append(GTK_BOX(header), state->progress);
 		set_progress(state, alert->value, alert->max, alert->indeterminate);
-	}
-	state->items = NULL;
-	state->rows = NULL;
-	if (alert->items) {
-		GtkWidget *scroller = gtk_scrolled_window_new();
-		state->rows = GTK_SCROLLED_WINDOW(scroller);
-		gtk_scrolled_window_set_policy(state->rows, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-		gtk_scrolled_window_set_propagate_natural_height(state->rows, TRUE);
-		gtk_scrolled_window_set_child(state->rows, rows_new(state, alert));
-		gtk_box_append(GTK_BOX(header), scroller);
 	}
 	GtkWidget *middle = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_vexpand(middle, TRUE);
@@ -245,17 +240,15 @@ void ui_dialog_chrome(struct ui_window *dialog, int avail_width, int avail_heigh
 	if (state->panel) {
 		gtk_widget_measure(state->footer, GTK_ORIENTATION_VERTICAL, width, NULL, &footer, NULL, NULL);
 		gtk_widget_measure(state->header, GTK_ORIENTATION_VERTICAL, width, NULL, &header, NULL, NULL);
-		if (state->rows) { // the rows past the room scroll; Android content keeps half
-			int room = max_height - footer - 2 * PANEL_PADDING;
-			if (state->content)
-				room /= 2;
-			int shown, rows;
-			gtk_widget_measure(GTK_WIDGET(state->rows), GTK_ORIENTATION_VERTICAL, width, NULL, &shown, NULL, NULL);
-			gtk_widget_measure(GTK_WIDGET(state->items), GTK_ORIENTATION_VERTICAL, width, NULL, &rows, NULL, NULL);
-			int rest = header - shown, fits = MIN(rows, MAX(room - rest, 0));
-			int max = fits < rows ? fits : -1;
-			if (gtk_scrolled_window_get_max_content_height(state->rows) != max) // a change queues a resize
-				gtk_scrolled_window_set_max_content_height(state->rows, max);
+		if (state->scroller) { // the message or the rows get what the title and the progress leave
+			int cap = atl_alert_header_cap(max_height - 2 * PANEL_PADDING, footer, state->alert.content);
+			int shown, full;
+			gtk_widget_measure(GTK_WIDGET(state->scroller), GTK_ORIENTATION_VERTICAL, width, NULL, &shown, NULL, NULL);
+			gtk_widget_measure(state->scrolled, GTK_ORIENTATION_VERTICAL, width - 2 * PANEL_PADDING, NULL, &full, NULL, NULL);
+			int rest = header - shown, fits = MIN(full, MAX(cap - rest, 0));
+			int max = fits < full ? fits : -1;
+			if (gtk_scrolled_window_get_max_content_height(state->scroller) != max) // a change queues a resize
+				gtk_scrolled_window_set_max_content_height(state->scroller, max);
 			header = rest + fits;
 		}
 	}
@@ -272,23 +265,9 @@ void ui_dialog_chrome(struct ui_window *dialog, int avail_width, int avail_heigh
 void ui_dialog_set_progress(struct ui_window *dialog, int value, int max, bool indeterminate)
 {
 	struct dialog_state *state = get_state(dialog);
+	atl_alert_set_progress(&state->alert, value, max, indeterminate);
 	if (state->progress)
 		set_progress(state, value, max, indeterminate);
-}
-
-// the alert as its widgets show it now
-static void get_alert(struct dialog_state *state, struct ui_alert *alert, const char **items, int max_items)
-{
-	*alert = (struct ui_alert){.title = gtk_window_get_title(state->dialog), .items = items};
-	for (int i = 0; i < 3; i++) {
-		if (gtk_widget_get_visible(state->buttons[i]))
-			alert->buttons[i] = gtk_button_get_label(GTK_BUTTON(state->buttons[i]));
-		alert->disabled[i] = !gtk_widget_get_sensitive(state->buttons[i]);
-	}
-	for (GtkListBoxRow *row; state->items && alert->n_items < max_items && (row = gtk_list_box_get_row_at_index(state->items, alert->n_items));) {
-		GtkWidget *child = gtk_list_box_row_get_child(row);
-		items[alert->n_items++] = GTK_IS_CHECK_BUTTON(child) ? gtk_check_button_get_label(GTK_CHECK_BUTTON(child)) : gtk_label_get_text(GTK_LABEL(child));
-	}
 }
 
 static void give_answer(void *data)
@@ -297,11 +276,8 @@ static void give_answer(void *data)
 	state->answer_posted = false;
 	if (!state->shown || !state->buttons[0])
 		return;
-	const char *items[64];
-	struct ui_alert alert;
-	get_alert(state, &alert, items, G_N_ELEMENTS(items));
 	int which;
-	if (!atl_dialog_scripted(&alert, &which))
+	if (!atl_dialog_scripted(&state->alert, &which))
 		return;
 	if (which == UI_DIALOG_CANCEL)
 		gtk_window_close(state->dialog);
@@ -321,6 +297,8 @@ static void post_answer(struct dialog_state *state)
 void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 {
 	struct dialog_state *state = get_state(dialog);
+	atl_alert_clear(&state->alert);
+	atl_alert_copy(&state->alert, alert);
 	if (alert->panel) { // window.c shows it with its root
 		panel_fill(state, alert);
 		state->shown = true;
@@ -337,6 +315,7 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 
 void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label, bool enabled)
 {
+	atl_alert_set_button(&get_state(dialog)->alert, which, label, enabled);
 	GtkWidget *button = get_state(dialog)->buttons[-1 - which];
 	if (!button) // not shown yet
 		return;
@@ -372,6 +351,7 @@ void ui_dialog_free(struct ui_window *dialog)
 	}
 
 	atl_ref_free(state->ref);
+	atl_alert_clear(&state->alert);
 	g_free(state->checks);
 	g_free(state);
 }

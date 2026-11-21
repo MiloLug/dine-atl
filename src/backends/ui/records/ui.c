@@ -251,16 +251,11 @@ struct ui_window *ui_window_new(struct atl_app *app, void *surface)
 static void touch_outside(struct ui_window *window, const struct ui_root *target, const struct atl_touch *down)
 {
 	size_t *indexes = malloc((window->n_roots + 1) * sizeof(*indexes));
-	size_t n = windows_outside_targets(window->roots, window->n_roots, target, indexes);
+	struct atl_touch *outside = malloc((window->n_roots + 1) * sizeof(*outside));
+	size_t n = windows_outside_touches(window->roots, window->n_roots, target, down, indexes, outside);
 	struct atl_ref **refs = malloc((n + 1) * sizeof(*refs));
-	struct atl_touch *outside = malloc((n + 1) * sizeof(*outside));
-	for (size_t i = 0; i < n; i++) {
-		const struct ui_root *root = &window->roots[indexes[i]];
-		const struct atl_window_frame *frame = windows_frame(root->window);
-		refs[i] = atl_ref_dup(root->view->ref);
-		outside[i] = (struct atl_touch){.action = ATL_ACTION_OUTSIDE, .down_time = down->down_time, .time = down->time, .count = 1};
-		outside[i].pointers[0] = (struct atl_pointer){.id = down->pointers[0].id, .x = down->pointers[0].x - frame->left, .y = down->pointers[0].y - frame->top};
-	}
+	for (size_t i = 0; i < n; i++)
+		refs[i] = atl_ref_dup(window->roots[indexes[i]].view->ref);
 	free(indexes);
 	for (size_t i = 0; i < n; i++) {
 		atl_upcall_touch(refs[i], &outside[i]);
@@ -649,6 +644,7 @@ struct measure_key {
 	size_t n_runs;
 	float size;
 	int style, min_lines, max_lines, max_width;
+	enum ui_ellipsize ellipsize;
 	enum ui_button button;
 	bool is_button, has_background, padded, edit, multiline, selectable;
 };
@@ -669,7 +665,7 @@ static struct measure_key measure_key(const struct ui_view *view, int max_width)
 	return (struct measure_key){
 	    .text = view->text, .hint = view->edit ? view->edit_config.hint : NULL, .runs = view->runs, .n_runs = view->n_runs, .size = view->text_size,
 	    .style = view->text_style, .min_lines = view->min_lines, .max_lines = view->max_lines, .max_width = max_width,
-	    .button = view->button, .is_button = view->is_button, .has_background = view->has_background,
+	    .ellipsize = view->ellipsize, .button = view->button, .is_button = view->is_button, .has_background = view->has_background,
 	    .padded = view->padding_left || view->padding_top || view->padding_right || view->padding_bottom,
 	    .edit = view->edit, .multiline = view->edit_config.multiline, .selectable = view->selectable};
 }
@@ -684,7 +680,7 @@ static bool measure_key_equal(const struct measure_key *a, const struct measure_
 	return same_text(a->text, b->text) && same_text(a->hint, b->hint) && a->n_runs == b->n_runs
 	       && (!a->n_runs || !memcmp(a->runs, b->runs, a->n_runs * sizeof(*a->runs))) && a->size == b->size && a->style == b->style
 	       && a->min_lines == b->min_lines && a->max_lines == b->max_lines && a->max_width == b->max_width
-	       && a->button == b->button && a->is_button == b->is_button && a->has_background == b->has_background && a->padded == b->padded
+	       && a->ellipsize == b->ellipsize && a->button == b->button && a->is_button == b->is_button && a->has_background == b->has_background && a->padded == b->padded
 	       && a->edit == b->edit && a->multiline == b->multiline && a->selectable == b->selectable;
 }
 
@@ -695,7 +691,7 @@ static size_t measure_slot(const struct measure_key *key)
 		hash = (hash ^ (uint8_t)*c) * 1099511628211u;
 	for (const char *c = key->hint ? key->hint : ""; *c; c++)
 		hash = (hash ^ (uint8_t)*c) * 1099511628211u;
-	int numbers[] = {(int)(key->size * 64), (int)key->n_runs, key->style, key->min_lines, key->max_lines, key->max_width, key->button,
+	int numbers[] = {(int)(key->size * 64), (int)key->n_runs, key->style, key->min_lines, key->max_lines, key->max_width, key->ellipsize, key->button,
 	                 key->is_button << 5 | key->has_background << 4 | key->padded << 3 | key->edit << 2 | key->multiline << 1 | key->selectable};
 	for (size_t i = 0; i < sizeof(numbers) / sizeof(*numbers); i++)
 		hash = (hash ^ (uint32_t)numbers[i]) * 1099511628211u;
@@ -961,39 +957,4 @@ void records_edit_report(struct ui_view *view, const struct atl_edit_report *rep
 		return;
 	records_edit_set(view, report->text, report->start, report->end);
 	atl_upcall_edit_report(view->ref, report);
-}
-
-static char *dup(const char *chars)
-{
-	return chars ? strdup(chars) : NULL;
-}
-
-void records_alert_clear(struct ui_alert *alert)
-{
-	free((char *)alert->title);
-	free((char *)alert->message);
-	for (int i = 0; i < alert->n_items; i++)
-		free((char *)alert->items[i]);
-	free((char **)alert->items);
-	free((bool *)alert->checked);
-	for (int i = 0; i < 3; i++)
-		free((char *)alert->buttons[i]);
-	memset(alert, 0, sizeof(*alert));
-}
-
-void records_alert_copy(struct ui_alert *copy, const struct ui_alert *alert)
-{
-	*copy = *alert;
-	copy->title = dup(alert->title);
-	copy->message = dup(alert->message);
-	if (alert->items) {
-		char **items = calloc(alert->n_items, sizeof(*items));
-		for (int i = 0; i < alert->n_items; i++)
-			items[i] = dup(alert->items[i]);
-		copy->items = (const char *const *)items;
-	}
-	if (alert->checked)
-		copy->checked = memcpy(calloc(alert->n_items ? alert->n_items : 1, sizeof(bool)), alert->checked, alert->n_items * sizeof(bool));
-	for (int i = 0; i < 3; i++)
-		copy->buttons[i] = dup(alert->buttons[i]);
 }

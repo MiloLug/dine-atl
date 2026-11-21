@@ -1,8 +1,10 @@
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/shared/alert.h"
 #include "src/shared/test_hooks.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
@@ -50,12 +52,7 @@ static void answer(struct ui_window *dialog, int which)
 	struct ui_dialog_state *state = dialog->dialog;
 	struct ui_alert *alert = &state->alert;
 	if (which >= 0 && alert->check != UI_ALERT_CHECK_NONE) {
-		bool *checked = (bool *)alert->checked;
-		bool now = alert->check == UI_ALERT_CHECK_MULTI ? !checked[which] : true;
-		if (alert->check == UI_ALERT_CHECK_SINGLE)
-			memset(checked, 0, alert->n_items * sizeof(*checked));
-		checked[which] = now;
-		printf("dialog: row %d %s\n", which, now ? "checked" : "unchecked");
+		printf("dialog: row %d %s\n", which, atl_alert_tap_row(alert, which) ? "checked" : "unchecked");
 		fflush(stdout);
 	}
 	if (atl_upcall_dialog_result(state->ref, which) && state->shown)
@@ -131,8 +128,8 @@ void ui_dialog_show(struct ui_window *dialog, const struct ui_alert *alert)
 	fflush(stdout);
 
 	struct ui_dialog_state *state = dialog->dialog;
-	records_alert_clear(&state->alert);
-	records_alert_copy(&state->alert, alert);
+	atl_alert_clear(&state->alert);
+	atl_alert_copy(&state->alert, alert);
 	if (!state->shown) { // new content keeps its place
 		pthread_mutex_lock(&dialogs_lock);
 		state->shown_at = ++show_count;
@@ -214,20 +211,18 @@ void ui_dialog_chrome(struct ui_window *dialog, int avail_width, int avail_heigh
 	const struct ui_alert *alert = &dialog->dialog->alert;
 	float dp = atl_screen_get()->density_dpi / 160.f;
 	int buttons = alert->buttons[0] || alert->buttons[1] || alert->buttons[2];
-	int top = CHROME_PADDING + (alert->title ? CHROME_LINE : 0) + (alert->message ? CHROME_LINE : 0)
-	          + (alert->progress ? CHROME_PROGRESS : 0) + (alert->check ? alert->n_items * CHROME_ROW : 0);
+	int fixed = (CHROME_PADDING + (alert->title ? CHROME_LINE : 0) + (alert->progress ? CHROME_PROGRESS : 0)) * dp;
+	int scrolling = ((alert->message ? CHROME_LINE : 0) + alert->n_items * CHROME_ROW) * dp;
 	int width = CHROME_WIDTH * dp, most = avail_width - 2 * CHROME_MARGIN * dp;
 	*chrome = (struct ui_chrome){
 		.width = width < most ? width : most,
 		.max_height = avail_height - 2 * CHROME_MARGIN * dp,
 		.left = CHROME_PADDING * dp,
-		.top = top * dp,
 		.right = CHROME_PADDING * dp,
 		.bottom = (buttons ? CHROME_BUTTONS : CHROME_PADDING) * dp,
 	};
-	int room = chrome->max_height - chrome->bottom, cap = room - (alert->content ? room / 2 : 0);
-	if (chrome->top > cap) // the rows past it scroll; Android content keeps half
-		chrome->top = cap;
+	int cap = ceilf(atl_alert_header_cap(chrome->max_height, chrome->bottom, alert->content)), left = cap - fixed;
+	chrome->top = fixed + (scrolling < left ? scrolling : left > 0 ? left : 0);
 	struct ui_chrome *last = &dialog->dialog->chrome;
 	if (memcmp(last, chrome, sizeof(*chrome))) {
 		*last = *chrome;
@@ -238,10 +233,7 @@ void ui_dialog_chrome(struct ui_window *dialog, int avail_width, int avail_heigh
 
 void ui_dialog_set_progress(struct ui_window *dialog, int value, int max, bool indeterminate)
 {
-	struct ui_alert *alert = &dialog->dialog->alert;
-	alert->value = value;
-	alert->max = max;
-	alert->indeterminate = indeterminate;
+	atl_alert_set_progress(&dialog->dialog->alert, value, max, indeterminate);
 	if (indeterminate)
 		printf("dialog: progress indeterminate\n");
 	else
@@ -252,10 +244,7 @@ void ui_dialog_set_progress(struct ui_window *dialog, int value, int max, bool i
 void ui_dialog_set_button(struct ui_window *dialog, int which, const char *label, bool enabled)
 {
 	int i = -1 - which;
-	struct ui_alert *alert = &dialog->dialog->alert;
-	free((char *)alert->buttons[i]);
-	alert->buttons[i] = label ? strdup(label) : NULL;
-	alert->disabled[i] = !enabled;
+	atl_alert_set_button(&dialog->dialog->alert, which, label, enabled);
 	if (label)
 		printf("dialog: button %s=\"%s\"%s\n", button_names[i], label, enabled ? "" : " disabled");
 	else
@@ -282,7 +271,7 @@ void ui_dialog_free(struct ui_window *dialog)
 	pthread_mutex_unlock(&dialogs_lock);
 	records_observations_orphan(dialog);
 	atl_ref_free(dialog->dialog->ref);
-	records_alert_clear(&dialog->dialog->alert);
+	atl_alert_clear(&dialog->dialog->alert);
 	free(dialog->dialog);
 	free(dialog);
 }

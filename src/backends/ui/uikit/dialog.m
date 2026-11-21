@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/shared/alert.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 #include "src/slots/ui.h"
@@ -363,7 +364,7 @@ static void show_panel(struct ui_window *window, const struct ui_alert *alert)
 {
 	ATLDialog *dialog = get_dialog(window);
 	struct ui_alert *copy = malloc(sizeof(*copy));
-	records_alert_copy(copy, alert);
+	atl_alert_copy(copy, alert);
 	uikit_enqueue(window->app, ^{
 		dialog->panel = true;
 		dialog->wanted = true;
@@ -375,7 +376,7 @@ static void show_panel(struct ui_window *window, const struct ui_alert *alert)
 			};
 		}
 		[dialog->panelView atlSetAlert:copy];
-		records_alert_clear(copy);
+		atl_alert_clear(copy);
 		free(copy);
 	});
 }
@@ -383,8 +384,8 @@ static void show_panel(struct ui_window *window, const struct ui_alert *alert)
 void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 {
 	struct ui_dialog_state *state = window->dialog;
-	records_alert_clear(&state->alert);
-	records_alert_copy(&state->alert, alert);
+	atl_alert_clear(&state->alert);
+	atl_alert_copy(&state->alert, alert);
 	state->changes++;
 	if (alert->panel) {
 		@autoreleasepool {
@@ -432,11 +433,8 @@ void ui_dialog_show(struct ui_window *window, const struct ui_alert *alert)
 
 void ui_dialog_set_button(struct ui_window *window, int which, const char *label_chars, bool enabled)
 {
-	struct ui_alert *shown = &window->dialog->alert;
 	int i = -1 - which;
-	free((char *)shown->buttons[i]);
-	shown->buttons[i] = label_chars ? strdup(label_chars) : NULL;
-	shown->disabled[i] = !enabled;
+	atl_alert_set_button(&window->dialog->alert, which, label_chars, enabled);
 	window->dialog->changes++;
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
@@ -494,7 +492,7 @@ void ui_dialog_free(struct ui_window *window)
 		ATLDialog *dialog = CFBridgingRelease(window->dialog->dialog);
 		struct atl_app *app = window->app;
 		records_observations_orphan(window);
-		records_alert_clear(&window->dialog->alert);
+		atl_alert_clear(&window->dialog->alert);
 		free(window->dialog);
 		free(window);
 		uikit_enqueue(app, ^{
@@ -514,12 +512,8 @@ void ui_dialog_set_cancel_on_touch_outside(struct ui_window *dialog, bool cancel
 
 void ui_dialog_set_progress(struct ui_window *window, int value, int max, bool indeterminate)
 {
-	struct ui_alert *shown = &window->dialog->alert;
-	if (shown->indeterminate != indeterminate) // a spinner in place of the bar, or back
+	if (atl_alert_set_progress(&window->dialog->alert, value, max, indeterminate)) // a spinner in place of the bar, or back
 		window->dialog->changes++;
-	shown->value = value;
-	shown->max = max;
-	shown->indeterminate = indeterminate;
 	@autoreleasepool {
 		ATLDialog *dialog = get_dialog(window);
 		uikit_enqueue(window->app, ^{
@@ -552,7 +546,7 @@ void ui_dialog_chrome(struct ui_window *window, int avail_width, int avail_heigh
 				scratch = [ATLPanelView new];
 			[scratch atlSetAlert:alert];
 			footer = [scratch atlFooterHeightForWidth:width];
-			header = [scratch atlHeaderHeightForWidth:width cap:panel_header_cap(max_height, footer, alert->content)];
+			header = [scratch atlHeaderHeightForWidth:width cap:atl_alert_header_cap(max_height, footer, alert->content)];
 		});
 	}
 	*chrome = (struct ui_chrome){

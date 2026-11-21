@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/shared/alert.h"
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
 #include "src/shared/windows.h"
@@ -145,8 +146,26 @@ static struct loop_main *view_loop(struct ui_view *view)
 }
 static void edit_box_free(struct edit_report_box *box);
 
+// UIKit's hit test less its alpha rule: Android's dispatch ignores alpha
+static UIView *hit_any_alpha(UIView *view, CGPoint point, UIEvent *event)
+{
+	if (view.hidden || !view.userInteractionEnabled || ![view pointInside:point withEvent:event])
+		return nil;
+	for (UIView *child in view.subviews.reverseObjectEnumerator) {
+		UIView *hit = [child hitTest:[child convertPoint:point fromView:view] withEvent:event];
+		if (hit)
+			return hit;
+	}
+	return view;
+}
+
 @implementation ATLView
 FORWARD_TOUCHES
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+	return hit_any_alpha(self, point, event);
+}
 
 - (BOOL)canBecomeFirstResponder
 {
@@ -681,6 +700,11 @@ static void reframe_draw_layer(UIView *view);
 
 @implementation ATLScrollView
 FORWARD_TOUCHES
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+	return hit_any_alpha(self, point, event);
+}
 
 - (instancetype)initWithRecord:(struct ui_view *)view horizontal:(bool)horizontal
 {
@@ -1320,6 +1344,17 @@ void records_progress_changed(struct ui_view *view)
 	}
 }
 
+/* UIKit's thread. Enabled stops a view's own input, not its children's: a view whose touches go to
+ * Java keeps them, Java applies it; a toolkit control takes it */
+static void set_enabled(UIView *view, bool enabled)
+{
+	view.userInteractionEnabled = enabled || [view respondsToSelector:@selector(atlForwardsTouches)];
+	if ([view isKindOfClass:[ATLButton class]])
+		((ATLButton *)view).enabled = enabled;
+	if ([view isKindOfClass:[UITextField class]])
+		((UITextField *)view).enabled = enabled;
+}
+
 void records_visibility_changed(struct ui_view *view)
 {
 	@autoreleasepool {
@@ -1334,11 +1369,7 @@ void records_visibility_changed(struct ui_view *view)
 			bool behind = surface_view && changed.superview == surface_view && changed != front_root(surface_view);
 			changed.hidden = hidden || behind;
 			changed.alpha = alpha;
-			changed.userInteractionEnabled = enabled;
-			if ([changed isKindOfClass:[ATLButton class]])
-				((ATLButton *)changed).enabled = enabled;
-			if ([changed isKindOfClass:[UITextField class]])
-				((UITextField *)changed).enabled = enabled;
+			set_enabled(changed, enabled);
 		});
 	}
 }
@@ -1523,9 +1554,7 @@ static void push_frames(struct ui_window *window)
 			[panels addObject:uikit_dialog_of(window->roots[i].chrome)];
 			[panels addObject:[NSValue valueWithCGRect:CGRectMake(panel->left / s, panel->top / s, panel->width / s, panel->height / s)]];
 			[panels addObject:[NSValue valueWithCGRect:root->rect]];
-			int area_width, area_height; // as lay_out gave windows_place
-			windows_area(window->app, window->roots[i].window, &area_width, &area_height);
-			[panels addObject:@(windows_container(window->roots[i].window, area_width, area_height).height / s)]; // the room windows_place gave the chrome
+			[panels addObject:@(windows_container(window->roots[i].window)->height / s)]; // the room windows_place gave the chrome
 		}
 	}
 	uikit_enqueue(window->app, ^{
@@ -1541,7 +1570,7 @@ static void push_frames(struct ui_window *window)
 			CGRect frame = [panels[i + 1] CGRectValue], root = [panels[i + 2] CGRectValue];
 			CGFloat room = [panels[i + 3] doubleValue];
 			CGFloat footer = [panel atlFooterHeightForWidth:frame.size.width];
-			panel.atlHeaderCap = panel_header_cap(room - 2 * panel_margin, footer, panel.atlContent); // as ui_dialog_chrome
+			panel.atlHeaderCap = atl_alert_header_cap(room - 2 * panel_margin, footer, panel.atlContent); // as ui_dialog_chrome
 			panel.frame = frame;
 			[panel setNeedsLayout];
 #ifdef ATL_TEST_HOOKS
@@ -2183,9 +2212,7 @@ static void replace_native(struct ui_view *view, UIView *replacement, bool enabl
 	replacement.frame = old.frame;
 	replacement.hidden = old.hidden;
 	replacement.alpha = old.alpha;
-	replacement.userInteractionEnabled = enabled;
-	if ([replacement isKindOfClass:[UITextField class]])
-		((UITextField *)replacement).enabled = enabled;
+	set_enabled(replacement, enabled);
 	replacement.backgroundColor = old.backgroundColor;
 	replacement.multipleTouchEnabled = YES;
 	bool responder = old.isFirstResponder;

@@ -65,7 +65,7 @@ struct atl_subwindow;
 struct ui_root {
 	struct atl_subwindow *window;
 	struct ui_view *view;     // its root: the decor view; NULL: an alert the backend shows by itself
-	struct ui_window *chrome; // an AlertDialog's alert (ui_dialog_new), drawn around view, else NULL
+	struct ui_window *chrome; // an AlertDialog's alert (ui_dialog_new): around view, or alone when view is NULL; else NULL
 	struct ui_window_layout layout;
 };
 /* The windows shown over the shown activity, bottom first; replaces the last list. */
@@ -147,7 +147,8 @@ struct ui_alert {
 	int value, max;      // the bar's
 	/* A panel: the alert goes around its window's root (ui_root.chrome), drawn with the windows over
 	 * the activity; else the backend shows it by itself. content: the root has Android views, which
-	 * keep a share of the height beside long rows. light: the root's theme is light. */
+	 * keep half of the header's room beside a long message or long rows. light: the root's theme is
+	 * light. */
 	bool panel, content, light;
 	const char *buttons[3]; // positive, negative, neutral: index -1 - DialogInterface.BUTTON_*
 	bool disabled[3];
@@ -220,7 +221,8 @@ void ui_view_set_padding(struct ui_view *view, int left, int top, int right, int
 void ui_view_set_background_color(struct ui_view *view, uint32_t argb);
 /* NULL: none. The view holds a ref while the drawable is its background. */
 void ui_view_set_background_drawable(struct ui_view *view, struct gfx_drawable *drawable);
-/* Android's View.VISIBLE, INVISIBLE or GONE; enabled false stops input */
+/* Android's View.VISIBLE, INVISIBLE or GONE; enabled false stops the view's own input, not its
+ * children's; alpha doesn't stop input */
 #define UI_VIEW_VISIBLE   0
 #define UI_VIEW_INVISIBLE 4
 #define UI_VIEW_GONE      8

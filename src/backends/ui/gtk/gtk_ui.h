@@ -17,9 +17,9 @@ void window_attach_stack(GtkWindow *window, GtkWidget *stack);
 GtkWidget *window_touch_root(GtkWindow *window, double x, double y);
 /* toast.c: the toast's label back on top of the windows ui_window_set_roots added */
 void toast_raise(GtkOverlay *overlay);
-/* A DOWN at x, y (the window's content): ACTION_OUTSIDE to the windows above its root that watch. */
+/* A DOWN (its first pointer in the window's content): ACTION_OUTSIDE to the windows above its root that watch. */
 struct atl_touch;
-void window_touch_outside(GtkWindow *window, double x, double y, const struct atl_touch *down);
+void window_touch_outside(GtkWindow *window, const struct atl_touch *down);
 /* A text node's label, next to its compound drawables in a box; NULL on other handles. */
 GtkLabel *text_get_label(GtkWidget *handle);
 /* The box with a text node's label; handle: the node's handle holding it, NULL when it is the box. */

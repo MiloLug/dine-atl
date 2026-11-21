@@ -24,12 +24,6 @@ CGFloat panel_width(CGFloat surface_width)
 
 const CGFloat panel_side = edge;
 
-CGFloat panel_header_cap(CGFloat max_height, CGFloat footer, bool content)
-{
-	CGFloat room = max_height - footer;
-	return content ? room / 2 : room;
-}
-
 UIColor *panel_dim_color(void)
 {
 	return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
@@ -42,7 +36,7 @@ UIColor *panel_dim_color(void)
 	UILabel *title, *message;
 	UIActivityIndicatorView *spinner;
 	UIProgressView *bar;
-	UIScrollView *rowsView; // the rows, scrolling when the screen can't hold them
+	UIScrollView *rowsView; // the message or the rows, scrolling when the screen can't hold them
 	NSMutableArray<UIButton *> *rows;
 	enum ui_alert_check check;
 	enum ui_alert_progress progress;
@@ -68,7 +62,8 @@ UIColor *panel_dim_color(void)
 	title = [UILabel new];
 	title.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
 	title.adjustsFontForContentSizeCategory = YES;
-	title.numberOfLines = 0;
+	title.numberOfLines = 2; // AOSP's DialogTitle
+	title.lineBreakMode = NSLineBreakByTruncatingTail;
 	title.accessibilityTraits = UIAccessibilityTraitHeader;
 	message = [UILabel new];
 	message.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
@@ -80,8 +75,9 @@ UIColor *panel_dim_color(void)
 	rows = [NSMutableArray array];
 	rowsView = [UIScrollView new];
 	_atlHeaderCap = CGFLOAT_MAX;
-	for (UIView *part in @[title, message, spinner, bar, rowsView])
+	for (UIView *part in @[title, spinner, bar, rowsView])
 		[self addSubview:part];
+	[rowsView addSubview:message];
 	for (int i = 0; i < 3; i++) {
 		UIButton *button = buttons[i] = [UIButton buttonWithConfiguration:[ATLPanelView buttonConfiguration] primaryAction:nil];
 		button.tag = -1 - i;
@@ -222,43 +218,44 @@ static NSString *string(const char *chars)
 	return true;
 }
 
-// lays the parts out at width (when apply), returns the header's height, at most cap with rows
+/* lays the parts out at width (when apply), returns the header's height: the title and the progress
+ * whole, the message or the rows between them within what cap leaves */
 - (CGFloat)layHeader:(CGFloat)width cap:(CGFloat)cap apply:(bool)apply
 {
 	CGFloat inner = width - 2 * text_side, y = text_top;
 	bool parts = false;
-	for (UILabel *label in @[title, message]) {
-		if (label.hidden)
-			continue;
-		if (parts)
-			y += text_gap;
-		CGFloat height = ceil([label sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)].height);
+	if (!title.hidden) {
+		CGFloat height = ceil([title sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)].height);
 		if (apply)
-			label.frame = CGRectMake(text_side, y, inner, height);
+			title.frame = CGRectMake(text_side, y, inner, height);
 		y += height;
 		parts = true;
 	}
 	UIView *progress = !spinner.hidden ? spinner : !bar.hidden ? bar : nil;
-	if (progress) {
-		y += parts ? part_gap : 0;
-		CGSize size = [progress sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)];
-		if (apply)
-			progress.frame = progress == bar ? CGRectMake(text_side, y, inner, size.height) : CGRectMake(text_side, y, size.width, size.height);
-		y += size.height;
-		parts = true;
-	}
-	rowsView.hidden = !rows.count;
-	if (rows.count) {
-		y += parts ? part_gap / 2 : 0;
-		CGFloat full = rows.count * row_height;
-		CGFloat shown = MAX(MIN(full, cap - y - header_end), 0); // the rest scrolls
+	CGSize progress_size = progress ? [progress sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)] : CGSizeZero;
+	bool scrolls = !message.hidden || rows.count;
+	rowsView.hidden = !scrolls;
+	if (scrolls) {
+		y += !parts ? 0 : !message.hidden ? text_gap : part_gap / 2;
+		CGFloat full = !message.hidden ? ceil([message sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)].height) : rows.count * row_height;
+		CGFloat after = (progress ? part_gap + progress_size.height : 0) + header_end;
+		CGFloat shown = MAX(MIN(full, cap - y - after), 0); // the rest scrolls
 		if (apply) {
 			rowsView.frame = CGRectMake(text_side, y, inner, shown);
 			rowsView.contentSize = CGSizeMake(inner, full);
+			message.frame = CGRectMake(0, 0, inner, full);
 			for (NSUInteger i = 0; i < rows.count; i++)
 				rows[i].frame = CGRectMake(0, i * row_height, inner, row_height);
 		}
 		y += shown;
+		parts = true;
+	}
+	if (progress) {
+		y += parts ? part_gap : 0;
+		if (apply)
+			progress.frame = progress == bar ? CGRectMake(text_side, y, inner, progress_size.height)
+			                                 : CGRectMake(text_side, y, progress_size.width, progress_size.height);
+		y += progress_size.height;
 		parts = true;
 	}
 	return parts ? y + header_end : edge;

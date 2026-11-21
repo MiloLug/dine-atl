@@ -140,10 +140,6 @@ void records_edit_report(struct ui_view *view, const struct atl_edit_report *rep
 void records_observations_orphan(struct ui_window *window);
 /* The windows over the activity changed (window->roots): the backend shows them. */
 void records_roots_changed(struct ui_window *window);
-/* An alert the backend keeps (ui_dialog_show's is valid only during the call): copy owns its
- * strings until clear. */
-void records_alert_copy(struct ui_alert *copy, const struct ui_alert *alert);
-void records_alert_clear(struct ui_alert *alert);
 /* The text's size in px within max_width (-1: unbounded), without padding. */
 void records_text_extent(struct ui_view *view, int max_width, int *width, int *height);
 /* How often ui_view_measure found a text's size cached, and computed it. */

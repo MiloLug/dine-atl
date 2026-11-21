@@ -13,7 +13,7 @@
 - (void)atlSetAlert:(const struct ui_alert *)alert;
 - (void)atlSetProgress:(int)value max:(int)max indeterminate:(BOOL)indeterminate;
 - (void)atlSetButton:(int)index label:(NSString *)label enabled:(BOOL)enabled;
-// pt above and below the root at the panel's width; rows past cap above scroll
+// pt above and below the root at the panel's width; the message or rows past cap above scroll
 - (CGFloat)atlHeaderHeightForWidth:(CGFloat)width cap:(CGFloat)cap;
 - (CGFloat)atlFooterHeightForWidth:(CGFloat)width;
 // the header's cap when it lays out
@@ -27,9 +27,6 @@ CGFloat panel_width(CGFloat surface_width);
 // pt: the space a panel keeps from the surface's edges, and the root's from the panel's sides
 extern const CGFloat panel_margin;
 extern const CGFloat panel_side;
-/* The header's most within max_height and above a footer this tall, pt: the rows past it scroll,
- * and Android content keeps half. */
-CGFloat panel_header_cap(CGFloat max_height, CGFloat footer, bool content);
 // the system alert's dim behind a panel, for the light or dark appearance
 UIColor *panel_dim_color(void);
 

@@ -17,6 +17,7 @@
 
 #include "app.h"
 #include "gravity.h"
+#include "input.h"
 #include "upcall.h"
 #include "windows.h"
 
@@ -38,6 +39,7 @@ struct atl_subwindow {
 	struct ui_window_layout layout;
 	struct atl_window_state state;
 	struct atl_window_frame frame;
+	struct atl_window_frame container; // the frame windows_place applied the gravity in
 	struct atl_window_frame display; // the area windows_place moved it into, which its sub-panels share
 	struct atl_window_frame panel;   // with a chrome around root: the frame and the chrome
 	struct atl_window_frame shown, shown_panel; // both moved up by the state's pan
@@ -537,11 +539,19 @@ static void window_frames(struct atl_subwindow *window, int screen_width, int sc
 		*display = (struct atl_window_frame){-UNBOUNDED, -UNBOUNDED, 2 * UNBOUNDED, 2 * UNBOUNDED};
 }
 
-struct atl_window_frame windows_container(struct atl_subwindow *window, int screen_width, int screen_height)
+struct atl_window_frame atl_gravity_place(int gravity, int width, int height, int x, int y, const struct atl_window_frame *container,
+                                          const struct atl_window_frame *display)
 {
-	struct atl_window_frame container, display;
-	window_frames(window, screen_width, screen_height, &container, &display);
-	return container;
+	int left = container->left + atl_gravity_apply(gravity, &width, container->width, x);
+	int top = container->top + atl_gravity_apply(gravity >> GRAVITY_Y_SHIFT, &height, container->height, y);
+	display_apply(gravity & GRAVITY_CLIP_X, &left, &width, display->left, display->width);
+	display_apply(gravity & GRAVITY_CLIP_Y, &top, &height, display->top, display->height);
+	return (struct atl_window_frame){left, top, width, height};
+}
+
+const struct atl_window_frame *windows_container(const struct atl_subwindow *window)
+{
+	return &window->container;
 }
 
 // LayoutParams' width or height: px, MATCH_PARENT (-1) or WRAP_CONTENT (-2)
@@ -557,6 +567,7 @@ static void place_panel(struct atl_subwindow *window, int screen_width, int scre
 	const struct ui_window_layout *layout = &window->layout;
 	struct atl_window_frame container, display;
 	window_frames(window, screen_width, screen_height, &container, &display);
+	window->container = container;
 	window->display = display;
 	struct ui_chrome chrome;
 	ui_dialog_chrome(window->chrome, container.width, container.height, &chrome);
@@ -564,13 +575,10 @@ static void place_panel(struct atl_subwindow *window, int screen_width, int scre
 	int room = chrome.max_height - chrome.top - chrome.bottom;
 	atl_upcall_view_measure(root, (width > 0 ? width : 0) | MEASURE_SPEC_EXACTLY, (room > 0 ? room : 0) | MEASURE_SPEC_AT_MOST);
 	int height = atl_upcall_view_get_measured(root, true);
-	int panel_width = chrome.width, panel_height = chrome.top + height + chrome.bottom;
-	int left = container.left + atl_gravity_apply(layout->gravity, &panel_width, container.width, layout->x);
-	int top = container.top + atl_gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &panel_height, container.height, layout->y);
-	display_apply(layout->gravity & GRAVITY_CLIP_X, &left, &panel_width, display.left, display.width);
-	display_apply(layout->gravity & GRAVITY_CLIP_Y, &top, &panel_height, display.top, display.height);
-	window->panel = (struct atl_window_frame){left, top, chrome.width, panel_height};
-	window->frame = (struct atl_window_frame){left + chrome.left, top + chrome.top, width, height};
+	struct atl_window_frame placed = atl_gravity_place(layout->gravity, chrome.width, chrome.top + height + chrome.bottom, layout->x, layout->y,
+	                                                   &container, &display);
+	window->panel = (struct atl_window_frame){placed.left, placed.top, chrome.width, placed.height};
+	window->frame = (struct atl_window_frame){placed.left + chrome.left, placed.top + chrome.top, width, height};
 }
 
 void windows_panned(struct atl_subwindow *window)
@@ -604,6 +612,7 @@ void windows_place(struct atl_subwindow *window, int screen_width, int screen_he
 	const struct ui_window_layout *layout = &window->layout;
 	struct atl_window_frame container, display;
 	window_frames(window, screen_width, screen_height, &container, &display);
+	window->container = container;
 	window->display = display;
 	/* ViewRootImpl measures WRAP_CONTENT against screenWidthDp by screenHeightDp, the display less the bars
 	 * (getConfigDisplayHeight), the keyboard's cut only where windows_area made it (adjustResize); MATCH_PARENT
@@ -617,14 +626,10 @@ void windows_place(struct atl_subwindow *window, int screen_width, int screen_he
 		width = atl_upcall_view_get_measured(root, false);
 		height = atl_upcall_view_get_measured(root, true);
 	}
-	int measured_width = width, measured_height = height;
-	int left = container.left + atl_gravity_apply(layout->gravity, &width, container.width, layout->x);
-	int top = container.top + atl_gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, container.height, layout->y);
-	display_apply(layout->gravity & GRAVITY_CLIP_X, &left, &width, display.left, display.width);
-	display_apply(layout->gravity & GRAVITY_CLIP_Y, &top, &height, display.top, display.height);
-	if (width != measured_width || height != measured_height)
-		atl_upcall_view_measure(root, width | MEASURE_SPEC_EXACTLY, height | MEASURE_SPEC_EXACTLY);
-	window->frame = (struct atl_window_frame){left, top, width, height};
+	struct atl_window_frame placed = atl_gravity_place(layout->gravity, width, height, layout->x, layout->y, &container, &display);
+	if (placed.width != width || placed.height != height)
+		atl_upcall_view_measure(root, placed.width | MEASURE_SPEC_EXACTLY, placed.height | MEASURE_SPEC_EXACTLY);
+	window->frame = placed;
 	*frame = window->frame;
 	frame_placed(window, &old);
 }
@@ -672,12 +677,18 @@ const struct ui_root *windows_touch_target(const struct ui_root *roots, size_t n
 	return NULL;
 }
 
-size_t windows_outside_targets(const struct ui_root *roots, size_t n, const struct ui_root *target, size_t *out)
+size_t windows_outside_touches(const struct ui_root *roots, size_t n, const struct ui_root *target, const struct atl_touch *down,
+                               size_t *indexes, struct atl_touch *touches)
 {
 	size_t count = 0;
 	for (size_t i = n; i-- > 0 && &roots[i] != target;) {
-		if (roots[i].view && roots[i].layout.flags & UI_WINDOW_WATCH_OUTSIDE_TOUCH)
-			out[count++] = i;
+		if (!roots[i].view || !(roots[i].layout.flags & UI_WINDOW_WATCH_OUTSIDE_TOUCH))
+			continue;
+		const struct atl_window_frame *frame = windows_frame(roots[i].window);
+		indexes[count] = i;
+		touches[count] = (struct atl_touch){.action = ATL_ACTION_OUTSIDE, .down_time = down->down_time, .time = down->time, .count = 1};
+		touches[count].pointers[0] = (struct atl_pointer){.id = down->pointers[0].id, .x = down->pointers[0].x - frame->left, .y = down->pointers[0].y - frame->top};
+		count++;
 	}
 	return count;
 }

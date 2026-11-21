@@ -42,6 +42,11 @@ void wrapper_widget_queue_draw(WrapperWidget *wrapper);
 void wrapper_widget_set_layout_params(WrapperWidget *wrapper, int width, int height);
 void wrapper_widget_set_background(WrapperWidget *wrapper, GdkPaintable *paintable);
 void wrapper_widget_register_invalidation_listener(WrapperWidget *wrapper);
+// the view's ref, which jobj holds (wrapper_widget_setup)
+static inline struct atl_ref *wrapper_widget_ref(WrapperWidget *wrapper)
+{
+	return (struct atl_ref *)wrapper->jobj;
+}
 
 void view_attach_motion_controllers(WrapperWidget *wrapper, const struct ui_view_traits *traits);
 /* The last pointer went up: hover exits held back while it was down go out. */

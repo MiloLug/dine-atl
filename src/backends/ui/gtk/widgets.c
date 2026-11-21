@@ -67,7 +67,7 @@ static void scroll_apply(GtkScrolledWindow *scrolled_window, struct scroll_reque
 static void on_scrolled(GtkAdjustment *adjustment, GtkScrolledWindow *scrolled_window)
 {
 	WrapperWidget *wrapper = WRAPPER_WIDGET(gtk_widget_get_parent(GTK_WIDGET(scrolled_window)));
-	atl_upcall_scrolled((struct atl_ref *)wrapper->jobj, gtk_adjustment_get_value(gtk_scrolled_window_get_hadjustment(scrolled_window)),
+	atl_upcall_scrolled(wrapper_widget_ref(wrapper), gtk_adjustment_get_value(gtk_scrolled_window_get_hadjustment(scrolled_window)),
 	                    gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(scrolled_window)));
 }
 

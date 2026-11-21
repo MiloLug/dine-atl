@@ -327,15 +327,21 @@ public class AlertDialog extends Dialog implements DialogInterface {
 
 	// a panel around Android content, or one the plain system alert can't show (checks, progress)
 	private boolean panel() {
-		return content() || check != CHECK_NONE || atlProgressStyle() != PROGRESS_NONE;
+		return content() || rowsShown() && check != CHECK_NONE || atlProgressStyle() != PROGRESS_NONE;
 	}
 
 	private boolean content() {
-		return view != null || customTitle != null || adapter != null;
+		return view != null || customTitle != null || rowsShown() && adapter != null;
+	}
+
+	// AOSP's setupContent, in the first onCreate: a message takes the list's place
+	private boolean rowsShown() {
+		return firstRows != null ? firstRows : message == null;
 	}
 
 	// AOSP installs the content in the first onCreate only: a later setView doesn't show
 	private Boolean firstPanel; // the first show's panel(), null before it
+	private Boolean firstRows;  // the first show's rowsShown(), null before it
 
 	@Override
 	protected boolean atlHasRoot() {
@@ -352,6 +358,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		firstRows = rowsShown();
 		firstPanel = panel();
 		// AlertController's: an alert without a field to type into leaves the keyboard alone
 		if (view == null || !canTextInput(view))
@@ -376,7 +383,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 				content.addView(customMessage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 			}
 		}
-		if (adapter != null)
+		if (rowsShown() && adapter != null)
 			content.addView(adapterList(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 		if (view != null) {
 			FrameLayout spaced = new FrameLayout(getContext());
@@ -471,14 +478,17 @@ public class AlertDialog extends Dialog implements DialogInterface {
 			labels[i] = label(i);
 			disabled[i] = buttons[i] != null && !buttons[i].isEnabled();
 		}
+		String[] shownItems = rowsShown() ? strings(items) : null;
+		int shownCheck = shownItems != null ? check : CHECK_NONE;
 		boolean[] rows = null;
-		if (items != null && check != CHECK_NONE) {
+		if (shownCheck != CHECK_NONE) {
 			rows = new boolean[items.length];
 			for (int i = 0; i < items.length; i++)
 				rows[i] = isChecked(i);
 		}
 		boolean custom = customTitle != null; // its view has the title and message
-		nativeShowAlert(nativePtr, custom ? null : string(title), custom ? null : string(message), strings(items), items != null ? check : CHECK_NONE, rows,
+		boolean list = rowsShown() && (items != null || adapter != null); // in the message's place since onCreate
+		nativeShowAlert(nativePtr, custom ? null : string(title), custom || list ? null : string(message), shownItems, shownCheck, rows,
 		                atlProgressStyle(), atlIndeterminate(), atlProgressValue(), atlProgressMax(), atlHasRoot(), content(), light(),
 		                labels, disabled, cancelable);
 	}

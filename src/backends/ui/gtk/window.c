@@ -60,11 +60,12 @@ static gboolean place_child(GtkOverlay *overlay, GtkWidget *child, GdkRectangle 
 	struct atl_subwindow *subwindow = g_object_get_data(G_OBJECT(child), "atl-subwindow");
 	if (!subwindow)
 		return FALSE;
-	struct atl_window_frame frame;
-	windows_place(subwindow, width, height, &frame);
-	if (g_object_get_data(G_OBJECT(child), "atl-panel")) // the alert's panel around the root
-		frame = *windows_panel(subwindow);
-	*allocation = (GdkRectangle){frame.left, frame.top, frame.width, frame.height};
+	// one placement per window and allocation: a panel alert's root follows its panel, which comes first
+	bool panel = g_object_get_data(G_OBJECT(child), "atl-panel");
+	if (panel || !g_object_get_data(G_OBJECT(child), "atl-paneled"))
+		windows_place(subwindow, width, height, &(struct atl_window_frame){0});
+	const struct atl_window_frame *frame = panel ? windows_panel(subwindow) : windows_frame(subwindow);
+	*allocation = (GdkRectangle){frame->left, frame->top, frame->width, frame->height};
 	return TRUE;
 }
 
@@ -104,6 +105,7 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, s
 		if (list[i].layout.flags & UI_WINDOW_DIM_BEHIND && list[i].layout.dim_amount > 0)
 			g_ptr_array_add(widgets, g_object_ref(dim_of(wrapper, list[i].layout.dim_amount)));
 		GtkWidget *panel = list[i].chrome ? dialog_panel(list[i].chrome) : NULL;
+		g_object_set_data(G_OBJECT(wrapper), "atl-paneled", GINT_TO_POINTER(panel != NULL));
 		if (panel) {
 			g_object_set_data(G_OBJECT(panel), "atl-subwindow", list[i].window);
 			g_object_set_data(G_OBJECT(panel), "atl-panel", GINT_TO_POINTER(TRUE));
@@ -146,30 +148,24 @@ GtkWidget *window_touch_root(GtkWindow *window, double x, double y)
 	return gtk_stack_get_visible_child(GTK_STACK(gtk_overlay_get_child(overlay)));
 }
 
-void window_touch_outside(GtkWindow *window, double x, double y, const struct atl_touch *down)
+void window_touch_outside(GtkWindow *window, const struct atl_touch *down)
 {
 	struct roots *roots = get_roots(window_overlay(window));
 	if (!roots)
 		return;
-	const struct ui_root *target = windows_touch_target(roots->roots, roots->n, x, y);
+	const struct ui_root *target = windows_touch_target(roots->roots, roots->n, down->pointers[0].x, down->pointers[0].y);
 	size_t *indexes = malloc((roots->n + 1) * sizeof(*indexes));
-	size_t n = windows_outside_targets(roots->roots, roots->n, target, indexes);
+	struct atl_touch *touches = malloc((roots->n + 1) * sizeof(*touches));
+	size_t n = windows_outside_touches(roots->roots, roots->n, target, down, indexes, touches);
 	// a window may close from its own ACTION_OUTSIDE: its wrappers are held first
 	GPtrArray *wrappers = g_ptr_array_new_with_free_func(g_object_unref);
-	GArray *touches = g_array_new(FALSE, FALSE, sizeof(struct atl_touch));
-	for (size_t i = 0; i < n; i++) {
-		const struct ui_root *root = &roots->roots[indexes[i]];
-		const struct atl_window_frame *frame = windows_frame(root->window);
-		struct atl_touch outside = {.action = ATL_ACTION_OUTSIDE, .down_time = down->down_time, .time = down->time, .count = 1};
-		outside.pointers[0] = (struct atl_pointer){.x = x - frame->left, .y = y - frame->top};
-		g_ptr_array_add(wrappers, g_object_ref(view_wrapper(root->view)));
-		g_array_append_val(touches, outside);
-	}
+	for (size_t i = 0; i < n; i++)
+		g_ptr_array_add(wrappers, g_object_ref(view_wrapper(roots->roots[indexes[i]].view)));
 	free(indexes);
 	for (guint i = 0; i < wrappers->len; i++)
-		atl_upcall_touch((struct atl_ref *)WRAPPER_WIDGET(g_ptr_array_index(wrappers, i))->jobj, &g_array_index(touches, struct atl_touch, i));
+		atl_upcall_touch(wrapper_widget_ref(WRAPPER_WIDGET(g_ptr_array_index(wrappers, i))), &touches[i]);
 	g_ptr_array_unref(wrappers);
-	g_array_unref(touches);
+	free(touches);
 }
 
 

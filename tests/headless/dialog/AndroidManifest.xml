@@ -17,6 +17,7 @@
 		<activity android:name=".ProgressActivity"/>
 		<activity android:name=".LateActivity"/>
 		<activity android:name=".MessageActivity"/>
+		<activity android:name=".MixedActivity"/>
 		<activity android:name=".AlertsActivity"/>
 		<activity android:name=".ModalActivity"/>
 		<activity android:name=".OutsideActivity"/>

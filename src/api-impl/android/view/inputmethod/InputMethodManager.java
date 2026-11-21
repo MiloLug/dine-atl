@@ -142,7 +142,7 @@ public class InputMethodManager {
 				served = wasServed;
 				requested = wasRequested;
 				shown = wasShown;
-				view.atlSetKeyboard(false);
+				view.atlToolkitFocusRefused();
 			}
 		} else if (served == view && shown) { // gtk's focus follows Java's: atlFocusOut ends its request
 			requested = false;

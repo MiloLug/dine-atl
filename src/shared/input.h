@@ -50,7 +50,6 @@ struct atl_key {
 
 #define ATL_KEY_DOWN     0
 #define ATL_KEY_UP       1
-#define ATL_KEYCODE_BACK 4
 
 /* SystemClock.uptimeMillis, from any thread. */
 int64_t atl_uptime_ms(void);

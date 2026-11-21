@@ -93,6 +93,7 @@ atl_shared = static_library('atl_shared', [
 	'src/api-impl-jni/os/android_os_Process.c',
 	'src/api-impl-jni/util.c',
 	'src/shared/activity.c',
+	'src/shared/alert.c',
 	'src/shared/app.c',
 	'src/shared/android_app_Dialog.c',
 	'src/shared/android_atl_ATLCanvas.c',

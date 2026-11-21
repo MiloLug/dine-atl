@@ -27,6 +27,8 @@
  *                    10 s): {"labels", "settled", "ran", "result": the action's bool}
  *   at N "LABEL"     the centre of element N if it still has LABEL: {"x", "y"} px in the app window,
  *                    the space `touch` takes
+ *   state N "LABEL"  element N's toolkit state if it still has LABEL: {"sensitive": GTK gives it
+ *                    input (its ancestors too), "focused": it is its window's focus widget}
  *   touch down|move|up|cancel SEQ X Y  one pointer's event at X, Y px in the app window, through the
  *                    function GTK's own events reach (input_pointer); SEQ is the pointer's made-up
  *                    handle, 0 the mouse. Runs before the reply: {"ok": true, "claimed": whether the
@@ -342,6 +344,24 @@ static void element_centre(void *data)
 	at->ok = true;
 }
 
+struct element_state {
+	int n;
+	const char *label;
+	bool sensitive, focused, ok;
+};
+
+static void element_state(void *data)
+{
+	struct element_state *state = data;
+	if (!same_label(state->n, state->label))
+		return;
+	GtkWidget *widget = items->pdata[state->n];
+	state->sensitive = gtk_widget_is_sensitive(widget);
+	GtkRoot *root = gtk_widget_get_root(widget);
+	state->focused = root && gtk_root_get_focus(root) == widget; // gtk_widget_has_focus needs an active window
+	state->ok = true;
+}
+
 struct feed {
 	enum input_pointer what;
 	int sequence;
@@ -494,6 +514,17 @@ static void handle(int fd)
 			} at = {.n = n, .label = label};
 			on_main(element_centre, &at);
 			char *json = at.ok ? g_strdup_printf("{\"x\":%.2f,\"y\":%.2f}", at.x, at.y) : g_strdup("{\"error\":\"the screen changed since the last ls\"}");
+			reply(fd, json);
+			g_free(json);
+			g_free(label);
+		}
+	} else if (g_str_has_prefix(line, "state ") && (rest = line + 6) && index_arg(&rest, &n)) {
+		char *label = parse_json_string(&rest);
+		if (label) {
+			struct element_state state = {.n = n, .label = label};
+			on_main(element_state, &state);
+			char *json = state.ok ? g_strdup_printf("{\"sensitive\":%s,\"focused\":%s}", state.sensitive ? "true" : "false", state.focused ? "true" : "false")
+			                      : g_strdup("{\"error\":\"the screen changed since the last ls\"}");
 			reply(fd, json);
 			g_free(json);
 			g_free(label);

@@ -304,8 +304,9 @@ void ui_view_set_visibility(struct ui_view *view, int visibility, float alpha, b
 
 	atl_safe_gtk_widget_set_visible(wrapper, visibility != UI_VIEW_GONE);
 	gtk_widget_set_opacity(wrapper, (visibility != UI_VIEW_INVISIBLE) * alpha);
+	// a toolkit widget's sensitivity covers its subtree: a scroll node's Android children keep theirs
 	if (!JAVA_IS_WIDGET(widget))
-		gtk_widget_set_sensitive(wrapper, enabled && visibility != UI_VIEW_INVISIBLE && alpha != 0.0f);
+		gtk_widget_set_sensitive(wrapper, visibility != UI_VIEW_INVISIBLE && (enabled || GTK_IS_SCROLLED_WINDOW(widget)));
 }
 
 void ui_view_invalidate(struct ui_view *view)

@@ -599,6 +599,23 @@ public class EditText extends TextView {
 		InputMethodManager.atlOf(getContext()).atlToolkitFocus(this, focused, keyboard);
 	}
 
+	/* Java refused the focus the toolkit gave the field: the toolkit's goes back to Java's focus, posted,
+	 * since the toolkit's focus handler is still running */
+	public void atlToolkitFocusRefused() {
+		atlSetKeyboard(false);
+		post(new Runnable() {
+			@Override
+			public void run() {
+				if (isFocused())
+					return;
+				native_setFocused(widget, false);
+				View focus = getRootView().findFocus();
+				if (focus != null)
+					focus.atlToolkitRefocus();
+			}
+		});
+	}
+
 	private static int clamp(int value, int min, int max) {
 		return value < min ? min : value > max ? max : value;
 	}

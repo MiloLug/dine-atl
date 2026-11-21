@@ -10,6 +10,7 @@
 		</activity>
 		<activity android:name=".ControlsActivity"/>
 		<activity android:name=".TextActivity"/>
+		<activity android:name=".InputStateActivity"/>
 		<activity android:name=".BareColorActivity" android:theme="@style/BareText"/>
 		<activity android:name=".DrawActivity"/>
 		<activity android:name=".DrawStayActivity"/>

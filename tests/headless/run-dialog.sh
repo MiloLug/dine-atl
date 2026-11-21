@@ -5,6 +5,7 @@
 # "Yes" back as "Sure", which closes it, while "Yes" or "Later" first has no button to answer; then
 # LateActivity's, where the same changes come while the alert is drawn: "Later" answers before
 # them, "Yes" and "Later" don't after; MessageActivity's message by AOSP's id, whose setText shows;
+# MixedActivity's message without its items, then a custom title with items;
 # AlertsActivity's two alerts, the first taken down from under the second (headless only);
 # ModalActivity's alert, which a cancel doesn't close.
 # Each run's last dialog finishes the app, so ATL exits by itself.
@@ -135,6 +136,24 @@ said 'dialog: show title="Message test" message="Old" positive="OK" cancelable' 
   "message reads Old" \
   'dialog: show title="Message test" message="New" positive="OK" cancelable' \
   "message onClick -1" \
+  "dialog: close"
+exited 0
+
+# a message and items: the message shows, the items don't (AOSP 10's setupContent); "OK" opens an
+# alert with a custom title and items, whose panel makes room for its two rows and keeps them after a
+# late setMessage; "Blue" opens a list alert whose late message doesn't show
+run mixed 'OK;Blue;Red' MixedActivity
+said 'dialog: show title="Mixed" message="Pick one" positive="OK" cancelable' \
+  "mixed ok" \
+  'dialog: show panel items="Red","Blue" cancelable' \
+  'dialog: show panel items="Red","Blue" cancelable' \
+  "dialog: close" \
+  "dialog: chrome width=280 left=16 top=104 right=16 bottom=16" \
+  "mixed custom item 1" \
+  'dialog: show title="Listed" items="Red","Blue" cancelable' \
+  'dialog: show title="Listed" items="Red","Blue" cancelable' \
+  "dialog: close" \
+  "mixed listed item 0" \
   "dialog: close"
 exited 0
 

@@ -13,6 +13,7 @@
 
 #include "app.h"
 #include "input.h"
+#include "keys.h"
 #include "nav.h"
 #include "startup.h"
 #include "test_hooks.h"

@@ -2,6 +2,7 @@
 
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
 #include "src/shared/input.h"
+#include "src/shared/keys.h"
 #include "src/shared/pointers.h"
 
 #include "gtk_ui.h"
@@ -73,8 +74,10 @@ static WrapperWidget *down_root(GtkNative *native, double x, double y)
 		if (!gtk_widget_compute_point(GTK_WIDGET(native), content, &GRAPHENE_POINT_INIT(x, y), &point)
 		    || point.x < 0 || point.y < 0 || point.x >= gtk_widget_get_width(content) || point.y >= gtk_widget_get_height(content))
 			return NULL;
-		struct atl_touch down = {.down_time = atl_uptime_ms(), .time = atl_uptime_ms()};
-		window_touch_outside(GTK_WINDOW(native), point.x, point.y, &down);
+		struct atl_touch down = {.action = ATL_ACTION_DOWN, .down_time = atl_uptime_ms(), .count = 1};
+		down.time = down.down_time;
+		down.pointers[0] = (struct atl_pointer){.x = point.x, .y = point.y};
+		window_touch_outside(GTK_WINDOW(native), &down);
 		GtkWidget *root = window_touch_root(GTK_WINDOW(native), point.x, point.y);
 		return root && WRAPPER_IS_WIDGET(root) ? WRAPPER_WIDGET(root) : NULL;
 	}
@@ -131,7 +134,7 @@ static void end_gesture(void)
 static bool deliver(WrapperWidget *root, const struct atl_touch *event)
 {
 	gesture.delivering++;
-	bool handled = atl_upcall_touch((struct atl_ref *)root->jobj, event);
+	bool handled = atl_upcall_touch(wrapper_widget_ref(root), event);
 	gesture.delivering--;
 	if (!gesture.delivering && !gesture.pointers.touch.count)
 		view_flush_hover_exits();
@@ -200,7 +203,7 @@ void input_root_gone(GtkWidget *root)
 	atl_pointers_cancel(&gesture.pointers, atl_uptime_ms(), &event);
 	// posted: the window may be closing from inside the touch being delivered
 	if (!gesture.native_input)
-		atl_upcall_touch_posted(host_app, (struct atl_ref *)gesture.root->jobj, &event);
+		atl_upcall_touch_posted(host_app, wrapper_widget_ref(gesture.root), &event);
 	end_gesture();
 	if (!gesture.delivering) // else the delivery's return lets them out
 		view_flush_hover_exits();
@@ -322,136 +325,152 @@ static gboolean on_pointer_event(GtkEventControllerLegacy *controller, GdkEvent 
 	return input_pointer(what, native, gdk_event_get_event_sequence(event), x, y);
 }
 
-#define KEYCODE_0             7 /* KEYCODE_[1-9] = [8-16] */
-#define KEYCODE_DPAD_UP       19
-#define KEYCODE_DPAD_DOWN     20
-#define KEYCODE_DPAD_LEFT     21
-#define KEYCODE_DPAD_RIGHT    22
-#define KEYCODE_A             29 /* KEYCODE_[B-Z] = [30-54] */
-#define KEYCODE_COMMA         55
-#define KEYCODE_PERIOD        56
-#define KEYCODE_TAB           61
-#define KEYCODE_SPACE         62
-#define KEYCODE_ENTER         66
-#define KEYCODE_DEL           67
-#define KEYCODE_GRAVE         68
-#define KEYCODE_MINUS         69
-#define KEYCODE_EQUALS        70
-#define KEYCODE_LEFT_BRACKET  71
-#define KEYCODE_RIGHT_BRACKET 72
-#define KEYCODE_BACKSLASH     73
-#define KEYCODE_SEMICOLON     74
-#define KEYCODE_APOSTROPHE    75
-#define KEYCODE_SLASH         76
-#define KEYCODE_AT            77
-#define KEYCODE_PLUS          81
-#define KEYCODE_PAGE_UP       92
-#define KEYCODE_PAGE_DOWN     93
-#define KEYCODE_ESCAPE        111
-#define KEYCODE_FORWARD_DEL   112
-#define KEYCODE_MOVE_HOME     122
-#define KEYCODE_MOVE_END      123
-#define KEYCODE_INSERT        124
-#define KEYCODE_F1            131 /* KEYCODE_F[2-12] = [132-142] */
-#define KEYCODE_NUMPAD_0      144 /* KEYCODE_NUMPAD_[1-9] = [145-153] */
-#define KEYCODE_NUMPAD_ENTER  160
-
-static int map_key_code(int key_code)
+/* Android's code of the hardware key: the keyval it has without modifiers in the first layout, so a
+ * press and its release agree whatever the modifiers do to the event's keyval */
+static int map_key_code(GtkWindow *window, guint keycode)
 {
-	if (key_code >= GDK_KEY_0 && key_code <= GDK_KEY_9)
-		return key_code - GDK_KEY_0 + KEYCODE_0;
-	if (key_code >= GDK_KEY_a && key_code <= GDK_KEY_z)
-		return key_code - GDK_KEY_a + KEYCODE_A;
-	else if (key_code >= GDK_KEY_A && key_code <= GDK_KEY_Z)
-		return key_code - GDK_KEY_A + KEYCODE_A;
-	else if (key_code >= GDK_KEY_F1 && key_code <= GDK_KEY_F12)
-		return key_code - GDK_KEY_F1 + KEYCODE_F1;
-	else if (key_code >= GDK_KEY_KP_0 && key_code <= GDK_KEY_KP_9)
-		return key_code - GDK_KEY_KP_0 + KEYCODE_NUMPAD_0;
-	switch (key_code) {
+	guint keyval;
+	if (!gdk_display_translate_key(gtk_widget_get_display(GTK_WIDGET(window)), keycode, 0, 0, &keyval, NULL, NULL, NULL))
+		return ATL_KEYCODE_UNKNOWN;
+	if (keyval >= GDK_KEY_0 && keyval <= GDK_KEY_9)
+		return keyval - GDK_KEY_0 + ATL_KEYCODE_0;
+	if (keyval >= GDK_KEY_a && keyval <= GDK_KEY_z)
+		return keyval - GDK_KEY_a + ATL_KEYCODE_A;
+	if (keyval >= GDK_KEY_F1 && keyval <= GDK_KEY_F12)
+		return keyval - GDK_KEY_F1 + ATL_KEYCODE_F1;
+	if (keyval >= GDK_KEY_KP_0 && keyval <= GDK_KEY_KP_9)
+		return keyval - GDK_KEY_KP_0 + ATL_KEYCODE_NUMPAD_0;
+	switch (keyval) {
 		case GDK_KEY_Up:
-			return KEYCODE_DPAD_UP;
+			return ATL_KEYCODE_DPAD_UP;
 		case GDK_KEY_Down:
-			return KEYCODE_DPAD_DOWN;
+			return ATL_KEYCODE_DPAD_DOWN;
 		case GDK_KEY_Left:
-			return KEYCODE_DPAD_LEFT;
+			return ATL_KEYCODE_DPAD_LEFT;
 		case GDK_KEY_Right:
-			return KEYCODE_DPAD_RIGHT;
+			return ATL_KEYCODE_DPAD_RIGHT;
 		case GDK_KEY_comma:
-			return KEYCODE_COMMA;
+			return ATL_KEYCODE_COMMA;
 		case GDK_KEY_period:
-			return KEYCODE_PERIOD;
+			return ATL_KEYCODE_PERIOD;
 		case GDK_KEY_Tab:
-			return KEYCODE_TAB;
+			return ATL_KEYCODE_TAB;
 		case GDK_KEY_space:
-			return KEYCODE_SPACE;
+			return ATL_KEYCODE_SPACE;
 		case GDK_KEY_Return:
 		case GDK_KEY_ISO_Enter:
-			return KEYCODE_ENTER;
-		case GDK_KEY_KP_Enter:
-			return KEYCODE_NUMPAD_ENTER;
+			return ATL_KEYCODE_ENTER;
 		case GDK_KEY_BackSpace:
-			return KEYCODE_DEL;
+			return ATL_KEYCODE_DEL;
 		case GDK_KEY_grave:
-			return KEYCODE_GRAVE;
+			return ATL_KEYCODE_GRAVE;
 		case GDK_KEY_minus:
-			return KEYCODE_MINUS;
+			return ATL_KEYCODE_MINUS;
 		case GDK_KEY_equal:
-			return KEYCODE_EQUALS;
+			return ATL_KEYCODE_EQUALS;
 		case GDK_KEY_bracketleft:
-			return KEYCODE_LEFT_BRACKET;
+			return ATL_KEYCODE_LEFT_BRACKET;
 		case GDK_KEY_bracketright:
-			return KEYCODE_RIGHT_BRACKET;
+			return ATL_KEYCODE_RIGHT_BRACKET;
 		case GDK_KEY_backslash:
-			return KEYCODE_BACKSLASH;
+			return ATL_KEYCODE_BACKSLASH;
 		case GDK_KEY_semicolon:
-			return KEYCODE_SEMICOLON;
+			return ATL_KEYCODE_SEMICOLON;
 		case GDK_KEY_apostrophe:
-			return KEYCODE_APOSTROPHE;
+			return ATL_KEYCODE_APOSTROPHE;
 		case GDK_KEY_slash:
-			return KEYCODE_SLASH;
+			return ATL_KEYCODE_SLASH;
 		case GDK_KEY_at:
-			return KEYCODE_AT;
+			return ATL_KEYCODE_AT;
 		case GDK_KEY_plus:
-			return KEYCODE_PLUS;
+			return ATL_KEYCODE_PLUS;
 		case GDK_KEY_Page_Up:
-			return KEYCODE_PAGE_UP;
+			return ATL_KEYCODE_PAGE_UP;
 		case GDK_KEY_Page_Down:
-			return KEYCODE_PAGE_DOWN;
+			return ATL_KEYCODE_PAGE_DOWN;
 		case GDK_KEY_Escape:
-			return KEYCODE_ESCAPE;
+			return ATL_KEYCODE_ESCAPE;
 		case GDK_KEY_Delete:
-			return KEYCODE_FORWARD_DEL;
+			return ATL_KEYCODE_FORWARD_DEL;
 		case GDK_KEY_Home:
-			return KEYCODE_MOVE_HOME;
+			return ATL_KEYCODE_MOVE_HOME;
 		case GDK_KEY_End:
-			return KEYCODE_MOVE_END;
+			return ATL_KEYCODE_MOVE_END;
 		case GDK_KEY_Insert:
-			return KEYCODE_INSERT;
+			return ATL_KEYCODE_INSERT;
+		case GDK_KEY_Shift_L:
+			return ATL_KEYCODE_SHIFT_LEFT;
+		case GDK_KEY_Shift_R:
+			return ATL_KEYCODE_SHIFT_RIGHT;
+		case GDK_KEY_Control_L:
+			return ATL_KEYCODE_CTRL_LEFT;
+		case GDK_KEY_Control_R:
+			return ATL_KEYCODE_CTRL_RIGHT;
+		case GDK_KEY_Alt_L:
+			return ATL_KEYCODE_ALT_LEFT;
+		case GDK_KEY_Alt_R:
+		case GDK_KEY_ISO_Level3_Shift:
+			return ATL_KEYCODE_ALT_RIGHT;
+		case GDK_KEY_Super_L:
+		case GDK_KEY_Meta_L:
+			return ATL_KEYCODE_META_LEFT;
+		case GDK_KEY_Super_R:
+		case GDK_KEY_Meta_R:
+			return ATL_KEYCODE_META_RIGHT;
+		case GDK_KEY_Caps_Lock:
+			return ATL_KEYCODE_CAPS_LOCK;
+		// the keypad: its keys without NumLock are the same NUMPAD codes
+		case GDK_KEY_KP_Insert:
+			return ATL_KEYCODE_NUMPAD_0;
+		case GDK_KEY_KP_End:
+			return ATL_KEYCODE_NUMPAD_0 + 1;
+		case GDK_KEY_KP_Down:
+			return ATL_KEYCODE_NUMPAD_0 + 2;
+		case GDK_KEY_KP_Page_Down:
+			return ATL_KEYCODE_NUMPAD_0 + 3;
+		case GDK_KEY_KP_Left:
+			return ATL_KEYCODE_NUMPAD_0 + 4;
+		case GDK_KEY_KP_Begin:
+			return ATL_KEYCODE_NUMPAD_0 + 5;
+		case GDK_KEY_KP_Right:
+			return ATL_KEYCODE_NUMPAD_0 + 6;
+		case GDK_KEY_KP_Home:
+			return ATL_KEYCODE_NUMPAD_0 + 7;
+		case GDK_KEY_KP_Up:
+			return ATL_KEYCODE_NUMPAD_0 + 8;
+		case GDK_KEY_KP_Page_Up:
+			return ATL_KEYCODE_NUMPAD_0 + 9;
+		case GDK_KEY_KP_Delete:
+		case GDK_KEY_KP_Decimal:
+			return ATL_KEYCODE_NUMPAD_DOT;
+		case GDK_KEY_KP_Divide:
+			return ATL_KEYCODE_NUMPAD_DIVIDE;
+		case GDK_KEY_KP_Multiply:
+			return ATL_KEYCODE_NUMPAD_MULTIPLY;
+		case GDK_KEY_KP_Subtract:
+			return ATL_KEYCODE_NUMPAD_SUBTRACT;
+		case GDK_KEY_KP_Add:
+			return ATL_KEYCODE_NUMPAD_ADD;
+		case GDK_KEY_KP_Enter:
+			return ATL_KEYCODE_NUMPAD_ENTER;
 		default:
-			return key_code;
+			return ATL_KEYCODE_UNKNOWN;
 	}
 }
-
-#define META_SHIFT_ON     (1 << 0)
-#define META_ALT_ON       (1 << 1)
-#define META_CTRL_ON      (1 << 12)
-#define META_META_ON      (1 << 16)
-#define META_CAPS_LOCK_ON (1 << 20)
 
 static int map_meta_state(GdkModifierType state)
 {
 	int meta_state = 0;
 	if (state & GDK_SHIFT_MASK)
-		meta_state |= META_SHIFT_ON;
+		meta_state |= ATL_META_SHIFT_ON;
 	if (state & GDK_CONTROL_MASK)
-		meta_state |= META_CTRL_ON;
+		meta_state |= ATL_META_CTRL_ON;
 	if (state & GDK_META_MASK)
-		meta_state |= META_META_ON;
+		meta_state |= ATL_META_META_ON;
 	if (state & GDK_ALT_MASK)
-		meta_state |= META_ALT_ON;
+		meta_state |= ATL_META_ALT_ON;
 	if (state & GDK_LOCK_MASK)
-		meta_state |= META_CAPS_LOCK_ON;
+		meta_state |= ATL_META_CAPS_LOCK_ON;
 	return meta_state;
 }
 
@@ -530,14 +549,14 @@ gboolean input_key(GtkWindow *window, GtkPropagationPhase phase, guint keyval, g
 	}
 	struct atl_key key = {
 		.action = action,
-		.code = map_key_code(keyval),
+		.code = map_key_code(window, keycode),
 		.meta = map_meta_state(state),
 		.unicode = gdk_keyval_to_unicode(keyval),
 		.repeat = action == ATL_KEY_DOWN ? held_repeat : 0,
 		.down_time = held_down_time,
 		.time = now,
 	};
-	return atl_upcall_key((struct atl_ref *)root->jobj, &key);
+	return atl_upcall_key(wrapper_widget_ref(root), &key);
 }
 
 // the GdkEvent's part: which window and phase the controller is for

@@ -1,6 +1,8 @@
 package dev.dine.widgets;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -16,6 +18,7 @@ import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -138,6 +141,17 @@ public class TextActivity extends Activity {
 		});
 		column.addView(show);
 
+		// Java's selection may end before it starts; UIKit's range can't
+		Button reverse = new Button(this);
+		reverse.setText("reverse");
+		reverse.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				name.setSelection(5, 2);
+				Log.i(TAG, "text reversed " + name.getSelectionStart() + "," + name.getSelectionEnd());
+			}
+		});
+		column.addView(reverse);
+
 		// a red first word: making it selectable swaps its native view, and the rest stays the default color
 		final TextView marked = new TextView(this);
 		SpannableString error = new SpannableString("Error: disk full");
@@ -199,6 +213,42 @@ public class TextActivity extends Activity {
 			}
 		});
 		column.addView(hide, 5);
+
+		// a message too long for the screen with a view under it: the message scrolls, the view keeps room
+		Button longAlert = new Button(this);
+		longAlert.setText("long alert");
+		longAlert.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				StringBuilder message = new StringBuilder();
+				for (int i = 0; i < 100; i++)
+					message.append("A line of a long message that wraps. ");
+				final CheckBox box = new CheckBox(TextActivity.this);
+				box.setText("keep");
+				box.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+					private int logged = -1;
+
+					public void onGlobalLayout() {
+						if (box.getHeight() != logged) {
+							logged = box.getHeight();
+							// what the box asks for at its width, against what the panel gave it
+							box.measure(View.MeasureSpec.makeMeasureSpec(box.getWidth(), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+							Log.i(TAG, "text long content " + logged + " of " + box.getMeasuredHeight());
+						}
+					}
+				});
+				new AlertDialog.Builder(TextActivity.this)
+				    .setTitle("Long")
+				    .setMessage(message)
+				    .setView(box)
+				    .setPositiveButton("Close", new DialogInterface.OnClickListener() {
+					    public void onClick(DialogInterface d, int which) {
+						    Log.i(TAG, "text long closed");
+					    }
+				    })
+				    .show();
+			}
+		});
+		column.addView(longAlert, 6);
 
 		setContentView(column);
 	}

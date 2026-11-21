@@ -90,11 +90,12 @@ void ui_toast_show(struct ui_window *window, const char *text, int gravity, int 
 			CGSize text_size = [label sizeThatFits:CGSizeMake(area.size.width - 4 * margin, CGFLOAT_MAX)];
 			CGSize size = CGSizeMake(text_size.width + 2 * margin, text_size.height + margin);
 			capsule.layer.cornerRadius = MIN(size.height / 2, 22);
-			// the shared Gravity.apply, in px as the toast's offsets are: FILL stretches the capsule
-			int width_px = lround(size.width * scale), height_px = lround(size.height * scale);
-			int left_px = atl_gravity_apply(gravity, &width_px, lround(area.size.width * scale), x);
-			int top_px = atl_gravity_apply(gravity >> 4, &height_px, lround(area.size.height * scale), y);
-			capsule.frame = CGRectMake(CGRectGetMinX(area) + left_px / scale, CGRectGetMinY(area) + top_px / scale, width_px / scale, height_px / scale);
+			// the shared Gravity.apply and applyDisplay in the safe area, in px as the toast's offsets are:
+			// FILL stretches the capsule, an offset past the area's edge stays inside it
+			struct atl_window_frame area_px = {0, 0, lround(area.size.width * scale), lround(area.size.height * scale)};
+			struct atl_window_frame placed = atl_gravity_place(gravity, lround(size.width * scale), lround(size.height * scale), x, y, &area_px, &area_px);
+			capsule.frame = CGRectMake(CGRectGetMinX(area) + placed.left / scale, CGRectGetMinY(area) + placed.top / scale, placed.width / scale,
+			                           placed.height / scale);
 			label.frame = CGRectMake(margin, margin / 2, capsule.frame.size.width - 2 * margin, text_size.height);
 			if (capsule.superview != toasts) {
 				capsule.alpha = 0;
