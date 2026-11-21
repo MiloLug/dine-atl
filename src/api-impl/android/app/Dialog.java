@@ -156,10 +156,19 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		return window.findViewById(id);
 	}
 
+	// the window registry and the views are the main thread's: AOSP's calls from another thread post
+	private void onMain(Runnable action) {
+		if (Looper.myLooper() == context.getMainLooper()) {
+			action.run();
+		} else {
+			new Handler(context.getMainLooper()).post(action);
+		}
+	}
+
 	/* Copyright (C) 2006 The Android Open Source Project: show, dismiss and hide */
 	public void show() {
 		System.out.println("showing the Dialog " + this);
-		Runnable action = new Runnable() {
+		onMain(new Runnable() {
 			@Override
 			public void run() {
 				if (showing) {
@@ -175,6 +184,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 					created = true;
 					onCreate(null);
 				}
+				onStart();
 				TypedArray a = context.obtainStyledAttributes(R.styleable.Window);
 				if (a.getBoolean(R.styleable.Window_windowCloseOnTouchOutside, false))
 					window.setCloseOnTouchOutsideIfNotSet(true);
@@ -183,7 +193,9 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 				canceled = false;
 				getWindow().getDecorView().dispatchAttachedToWindow();
 				window.atlSetSubwindowRoot(atlHasRoot(), atlChrome());
+				window.atlSoftInputPending(true);
 				if (!window.atlShowSubwindow()) {
+					window.atlSoftInputPending(false);
 					getWindow().getDecorView().dispatchDetachedFromWindow();
 					throw new WindowManager.BadTokenException("Unable to add window -- token null is not valid; is your activity running?");
 				}
@@ -191,12 +203,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 				if (onShowListener != null)
 					onShowListener.onShow(Dialog.this);
 			}
-		};
-		if (Looper.myLooper() == context.getMainLooper()) {
-			action.run();
-		} else {
-			new Handler(context.getMainLooper()).post(action);
-		}
+		});
 	}
 
 	protected void showNative() {}
@@ -233,30 +240,44 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 	}
 
 	public boolean isShowing() {
-		return showing;
+		return showing && window.getDecorView().getVisibility() == View.VISIBLE;
 	}
 
 	public void dismiss() {
 		System.out.println("dismissing the Dialog " + Dialog.this);
-		if (!showing)
-			return;
-		if (!window.atlRemoveSubwindow())
-			throw new IllegalArgumentException("View=" + window.getDecorView() + " not attached to window manager");
-		showing = false;
-		hidden = false;
-		// HACK: dismissing the Dialog takes some time in AOSP, as the request goes back and forth between the application
-		// and the system server. We replicate this behavior by adding 10 ms delay.
-		// This Hack is required for NewPipe RouterActivity which has a race condition. It subscribes an rxJava observable
-		// and immediately calls Dialog.dismiss(). The OnDismissListener would unsubscribes the observable again.
-		new Handler(context.getMainLooper()).postDelayed(new Runnable() {
+		onMain(new Runnable() {
 			@Override
 			public void run() {
-				if (!showing) // not shown again meanwhile
-					getWindow().getDecorView().dispatchDetachedFromWindow();
-				if (onDismissListener != null)
-					onDismissListener.onDismiss(Dialog.this);
+				dismissDialog();
 			}
-		}, 10);
+		});
+	}
+
+	// AOSP's dismissDialog: the finally leaves the Dialog done even when its window was gone
+	private void dismissDialog() {
+		if (!showing)
+			return;
+		try {
+			if (!window.atlRemoveSubwindow())
+				throw new IllegalArgumentException("View=" + window.getDecorView() + " not attached to window manager");
+		} finally {
+			showing = false; // AOSP's mDecor is null by onStop: isShowing() is false there
+			hidden = false;
+			onStop();
+			// HACK: dismissing the Dialog takes some time in AOSP, as the request goes back and forth between the application
+			// and the system server. We replicate this behavior by adding 10 ms delay.
+			// This Hack is required for NewPipe RouterActivity which has a race condition. It subscribes an rxJava observable
+			// and immediately calls Dialog.dismiss(). The OnDismissListener would unsubscribes the observable again.
+			new Handler(context.getMainLooper()).postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					if (!showing) // not shown again meanwhile
+						getWindow().getDecorView().dispatchDetachedFromWindow();
+					if (onDismissListener != null)
+						onDismissListener.onDismiss(Dialog.this);
+				}
+			}, 10);
+		}
 	}
 
 	public Window getWindow() {
@@ -310,21 +331,36 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		System.out.println("- onCreate - Dialog!");
 	}
 
+	protected void onStart() {}
+
+	protected void onStop() {}
+
 	public void hide() {
 		System.out.println("hiding the Dialog " + this);
-		hidden = showing;
-		if (showing) {
-			window.getDecorView().setVisibility(View.INVISIBLE);
-			window.atlHideSubwindow();
-		}
+		onMain(new Runnable() {
+			@Override
+			public void run() {
+				hidden = showing;
+				if (showing) {
+					window.getDecorView().setVisibility(View.GONE);
+					window.atlHideSubwindow();
+				}
+			}
+		});
 	}
 
+	// AOSP's cancel(): the cancel message is sent, then the dismiss, so the listener hears a dialog that is gone
 	@Override
 	public void cancel() {
-		if (!canceled) {
+		final OnCancelListener listener = onCancelListener;
+		if (!canceled && listener != null) {
 			canceled = true;
-			if (onCancelListener != null)
-				onCancelListener.onCancel(this);
+			new Handler(context.getMainLooper()).post(new Runnable() {
+				@Override
+				public void run() {
+					listener.onCancel(Dialog.this);
+				}
+			});
 		}
 		dismiss();
 	}

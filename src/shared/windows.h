@@ -22,6 +22,9 @@ struct atl_window_frame {
 /* Measures and places the window's root as WindowManager would and tells its Java Window; the
  * backend lays the root out at the frame's size. */
 void windows_place(struct atl_subwindow *window, int screen_width, int screen_height, struct atl_window_frame *frame);
+/* The frame windows_place applies the window's gravity in, given the room windows_area gave: for a
+ * panel alert, its chrome's room. */
+struct atl_window_frame windows_container(struct atl_subwindow *window, int screen_width, int screen_height);
 /* Where windows_place last put it, moved up by its pan: its root, and with a panel alert's chrome
  * around it the panel. */
 const struct atl_window_frame *windows_frame(const struct atl_subwindow *window);
@@ -53,5 +56,8 @@ void windows_state_changed(struct atl_app *app);
 int *windows_exclusion_rects(struct atl_app *app, int *n);
 /* The host's insets changed: each drawn window over the activities takes them. */
 void windows_dispatch_insets(struct atl_app *app);
+/* The app's configuration changed: each added window's root hears it (Window.atlConfigurationChanged
+ * decides for its owner), a hidden one too. */
+void windows_dispatch_configuration(struct atl_app *app);
 
 #endif

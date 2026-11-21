@@ -216,4 +216,88 @@ public class AlertContentTest extends android.test.InstrumentationTestCase {
 		getInstrumentation().waitForIdleSync();
 		assertFalse(dialog[0].isShowing());
 	}
+
+	// AOSP's alert layout has these ids, found once the dialog is created: stand-ins here, as the
+	// ui slot draws the alert
+	private static String message(AlertDialog dialog) throws ReflectiveOperationException {
+		java.lang.reflect.Field field = AlertDialog.class.getDeclaredField("message");
+		field.setAccessible(true);
+		return String.valueOf(field.get(dialog));
+	}
+
+	public void testMessageViewIsFoundAndChangesTheMessage() throws Exception {
+		final AlertDialog dialog = shown(new Make() {
+			public AlertDialog make() {
+				return new AlertDialog.Builder(activity).setTitle("t").setMessage("m").setPositiveButton("OK", null).create();
+			}
+		});
+		final View found = dialog.findViewById(android.R.id.message);
+		assertTrue("a TextView, was " + found, found instanceof TextView);
+		assertEquals("m", ((TextView)found).getText().toString());
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				((TextView)found).setText("n");
+			}
+		});
+		assertEquals("the model follows its view", "n", message(dialog));
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog.setMessage("o");
+			}
+		});
+		assertEquals("the view follows the model", "o", ((TextView)found).getText().toString());
+		dismiss(dialog);
+	}
+
+	public void testTitleViewIsFound() {
+		final AlertDialog dialog = shown(new Make() {
+			public AlertDialog make() {
+				return new AlertDialog.Builder(activity).setTitle("t").setMessage("m").create();
+			}
+		});
+		View found = dialog.findViewById(com.android.internal.R.id.alertTitle);
+		assertTrue("a TextView, was " + found, found instanceof TextView);
+		assertEquals("t", ((TextView)found).getText().toString());
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog.setTitle("u");
+			}
+		});
+		assertEquals("u", ((TextView)found).getText().toString());
+		dismiss(dialog);
+	}
+
+	public void testButtonIdsAreTheButtons() {
+		final AlertDialog[] made = new AlertDialog[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				made[0] = new AlertDialog.Builder(activity).setMessage("m").setPositiveButton("Yes", null).setNegativeButton("No", null)
+				                  .setNeutralButton("Maybe", null).create();
+			}
+		});
+		assertNull("not created yet", made[0].findViewById(android.R.id.button1));
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				made[0].show();
+			}
+		});
+		assertSame(made[0].getButton(AlertDialog.BUTTON_POSITIVE), made[0].findViewById(android.R.id.button1));
+		assertSame(made[0].getButton(AlertDialog.BUTTON_NEGATIVE), made[0].findViewById(android.R.id.button2));
+		assertSame(made[0].getButton(AlertDialog.BUTTON_NEUTRAL), made[0].findViewById(android.R.id.button3));
+		dismiss(made[0]);
+	}
+
+	// under a custom title the message is a view of the content, found in the decor
+	public void testMessageUnderACustomTitleHasTheId() {
+		final AlertDialog dialog = shown(new Make() {
+			public AlertDialog make() {
+				return new AlertDialog.Builder(activity).setCustomTitle(text("custom")).setMessage("m").create();
+			}
+		});
+		View found = dialog.findViewById(android.R.id.message);
+		assertTrue("a TextView, was " + found, found instanceof TextView);
+		assertEquals("m", ((TextView)found).getText().toString());
+		assertNotNull("in the decor", found.getParent());
+		dismiss(dialog);
+	}
 }

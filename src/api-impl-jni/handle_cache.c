@@ -107,6 +107,7 @@ void set_up_handle_cache(JNIEnv *env)
 	handle_cache.window.atlSetFrame = _METHOD(handle_cache.window.class, "atlSetFrame", "(IIII)V");
 	handle_cache.window.atlSetVisible = _METHOD(handle_cache.window.class, "atlSetVisible", "(Z)V");
 	handle_cache.window.atlLeaked = _METHOD(handle_cache.window.class, "atlLeaked", "(Ljava/lang/Object;)V");
+	handle_cache.window.atlConfigurationChanged = _METHOD(handle_cache.window.class, "atlConfigurationChanged", "()V");
 	handle_cache.window.atlPostFrame = _STATIC_METHOD(handle_cache.window.class, "atlPostFrame", "(J)V");
 
 	handle_cache.asset_manager.class = _REF((*env)->FindClass(env, "android/content/res/AssetManager"));

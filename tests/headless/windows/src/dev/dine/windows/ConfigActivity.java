@@ -1,6 +1,7 @@
 package dev.dine.windows;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.res.Configuration;
@@ -11,8 +12,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
-/* A night change while it runs ("night" from the cli): its manifest covers uiMode, so it, its view
- * and the Application's callbacks hear it, "config: <who> night <bits>" (Android's dark mode:
+/* A night change while it runs ("night" from the cli): its manifest covers uiMode, so it, its view,
+ * its dialogs' views (one hidden, still added) and the Application's callbacks hear it, "config:
+ * <who> night <bits>" (Android's dark mode:
  * uiMode's night bits, 32 dark, 16 light), and its tint resolves again ("color"). It holds
  * drawables from both caches, which the change prunes: loaded again, they have the new color
  * ("config: drawables"). */
@@ -37,6 +39,16 @@ public class ConfigActivity extends Activity {
 		return config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
 	}
 
+	// a view that logs the configuration its window gives it
+	static View hearing(Context context, final String who) {
+		return new View(context) {
+			@Override
+			protected void onConfigurationChanged(Configuration config) {
+				Log.i(TAG, "config: " + who + " night " + night(config));
+			}
+		};
+	}
+
 	static void listen(Context context) {
 		context.getApplicationContext().registerComponentCallbacks(new ComponentCallbacks() {
 			public void onConfigurationChanged(Configuration config) {
@@ -59,6 +71,13 @@ public class ConfigActivity extends Activity {
 			}
 		});
 		listen(this);
+		Dialog shown = new Dialog(this);
+		shown.setContentView(hearing(this, "dialog"));
+		shown.show();
+		Dialog hidden = new Dialog(this);
+		hidden.setContentView(hearing(this, "hidden"));
+		hidden.show();
+		hidden.hide();
 		Log.i(TAG, "config: activity created color " + color());
 	}
 

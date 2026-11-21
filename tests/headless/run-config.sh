@@ -3,10 +3,11 @@
 # (windows/, built by the superproject's tests/harness/apk.py). "Night" is Android's dark mode:
 # uiMode's night bits, 32 (UI_MODE_NIGHT_YES) dark and 16 (_NO) light.
 # - ConfigActivity covers uiMode in its manifest: the Application's callbacks, the activity and its
-#   view hear each change, and its tint resolves to the values-night color and back; the change
-#   prunes the drawables it holds from both caches, so they load again in the new color;
+#   view hear each change, then the views of its two dialogs, one hidden (an added window still);
+#   its tint resolves to the values-night color and back; the change prunes the drawables it
+#   holds from both caches, so they load again in the new color;
 # - PlainConfigActivity doesn't: only the Application hears each change, ATL logs that the activity
-#   keeps its configuration, and its own onConfigurationChanged never logs.
+#   keeps its configuration, and neither its own onConfigurationChanged nor its dialog's view logs.
 # Usage: run-config.sh <headless build dir> <windows.apk>
 set -euo pipefail
 
@@ -54,9 +55,9 @@ night=32 day=16 # Configuration.UI_MODE_NIGHT_YES, _NO
 start ConfigActivity
 expect "activity created color #ff112233"
 send "night 1"
-expect "application night $night" "activity night $night color #ffaabbcc" "drawables box #ffaabbcc tint #ffaabbcc" "view night $night"
+expect "application night $night" "activity night $night color #ffaabbcc" "drawables box #ffaabbcc tint #ffaabbcc" "view night $night" "dialog night $night" "hidden night $night"
 send "night 0"
-expect "application night $day" "activity night $day color #ff112233" "drawables box #ff112233 tint #ff112233" "view night $day"
+expect "application night $day" "activity night $day color #ff112233" "drawables box #ff112233 tint #ff112233" "view night $day" "dialog night $day" "hidden night $day"
 stop
 
 start PlainConfigActivity

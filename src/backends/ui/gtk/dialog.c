@@ -182,6 +182,9 @@ static void panel_fill(struct dialog_state *state, const struct ui_alert *alert)
 		gtk_widget_add_css_class(state->panel, "ATL-panel");
 		input_take_native(state->panel); // its buttons and rows are GTK's
 	}
+	// the Android theme's lightness, not the desktop's: the content draws in the theme's colors
+	gtk_widget_remove_css_class(state->panel, alert->light ? "ATL-panel-dark" : "ATL-panel-light");
+	gtk_widget_add_css_class(state->panel, alert->light ? "ATL-panel-light" : "ATL-panel-dark");
 	for (GtkWidget *child; (child = gtk_widget_get_first_child(state->panel));)
 		gtk_box_remove(GTK_BOX(state->panel), child);
 	GtkWidget *header = state->header = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);

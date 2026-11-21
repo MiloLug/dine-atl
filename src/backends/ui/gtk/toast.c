@@ -24,6 +24,18 @@ static GtkAlign align(int axis)
 	}
 }
 
+/* The margins that give a toast its offset: from the edge it is aligned to, or both the same for FILL;
+ * a centred one is moved as Gravity.apply moves it, GTK centring it in what its margins leave */
+static void margins(int axis, int offset, int *before, int *after)
+{
+	if (align(axis) == GTK_ALIGN_CENTER) {
+		*before = offset > 0 ? 2 * offset : 0;
+		*after = offset < 0 ? -2 * offset : 0;
+	} else {
+		*before = *after = offset;
+	}
+}
+
 void ui_toast_show(struct ui_window *window, const char *text, int gravity, int x, int y)
 {
 	GtkOverlay *overlay = GTK_OVERLAY(gtk_window_get_child(GTK_WINDOW(window)));
@@ -39,10 +51,13 @@ void ui_toast_show(struct ui_window *window, const char *text, int gravity, int 
 	gtk_label_set_text(GTK_LABEL(label), text);
 	gtk_widget_set_halign(label, align(gravity));
 	gtk_widget_set_valign(label, align(gravity >> GRAVITY_Y_SHIFT));
-	gtk_widget_set_margin_start(label, x);
-	gtk_widget_set_margin_end(label, x);
-	gtk_widget_set_margin_top(label, y);
-	gtk_widget_set_margin_bottom(label, y);
+	int start, end, top, bottom;
+	margins(gravity, x, &start, &end);
+	margins(gravity >> GRAVITY_Y_SHIFT, y, &top, &bottom);
+	gtk_widget_set_margin_start(label, start);
+	gtk_widget_set_margin_end(label, end);
+	gtk_widget_set_margin_top(label, top);
+	gtk_widget_set_margin_bottom(label, bottom);
 	gtk_widget_set_visible(label, TRUE);
 #ifdef ATL_TEST_HOOKS
 	printf("toast: shown \"%s\"\n", text);

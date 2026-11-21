@@ -96,10 +96,12 @@ static void activity_unfocus(JNIEnv *env, struct atl_app *app, jobject activity)
 	exit_on_exception(env);
 }
 
-static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity)
+// forward: the resume of an activity opened or brought to the front, not one that a finished one uncovers
+static void activity_focus(JNIEnv *env, struct atl_app *app, jobject activity, bool forward)
 {
 	if (_GET_BOOL_FIELD(activity, "finishing"))
 		return;
+	_SET_BOOL_FIELD(activity, "soft_forward", forward); // its first window focus reads it: the soft input state
 
 	(*env)->CallVoidMethod(env, activity, handle_cache.activity.deliverResults);
 	exit_on_exception(env);
@@ -154,7 +156,7 @@ static bool back_has_target(JNIEnv *env, struct atl_app *app)
 	return app->backlog_len > 1 || handle_cache.activity.onBackPressed != on_back_pressed;
 }
 
-static void activity_update_current(JNIEnv *env, struct atl_app *app)
+static void activity_update_current(JNIEnv *env, struct atl_app *app, bool forward)
 {
 	jobject activity_new = app->task_front && app->backlog_len ? app->backlog[app->backlog_len - 1] : NULL;
 
@@ -164,7 +166,7 @@ static void activity_update_current(JNIEnv *env, struct atl_app *app)
 		app->activity_current = NULL;
 
 		if (activity_new)
-			activity_focus(env, app, activity_new);
+			activity_focus(env, app, activity_new, forward);
 		if (activity_new && _GET_BOOL_FIELD(activity_new, "finishing"))
 			return;
 
@@ -215,7 +217,7 @@ static void task_move(struct atl_app *app, bool front, bool by_host)
 		atl_toast_hide(app);
 	JNIEnv *env = get_jni_env();
 	(*env)->PushLocalFrame(env, 16);
-	activity_update_current(env, app);
+	activity_update_current(env, app, front);
 	(*env)->PopLocalFrame(env, NULL);
 	host_task_moved(app, front, by_host);
 }
@@ -281,7 +283,7 @@ void activity_close_all(struct atl_app *app)
 	size_t n = app->backlog_len;
 	app->backlog = NULL;
 	app->backlog_len = app->backlog_cap = 0;
-	activity_update_current(env, app);
+	activity_update_current(env, app, false);
 	close_activities(env, app, activities, n);
 	free(activities);
 	(*env)->PopLocalFrame(env, NULL);
@@ -319,7 +321,7 @@ void activity_start(JNIEnv *env, struct atl_app *app, jobject activity_object)
 	ui_window_add_activity(app->window, get_decor_view(env, activity_object));
 	set_decor_attached(env, activity_object, true);
 
-	activity_update_current(env, app);
+	activity_update_current(env, app, true);
 }
 
 JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobject this)
@@ -338,7 +340,7 @@ JNIEXPORT void JNICALL Java_android_app_Activity_nativeFinish(JNIEnv *env, jobje
 	// here, ahead of the next one's start, as the current one is in its unfocus
 	if (removed_activity && removed_activity != app->activity_current)
 		activity_step_down(env, app, removed_activity);
-	activity_update_current(env, app);
+	activity_update_current(env, app, false);
 	if (removed_activity) {
 		activity_close(env, app, removed_activity);
 		_UNREF(removed_activity);
@@ -382,7 +384,7 @@ JNIEXPORT jboolean JNICALL Java_android_app_Activity_nativeResumeActivity(JNIEnv
 			break;
 		}
 	}
-	activity_update_current(env, app);
+	activity_update_current(env, app, true);
 
 	close_activities(env, app, activities_to_close, n_to_close);
 	free(activities_to_close);

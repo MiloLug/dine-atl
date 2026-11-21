@@ -4,7 +4,9 @@
 # KeepActivity's alert, whose onShow disables "Yes" and hides "Later": "No" keeps it open and brings
 # "Yes" back as "Sure", which closes it, while "Yes" or "Later" first has no button to answer; then
 # LateActivity's, where the same changes come while the alert is drawn: "Later" answers before
-# them, "Yes" and "Later" don't after; ModalActivity's alert, which a cancel doesn't close.
+# them, "Yes" and "Later" don't after; MessageActivity's message by AOSP's id, whose setText shows;
+# AlertsActivity's two alerts, the first taken down from under the second (headless only);
+# ModalActivity's alert, which a cancel doesn't close.
 # Each run's last dialog finishes the app, so ATL exits by itself.
 # Each run's app lines must be exactly the expected ones, in order.
 # --headless: no display, and the headless backend's "dialog:" lines are checked among them, then
@@ -15,7 +17,7 @@
 # while another activity covers its own, a hide during a gesture ends it with a CANCEL and nothing
 # else, and it goes (WindowLeaked) when its activity finishes, also from over another activity;
 # then AlertDialog panels: ViewActivity's setView content (dialog-view.viewtree), its field's text
-# and a touch outside the panel, ChoiceActivity's adapter list, and ModalActivity's dialogs under
+# and a touch outside the panel (also its field's toolkit tap, "text tap"), ChoiceActivity's adapter list, and ModalActivity's dialogs under
 # Back and a touch outside, through -c. In a -c session the app's lines must come in the order
 # waited for.
 # ChoiceActivity's choice rows, ProgressActivity's progress and ViewActivity's OK run on both.
@@ -82,8 +84,8 @@ exited 0
 
 run cancel '!cancel'
 said 'dialog: show title="Dialog test" message="Do you like dialogs?" positive="Yes" negative="No" cancelable' \
-  "dialog canceled" \
-  "dialog: close"
+  "dialog: close" \
+  "dialog canceled" # AOSP's cancel() dismisses at once and sends the cancel message
 exited 0
 
 # shown from onCreate, the alert shows once its activity does: with onShow's changes
@@ -126,6 +128,31 @@ for answer in Yes Later; do
   grep -qxF "$unanswered" "$log" || fail "\"$answer\" was answered after \"No\"" # on gtk too
   exited 1
 done
+
+# the message's view by AOSP's id: its setText shows
+run message 'OK' MessageActivity
+said 'dialog: show title="Message test" message="Old" positive="OK" cancelable' \
+  "message reads Old" \
+  'dialog: show title="Message test" message="New" positive="OK" cancelable' \
+  "message onClick -1" \
+  "dialog: close"
+exited 0
+
+# stacked alerts: "Show second" keeps the first open under the second, "Close first" takes it down
+# from under the second, which stays ("Later" is for the phone's scenario: a re-shown alert would
+# take the next scripted answer). Headless only: gtk's scripted answers go to the alert that asks first
+if ((headless)); then
+  run alerts 'Show second;Close first;Done' AlertsActivity
+  said 'dialog: show title="First" message="the first alert" positive="Show second" negative="Cover" cancelable' \
+    "alerts first shown" \
+    'dialog: show title="Second" message="the second alert" positive="Close first" negative="Done" neutral="Later" cancelable' \
+    "alerts second shown" \
+    "dialog: close" \
+    "alerts first dismissed" \
+    "alerts done" \
+    "dialog: close"
+  exited 0
+fi
 
 # a cancel doesn't close an alert that isn't cancelable; its button does
 run modal '!cancel;Done' ModalActivity
@@ -317,6 +344,22 @@ if ((headless)); then
   send "tap Inner"
   wait_for 'view inner click$'
   touch_at $field_x $field_y
+  wait_for '^keyboard: on android.widget.EditText "name" kind=text return=default autocap=none secure=0 hidden=0 multiline=1 autocorrect=1 tap_focus=1 tap_keyboard=1 editable=1$'
+  send "text commit hey"
+  wait_for '^edit: "hey" 3,3$'
+  send "answer OK"
+  for line in '^answer: OK$' 'view ok "hey"$' 'view dismissed$'; do
+    wait_for "$line"
+  done
+  exit_session
+
+  # the toolkit's own tap on the panel's field (cli "text tap"), as a touch is: the keyboard
+  # comes and the text goes to it
+  start view-tap ViewActivity
+  wait_for 'view shown$'
+  wait_for '^dialog: chrome '
+  wait_for 'onWindowFocusChanged.*hasFocus: true' # the window's focus is settled: the soft input state has run
+  send "text tap $field_x $field_y"
   wait_for '^keyboard: on android.widget.EditText "name" kind=text return=default autocap=none secure=0 hidden=0 multiline=1 autocorrect=1 tap_focus=1 tap_keyboard=1 editable=1$'
   send "text commit hey"
   wait_for '^edit: "hey" 3,3$'

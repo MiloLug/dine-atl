@@ -50,7 +50,7 @@ public final class ATLInput {
 	// the app's window gives keys to its topmost shown focusable window, as Android gives it the focus
 	static boolean key(View root, KeyEvent event) {
 		Window window = root.decor_window;
-		if (window != null && window.getCallback() instanceof Activity) {
+		if (window != null && window.atlCreator() instanceof Activity) {
 			Window top = Window.atlKeyWindow(root.getContext());
 			if (top != null)
 				window = top;

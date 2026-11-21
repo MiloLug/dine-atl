@@ -15,5 +15,8 @@ UIView *uikit_dialog_panel(ATLDialog *dialog);
 /* UIKit's thread: a newer window over the activities covers a plain alert, which UIKit would draw
  * over it: it waits, dismissed, until the windows above it go. */
 void uikit_dialog_set_covered(ATLDialog *dialog, bool covered);
+/* UIKit's thread: the alert's place among the windows over the activities, the bottom 0; plain
+ * alerts stack in this order. */
+void uikit_dialog_set_rank(ATLDialog *dialog, int rank);
 
 #endif

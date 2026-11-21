@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "src/slots/ui.h"
+#include "src/shared/gravity.h"
 #include "src/shared/upcall.h"
 
 #include "../records/records.h"
@@ -63,25 +64,12 @@ static UIVisualEffectView *capsule_new(void)
 	return capsule;
 }
 
-// Android's Gravity on one axis: before, after, both (fill) or neither (center), offset by adjust
-static CGFloat place(int axis, CGFloat size, CGFloat container, CGFloat adjust)
-{
-	switch (axis & 0x6) {
-	case 0x2:
-		return adjust;
-	case 0x4:
-		return container - adjust - size;
-	default:
-		return (container - size) / 2 + adjust;
-	}
-}
-
 void ui_toast_show(struct ui_window *window, const char *text, int gravity, int x, int y)
 {
-	NSString *string = @(text);
 	void *target = window->surface;
 	CGFloat scale = atl_screen_get()->density_dpi / 160.;
 	@autoreleasepool {
+		NSString *string = @(text);
 		uikit_enqueue(window->app, ^{
 			UIView *surface = (__bridge UIView *)target;
 			UIWindowScene *scene = surface.window.windowScene;
@@ -102,9 +90,12 @@ void ui_toast_show(struct ui_window *window, const char *text, int gravity, int 
 			CGSize text_size = [label sizeThatFits:CGSizeMake(area.size.width - 4 * margin, CGFLOAT_MAX)];
 			CGSize size = CGSizeMake(text_size.width + 2 * margin, text_size.height + margin);
 			capsule.layer.cornerRadius = MIN(size.height / 2, 22);
-			label.frame = CGRectMake(margin, margin / 2, text_size.width, text_size.height);
-			capsule.frame = CGRectMake(CGRectGetMinX(area) + place(gravity, size.width, area.size.width, x / scale),
-			                           CGRectGetMinY(area) + place(gravity >> 4, size.height, area.size.height, y / scale), size.width, size.height);
+			// the shared Gravity.apply, in px as the toast's offsets are: FILL stretches the capsule
+			int width_px = lround(size.width * scale), height_px = lround(size.height * scale);
+			int left_px = atl_gravity_apply(gravity, &width_px, lround(area.size.width * scale), x);
+			int top_px = atl_gravity_apply(gravity >> 4, &height_px, lround(area.size.height * scale), y);
+			capsule.frame = CGRectMake(CGRectGetMinX(area) + left_px / scale, CGRectGetMinY(area) + top_px / scale, width_px / scale, height_px / scale);
+			label.frame = CGRectMake(margin, margin / 2, capsule.frame.size.width - 2 * margin, text_size.height);
 			if (capsule.superview != toasts) {
 				capsule.alpha = 0;
 				[toasts addSubview:capsule];

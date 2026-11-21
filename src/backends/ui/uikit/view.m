@@ -862,8 +862,11 @@ void uikit_enqueue(struct atl_app *app, dispatch_block_t op)
 	}
 	struct uikit_app *ui = atl_app_ui(app);
 	pthread_mutex_lock(&ui->pending_lock);
-	if (!ui->pending)
-		ui->pending = (void *)CFBridgingRetain([NSMutableArray array]);
+	if (!ui->pending) {
+		@autoreleasepool { // callers on an Android main thread have none
+			ui->pending = (void *)CFBridgingRetain([NSMutableArray array]);
+		}
+	}
 	[(__bridge NSMutableArray<dispatch_block_t> *)ui->pending addObject:op];
 	bool post = !ui->flush_posted;
 	ui->flush_posted = true;
@@ -1109,21 +1112,21 @@ void records_roots_changed(struct ui_window *window)
 	void *target = window->surface;
 	size_t n = window->n_roots;
 	struct shown_root *shown = malloc((n ? n : 1) * sizeof(*shown));
-	NSMutableArray *alerts = [NSMutableArray array]; // per root: its ATLDialog, or NSNull
-	for (size_t i = 0; i < n; i++) {
-		const struct ui_root *root = &window->roots[i];
-		int flags = root->layout.flags;
-		shown[i] = (struct shown_root){
-			.view = root->view,
-			.dim = flags & UI_WINDOW_DIM_BEHIND ? root->layout.dim_amount : 0,
-			.alert_dim = flags & UI_WINDOW_DIM_BEHIND && root->chrome,
-			.modal = !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)),
-			.focusable = !(flags & UI_WINDOW_NOT_FOCUSABLE),
-			.touchable = !(flags & UI_WINDOW_NOT_TOUCHABLE),
-		};
-		[alerts addObject:root->chrome ? (id)uikit_dialog_of(root->chrome) : NSNull.null];
-	}
 	@autoreleasepool {
+		NSMutableArray *alerts = [NSMutableArray array]; // per root: its ATLDialog, or NSNull
+		for (size_t i = 0; i < n; i++) {
+			const struct ui_root *root = &window->roots[i];
+			int flags = root->layout.flags;
+			shown[i] = (struct shown_root){
+				.view = root->view,
+				.dim = flags & UI_WINDOW_DIM_BEHIND ? root->layout.dim_amount : 0,
+				.alert_dim = flags & UI_WINDOW_DIM_BEHIND && root->chrome,
+				.modal = !(flags & (UI_WINDOW_NOT_FOCUSABLE | UI_WINDOW_NOT_TOUCH_MODAL)),
+				.focusable = !(flags & UI_WINDOW_NOT_FOCUSABLE),
+				.touchable = !(flags & UI_WINDOW_NOT_TOUCHABLE),
+			};
+			[alerts addObject:root->chrome ? (id)uikit_dialog_of(root->chrome) : NSNull.null];
+		}
 		uikit_enqueue(window->app, ^{
 			UIView *surface = (__bridge UIView *)target;
 			ATLOverlayContainer *overlay = find_overlay(surface);
@@ -1138,6 +1141,8 @@ void records_roots_changed(struct ui_window *window)
 			CGFloat seen = 1; // of the status bar through the dims
 			bool above = false; // a window with a root, not one touches go through, is above this one
 			for (size_t i = n; i-- > 0;) {
+				if (alerts[i] != NSNull.null)
+					uikit_dialog_set_rank(alerts[i], (int)i);
 				if (alerts[i] != NSNull.null && !shown[i].view)
 					uikit_dialog_set_covered(alerts[i], above);
 				above |= shown[i].view && shown[i].touchable;
@@ -1520,7 +1525,7 @@ static void push_frames(struct ui_window *window)
 			[panels addObject:[NSValue valueWithCGRect:root->rect]];
 			int area_width, area_height; // as lay_out gave windows_place
 			windows_area(window->app, window->roots[i].window, &area_width, &area_height);
-			[panels addObject:@(area_height / s)];
+			[panels addObject:@(windows_container(window->roots[i].window, area_width, area_height).height / s)]; // the room windows_place gave the chrome
 		}
 	}
 	uikit_enqueue(window->app, ^{

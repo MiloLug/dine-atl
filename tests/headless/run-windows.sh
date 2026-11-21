@@ -4,13 +4,19 @@
 # - MainActivity: the shown activity's window brightness reaches the cli host while it shows, the
 #   screen's own (-1) while the task is in the back (Home); a brightness set there reaches the host
 #   only on the return; -1 again once Back moved the task to the back;
-# - StateActivity: its dialog's keep-screen-on, brightness and exclusion rect reach the host while
-#   the dialog shows, not while the task is in the back or after Back closed the dialog, which
-#   leaves the task in front; the dialog's root takes the part of the insets its frame overlaps,
-#   also at 480 dpi, where the insets' dp are 3 px each and the exclusion span comes back in dp;
+# - StateActivity: its dialog's keep-screen-on, brightness (over the activity's own) and exclusion
+#   rect, and its FLAG_FULLSCREEN, reach the host while the dialog shows, not while the task is in
+#   the back or after Back closed the dialog, which leaves the task in front; the dialog's root
+#   takes the part of the insets its frame overlaps, also at 480 dpi, where the insets' dp are 3 px
+#   each and the exclusion span comes back in dp;
 # - OverlayActivity: WindowManager.addView windows in the registry's order: a panel above the
-#   dialog it is attached to, a TYPE_TOAST window above every dialog, a dialog shown again on top
-#   with its panel, the panel gone with its dialog, a panel attached to the activity under them;
+#   dialog it is attached to, a TYPE_TOAST window above every dialog and a TYPE_APPLICATION_OVERLAY
+#   one above the toast; a hide and a show leave a dialog where it was added, a dismiss and a show
+#   put it on top without the panel it had; a panel attached to the activity under them;
+# - PlaceActivity: a floating dialog in the content frame (inside the bars the insets leave), a
+#   non-floating one in the whole window, FLAG_LAYOUT_NO_LIMITS and the fit to the display frame, a
+#   popup past the window's edge moved inside it;
+# - DrawActivity: the dialog's views are drawn as the activity's are;
 # - PopupActivity: a PopupWindow below its anchor, its row's tap, and an outside tap that closes it
 #   (ACTION_OUTSIDE) and reaches the activity; an AutoCompleteTextView's drop-down after typing,
 #   closed by Back before the keyboard takes it, then its row filling the field;
@@ -107,8 +113,10 @@ want "host: task back app"
 stop
 
 start StateActivity
+want "host: brightness 0.60" # the activity's own, before its dialog shows
 want "host: keep screen on 1"
-want "host: brightness 0.30"
+want "host: brightness 0.30" # the topmost window's brightness over the activity's
+want "window: frame #ff1a1b20 fullscreen" # the dialog's FLAG_FULLSCREEN reaches the frame
 want "state dialog laid out"
 # system gestures 20 left and right, 15 at the top, 25 at the bottom, navigation bar 30 at the
 # bottom (dp; px at 160 dpi): the dialog reaches the left strip only
@@ -126,24 +134,31 @@ want "host: exclusion left 100-200 right -"
 state_insets "20 0 0 0"
 send home
 want "host: keep screen on 0"
-want "host: brightness -1.00"
+want "host: brightness 0.60" # for a moment: the activity's own, before the task's end resets it (ATL-158)
+want "window: frame #ff1a1b20"
 want "host: exclusion left - right -"
+want "host: brightness -1.00"
 want "host: task back host"
 send front
+want "host: brightness 0.60" # the activity first, then its dialog
 want "host: keep screen on 1"
 want "host: brightness 0.30"
+want "window: frame #ff1a1b20 fullscreen"
 want "host: exclusion left 100-200 right -"
 want "host: task front host"
 send back # the dialog takes it: the task stays in front
 want "host: keep screen on 0"
-want "host: brightness -1.00"
+want "host: brightness 0.60" # the activity's own again
+want "window: frame #ff1a1b20"
 want "host: exclusion left - right -"
 stop
 
 # 480 dpi: the strips are 3 px a dp, the dialog's rect, px 100-200, comes back as dp
 start StateActivity "" 480
+want "host: brightness 0.60"
 want "host: keep screen on 1"
 want "host: brightness 0.30"
+want "window: frame #ff1a1b20 fullscreen"
 want "state dialog laid out"
 send "$insets"
 want "host: exclusion left 33-67 right -"
@@ -167,13 +182,39 @@ windows() {
 
 start OverlayActivity
 want "overlay shown"
-windows "panel 400,300 100x50" "dialog 0,0 300x100" "panel 10,10 100x50" "dialog 200,50 300x100" "toast 600,0 100x50"
+# the layers: the activity's panel, the dialogs with the panel attached to A, the toast, the overlay
+windows "panel 400,300 100x50" "dialog 0,0 300x100" "panel 10,10 100x50" "dialog 200,50 300x100" "toast 600,0 100x50" "overlay 700,400 100x50"
+# AOSP's hide and show of a dialog switch its decor's visibility: the window stays where it was added
 send "tap raise"
 want "overlay raised"
-windows "panel 400,300 100x50" "dialog 200,50 300x100" "dialog 0,0 300x100" "panel 10,10 100x50" "toast 600,0 100x50"
+windows "panel 400,300 100x50" "dialog 0,0 300x100" "panel 10,10 100x50" "dialog 200,50 300x100" "toast 600,0 100x50" "overlay 700,400 100x50"
 send "tap close"
 want "overlay closed"
-windows "panel 400,300 100x50" "dialog 200,50 300x100" "toast 600,0 100x50"
+windows "panel 400,300 100x50" "dialog 200,50 300x100" "toast 600,0 100x50" "overlay 700,400 100x50"
+# shown again: a new add, on top of the dialogs' layer, and its panel went with its first window
+send "tap reshow"
+want "overlay reshown"
+windows "panel 400,300 100x50" "dialog 200,50 300x100" "dialog 0,0 300x100" "toast 600,0 100x50" "overlay 700,400 100x50"
+stop
+
+# placement: a floating dialog in the content frame, inside the bars; any window moved inside its
+# display frame unless FLAG_LAYOUT_NO_LIMITS; a window of a non-floating theme in the whole window
+start PlaceActivity
+want "place shown"
+want "place probe 300x540"
+want "place popup"
+windows "panel 760,440 200x100" "dialog 330,440 300x100" "dialog 330,0 300x100" "dialog 0,0 960x540" "dialog -50,-20 300x100" "dialog 0,0 300x100" "dialog 660,0 300x50"
+send "insets 0 0 0 0 0 0 0 0 0 0 0 30 0 24 0 0 0 0 0 0" # navigation bar 30 px at the bottom, status bar 24 px at the top
+send dump # the windows are placed again in a pass after the insets
+want "viewtree: end"
+want "place probe 300x486" # the screen less the bars (540 - 24 - 30): ViewRootImpl's screenHeightDp
+windows "panel 760,440 200x100" "dialog 330,410 300x100" "dialog 330,24 300x100" "dialog 0,0 960x540" "dialog -50,4 300x100" "dialog 0,24 300x100" "dialog 660,24 300x50"
+stop
+
+# the records draw a window over the activity as they draw the activity's own
+start DrawActivity
+want "draw activity"
+want "draw dialog"
 stop
 
 start PopupActivity

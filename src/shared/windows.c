@@ -1,7 +1,7 @@
 /*
  * Portions Copyright (C) 2006 The Android Open Source Project, from
- * core/java/android/view/Gravity.java at android-security-10.0.0_r75, Apache License 2.0; see
- * doc/AOSP.md.
+ * core/java/android/view/Gravity.java and services/core/java/com/android/server/wm/DisplayPolicy.java
+ * at android-security-10.0.0_r75, Apache License 2.0; see doc/AOSP.md.
  */
 #include <math.h>
 #include <stdarg.h>
@@ -16,6 +16,7 @@
 #include "src/slots/ui.h"
 
 #include "app.h"
+#include "gravity.h"
 #include "upcall.h"
 #include "windows.h"
 
@@ -37,7 +38,8 @@ struct atl_subwindow {
 	struct ui_window_layout layout;
 	struct atl_window_state state;
 	struct atl_window_frame frame;
-	struct atl_window_frame panel; // with a chrome around root: the frame and the chrome
+	struct atl_window_frame display; // the area windows_place moved it into, which its sub-panels share
+	struct atl_window_frame panel;   // with a chrome around root: the frame and the chrome
 	struct atl_window_frame shown, shown_panel; // both moved up by the state's pan
 	bool requested; // added by a show, until a dismiss
 	bool hidden;    // Dialog.hide: still added
@@ -191,6 +193,15 @@ void windows_dispatch_insets(struct atl_app *app)
 	}
 }
 
+void windows_dispatch_configuration(struct atl_app *app)
+{
+	JNIEnv *env = get_jni_env();
+	for (struct atl_subwindow *window = app->subwindows; window; window = window->next) {
+		if (window->requested && !window->leaked)
+			call_window(env, window, handle_cache.window.atlConfigurationChanged);
+	}
+}
+
 void windows_owner_closed(JNIEnv *env, struct atl_app *app, jobject activity)
 {
 	if (app->token_shown && (*env)->IsSameObject(env, app->token_shown, activity))
@@ -338,11 +349,13 @@ JNIEXPORT jboolean JNICALL Java_android_view_Window_nativeShowSubwindow(JNIEnv *
 	} else if (token(window) ? !token_alive(env, token(window)) : window->layout.type < FIRST_SYSTEM_WINDOW) {
 		return false; // BadTokenException
 	}
+	bool added = !window->requested; // a show after a hide keeps the window's place
 	window->requested = true;
 	window->hidden = false;
 	if (!window->held)
 		window->held = _REF(this);
-	raise(app, window);
+	if (added)
+		raise(app, window);
 	windows_update(env, app);
 	return true;
 }
@@ -426,12 +439,17 @@ JNIEXPORT void JNICALL Java_android_view_Window_set_1layout(JNIEnv *env, jobject
 #define GRAVITY_PULL_BEFORE  0x2
 #define GRAVITY_PULL_AFTER   0x4
 #define GRAVITY_Y_SHIFT      4
+#define GRAVITY_CLIP_Y       0x10000000 // Gravity.DISPLAY_CLIP_VERTICAL
+#define GRAVITY_CLIP_X       0x01000000
 #define MEASURE_SPEC_EXACTLY (1 << 30)
 #define MEASURE_SPEC_AT_MOST (2 << 30)
+#define FLAG_LAYOUT_IN_SCREEN 0x00000100 // LayoutParams.FLAG_*
+#define FLAG_LAYOUT_NO_LIMITS 0x00000200
+#define UNBOUNDED             10000 // DisplayPolicy's display frame of a NO_LIMITS window
 
 /* Copyright (C) 2006 The Android Open Source Project: Gravity.apply on one axis, left to right
  * (START and END are LEFT and RIGHT), without AXIS_CLIP; FILL stretches *size */
-static int gravity_apply(int gravity, int *size, int container, int adjust)
+int atl_gravity_apply(int gravity, int *size, int container, int adjust)
 {
 	switch (gravity & (GRAVITY_PULL_BEFORE | GRAVITY_PULL_AFTER)) {
 	case 0:
@@ -446,6 +464,86 @@ static int gravity_apply(int gravity, int *size, int container, int adjust)
 	}
 }
 
+/* Copyright (C) 2006 The Android Open Source Project: Gravity.applyDisplay on one axis: the window
+ * moves inside the display, or fills it when it is bigger; with the axis's DISPLAY_CLIP it is cut */
+static void display_apply(bool clip, int *position, int *size, int display_start, int display_size)
+{
+	int end = *position + *size, display_end = display_start + display_size;
+	if (clip) {
+		if (*position < display_start)
+			*position = display_start;
+		if (end > display_end)
+			end = display_end;
+		*size = end > *position ? end - *position : 0;
+		return;
+	}
+	int off = 0;
+	if (*position < display_start)
+		off = display_start - *position;
+	else if (end > display_end)
+		off = display_end - end;
+	if (!off)
+		return;
+	if (*size > display_size) {
+		*position = display_start;
+		*size = display_size;
+	} else {
+		*position += off;
+	}
+}
+
+/* Copyright (C) 2018 The Android Open Source Project: DisplayPolicy's mContent, the app's window
+ * inside the bars the host shows; cut at the keyboard when ime is set, as offsetInputMethodWindowLw
+ * cuts it whatever the adjust mode */
+static struct atl_window_frame content_frame(const struct atl_subwindow *window, int width, int height, bool ime, bool stable)
+{
+	struct atl_app *app = window->app;
+	struct atl_window_insets insets = atl_app_insets(app);
+	float scale = atl_screen_get()->density_dpi / 160.f;
+	stable |= window->layout.type == TYPE_TOAST; // the stable frame: clear of the bars even when they are hidden
+	const struct atl_edges *none = &(struct atl_edges){0};
+	const struct atl_edges *status = stable || !app->frame.fullscreen ? &insets.status_bars : none;
+	const struct atl_edges *navigation = stable || !app->frame.hide_navigation ? &insets.navigation_bars : none;
+	int left = roundf(fmaxf(status->left, navigation->left) * scale), top = roundf(fmaxf(status->top, navigation->top) * scale);
+	int right = roundf(fmaxf(status->right, navigation->right) * scale), bottom = roundf(fmaxf(status->bottom, navigation->bottom) * scale);
+	if (ime) {
+		int keyboard = roundf(insets.ime.bottom * scale);
+		bottom = fmaxf(bottom, keyboard);
+		if (window->state.adjust == ATL_ADJUST_RESIZE) // height is the room above the keyboard already
+			bottom -= keyboard;
+	}
+	int content_width = width - left - right, content_height = height - top - bottom;
+	return (struct atl_window_frame){left, top, content_width > 0 ? content_width : 0, content_height > 0 ? content_height : 0};
+}
+
+/* Copyright (C) 2018 The Android Open Source Project: DisplayPolicy.layoutWindowLw for a window of a
+ * fullscreen task. The frame the gravity applies in (pf) is mContent, cut at the keyboard; the
+ * display frame it is moved into (df) is mDock, which the keyboard cuts only for adjustResize. A
+ * window with FLAG_LAYOUT_IN_SCREEN, or a sub-panel of the activity, has the app's window. */
+static void window_frames(struct atl_subwindow *window, int screen_width, int screen_height, struct atl_window_frame *container,
+                          struct atl_window_frame *display)
+{
+	int flags = window->layout.flags;
+	if (window->parent) {
+		*container = window->parent->frame;
+		*display = window->parent->display;
+	} else if (is_sub_panel(window) || flags & FLAG_LAYOUT_IN_SCREEN) {
+		*container = *display = (struct atl_window_frame){0, 0, screen_width, screen_height};
+	} else {
+		*container = content_frame(window, screen_width, screen_height, window->layout.type != TYPE_TOAST, false); // a toast: the stable frame
+		*display = window->state.adjust == ATL_ADJUST_RESIZE ? *container : content_frame(window, screen_width, screen_height, false, false);
+	}
+	if (flags & FLAG_LAYOUT_NO_LIMITS)
+		*display = (struct atl_window_frame){-UNBOUNDED, -UNBOUNDED, 2 * UNBOUNDED, 2 * UNBOUNDED};
+}
+
+struct atl_window_frame windows_container(struct atl_subwindow *window, int screen_width, int screen_height)
+{
+	struct atl_window_frame container, display;
+	window_frames(window, screen_width, screen_height, &container, &display);
+	return container;
+}
+
 // LayoutParams' width or height: px, MATCH_PARENT (-1) or WRAP_CONTENT (-2)
 static int window_spec(int size, int available)
 {
@@ -457,15 +555,20 @@ static void place_panel(struct atl_subwindow *window, int screen_width, int scre
 {
 	struct atl_ref *root = (struct atl_ref *)window->decor;
 	const struct ui_window_layout *layout = &window->layout;
+	struct atl_window_frame container, display;
+	window_frames(window, screen_width, screen_height, &container, &display);
+	window->display = display;
 	struct ui_chrome chrome;
-	ui_dialog_chrome(window->chrome, screen_width, screen_height, &chrome);
+	ui_dialog_chrome(window->chrome, container.width, container.height, &chrome);
 	int width = chrome.width - chrome.left - chrome.right;
 	int room = chrome.max_height - chrome.top - chrome.bottom;
 	atl_upcall_view_measure(root, (width > 0 ? width : 0) | MEASURE_SPEC_EXACTLY, (room > 0 ? room : 0) | MEASURE_SPEC_AT_MOST);
 	int height = atl_upcall_view_get_measured(root, true);
 	int panel_width = chrome.width, panel_height = chrome.top + height + chrome.bottom;
-	int left = gravity_apply(layout->gravity, &panel_width, screen_width, layout->x);
-	int top = gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &panel_height, screen_height, layout->y);
+	int left = container.left + atl_gravity_apply(layout->gravity, &panel_width, container.width, layout->x);
+	int top = container.top + atl_gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &panel_height, container.height, layout->y);
+	display_apply(layout->gravity & GRAVITY_CLIP_X, &left, &panel_width, display.left, display.width);
+	display_apply(layout->gravity & GRAVITY_CLIP_Y, &top, &panel_height, display.top, display.height);
 	window->panel = (struct atl_window_frame){left, top, chrome.width, panel_height};
 	window->frame = (struct atl_window_frame){left + chrome.left, top + chrome.top, width, height};
 }
@@ -499,9 +602,14 @@ void windows_place(struct atl_subwindow *window, int screen_width, int screen_he
 	}
 	struct atl_ref *root = (struct atl_ref *)window->decor;
 	const struct ui_window_layout *layout = &window->layout;
-	// a sub-panel lays out in its parent's frame (AOSP's attached window), measured against the screen
-	struct atl_window_frame container = window->parent ? window->parent->frame : (struct atl_window_frame){0, 0, screen_width, screen_height};
-	int spec_width = layout->width == -1 ? container.width : screen_width, spec_height = layout->height == -1 ? container.height : screen_height;
+	struct atl_window_frame container, display;
+	window_frames(window, screen_width, screen_height, &container, &display);
+	window->display = display;
+	/* ViewRootImpl measures WRAP_CONTENT against screenWidthDp by screenHeightDp, the display less the bars
+	 * (getConfigDisplayHeight), the keyboard's cut only where windows_area made it (adjustResize); MATCH_PARENT
+	 * against the frame the window manager gave */
+	struct atl_window_frame screen = content_frame(window, screen_width, screen_height, window->state.adjust == ATL_ADJUST_RESIZE, true);
+	int spec_width = layout->width == -1 ? container.width : screen.width, spec_height = layout->height == -1 ? container.height : screen.height;
 	atl_upcall_view_measure(root, window_spec(layout->width, spec_width), window_spec(layout->height, spec_height));
 	int width = atl_upcall_view_get_measured(root, false), height = atl_upcall_view_get_measured(root, true);
 	if (layout->width == -2 && width < layout->min_width) {
@@ -510,8 +618,10 @@ void windows_place(struct atl_subwindow *window, int screen_width, int screen_he
 		height = atl_upcall_view_get_measured(root, true);
 	}
 	int measured_width = width, measured_height = height;
-	int left = container.left + gravity_apply(layout->gravity, &width, container.width, layout->x);
-	int top = container.top + gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, container.height, layout->y);
+	int left = container.left + atl_gravity_apply(layout->gravity, &width, container.width, layout->x);
+	int top = container.top + atl_gravity_apply(layout->gravity >> GRAVITY_Y_SHIFT, &height, container.height, layout->y);
+	display_apply(layout->gravity & GRAVITY_CLIP_X, &left, &width, display.left, display.width);
+	display_apply(layout->gravity & GRAVITY_CLIP_Y, &top, &height, display.top, display.height);
 	if (width != measured_width || height != measured_height)
 		atl_upcall_view_measure(root, width | MEASURE_SPEC_EXACTLY, height | MEASURE_SPEC_EXACTLY);
 	window->frame = (struct atl_window_frame){left, top, width, height};

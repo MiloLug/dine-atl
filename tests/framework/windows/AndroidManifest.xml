@@ -5,5 +5,9 @@
 		<activity android:name=".PlainActivity"/>
 		<activity android:name=".ResizeModeActivity" android:windowSoftInputMode="adjustResize|stateHidden"/>
 		<activity android:name=".ConfigModeActivity" android:configChanges="uiMode"/>
+		<activity android:name=".VisibleModeActivity" android:windowSoftInputMode="stateVisible"/>
+		<activity android:name=".AlwaysVisibleModeActivity" android:windowSoftInputMode="stateAlwaysVisible"/>
+		<activity android:name=".AlwaysHiddenModeActivity" android:windowSoftInputMode="stateAlwaysHidden"/>
+		<activity android:name=".ResizeFieldActivity" android:windowSoftInputMode="adjustResize"/>
 	</application>
 </manifest>

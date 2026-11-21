@@ -1,13 +1,15 @@
 /*
  * Portions Copyright (C) 2006 The Android Open Source Project, from
  * core/java/com/android/internal/policy/PhoneWindow.java, core/java/android/view/Window.java,
- * core/java/com/android/internal/policy/DecorView.java and core/java/android/view/ViewRootImpl.java
+ * core/java/com/android/internal/policy/DecorView.java, core/java/android/view/ViewRootImpl.java and
+ * services/core/java/com/android/server/inputmethod/InputMethodManagerService.java
  * at android-security-10.0.0_r75, Apache License 2.0; see doc/AOSP.md.
  */
 package android.view;
 
 import android.R;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Insets;
 import android.graphics.Rect;
@@ -99,10 +101,12 @@ public class Window {
 	private boolean light_by_controller;
 
 	private Window.Callback callback;
+	private final Window.Callback creator; // the Activity or Dialog that made it: setCallback leaves it
 	private Context context;
 
 	public Window(Context context, Window.Callback callback) {
 		this.callback = callback;
+		this.creator = callback;
 		this.context = context;
 		features = getDefaultFeatures(context);
 		decorView = new FrameLayout(context);
@@ -206,8 +210,81 @@ public class Window {
 			root.dispatchWindowVisibilityChanged(visible ? View.VISIBLE : View.GONE);
 		if (window_visible != visible) // a listener changed it meanwhile
 			return;
-		if (callback instanceof android.app.Dialog)
-			((android.app.Dialog)callback).atlWindowVisible(visible);
+		if (creator instanceof android.app.Dialog)
+			((android.app.Dialog)creator).atlWindowVisible(visible);
+		if (visible && soft_input_pending) {
+			soft_input_pending = false;
+			atlSoftInputState(true);
+		}
+	}
+
+	private boolean soft_input_pending; // a Dialog's show: the window's soft input state applies as it shows
+
+	/** @hide Dialog.show: the window shows going forward (AOSP's show sets the forward bit around its addView) */
+	public void atlSoftInputPending(boolean pending) {
+		soft_input_pending = pending;
+	}
+
+	/* Copyright (C) The Android Open Source Project: InputMethodManagerService's
+	 * startInputOrWindowGainedFocusInternalLocked, the switch on the soft input state when the window
+	 * gains the focus, in a post after the window reached the ui backend. The keyboard shows for a
+	 * focused text editor only: AOSP shows one without an editor below target SDK 28. */
+	/** @hide */
+	public void atlSoftInputState(final boolean forward) {
+		new Handler(context.getMainLooper()).post(new Runnable() {
+			@Override
+			public void run() {
+				if (window_visible)
+					applySoftInputState(forward);
+			}
+		});
+	}
+
+	private void applySoftInputState(boolean forward) {
+		// the focused window's: the activity's only while no window over it takes the focus
+		Window key = nativeKeyWindow(context);
+		if (subwindow == 0 ? key != null : key != this)
+			return;
+		android.view.inputmethod.InputMethodManager imm = android.view.inputmethod.InputMethodManager.atlOf(context);
+		View focus = root.findFocus();
+		boolean editor = focus != null && focus.onCheckIsTextEditor();
+		switch (params.softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_STATE) {
+		case WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED:
+			// AOSP's doAutoShow: the resolved adjust, or a large screen
+			boolean auto_show = resolvedAdjust() == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+			                    || context.getResources().getConfiguration().isLayoutSizeAtLeast(android.content.res.Configuration.SCREENLAYOUT_SIZE_LARGE);
+			if (!editor || !auto_show) {
+				if (WindowManager.LayoutParams.mayUseInputMethod(params.flags))
+					imm.hideSoftInputFromWindow(token, 0);
+			} else if (forward) {
+				imm.showSoftInput(focus, 0);
+			}
+			break;
+		case WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE:
+			if (forward && editor)
+				imm.showSoftInput(focus, 0);
+			break;
+		case WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE:
+			if (editor)
+				imm.showSoftInput(focus, 0);
+			break;
+		case WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN:
+			if (forward)
+				imm.hideSoftInputFromWindow(token, 0);
+			break;
+		case WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN:
+			imm.hideSoftInputFromWindow(token, 0);
+			break;
+		}
+	}
+
+	/* windows.c, after a night change: AOSP's ViewRootImpl hands its view tree the configuration of
+	 * its Resources, one of each added window. An activity that doesn't handle uiMode keeps its
+	 * configuration, and so do its windows. */
+	private void atlConfigurationChanged() {
+		if (owner instanceof android.app.Activity && !context.get_atl_loaded_app().atlHandlesUiMode((android.app.Activity)owner))
+			return;
+		root.dispatchConfigurationChanged(new Configuration(context.getResources().getConfiguration()));
 	}
 
 	// windows.c: its activity finished while it showed
@@ -284,6 +361,11 @@ public class Window {
 
 	public final Callback getCallback() {
 		return this.callback;
+	}
+
+	/** @hide the Activity or Dialog that made this window; getCallback is whatever the app set since */
+	Callback atlCreator() {
+		return creator;
 	}
 	public void setCallback(Window.Callback callback) {
 		this.callback = callback;
@@ -470,11 +552,11 @@ public class Window {
 			if (token_window == null) // a parent that went: nativeShowSubwindow's
 				throw new WindowManager.BadTokenException("Unable to add window -- token " + params.token + " is not valid; is your activity running?");
 			parent = token_window;
-			owner = token_window.subwindow != 0 ? token_window.owner : token_window.callback;
+			owner = token_window.subwindow != 0 ? token_window.owner : token_window.creator;
 		} else if (params.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW) {
-			if (token_window == null || !(token_window.callback instanceof android.app.Activity))
+			if (token_window == null || !(token_window.creator instanceof android.app.Activity))
 				throw new WindowManager.BadTokenException("Unable to add window -- token " + params.token + " is not valid; is your activity running?");
-			owner = token_window.callback;
+			owner = token_window.creator;
 		}
 		Window window = new Added(context, view, params);
 		window.panel_parent = parent;
@@ -903,10 +985,13 @@ public class Window {
 		/* Copyright (C) 2006 The Android Open Source Project: PhoneWindow.generateLayout's floating
 		 * window, dim and minimum width */
 		boolean floating = a.getBoolean(com.android.internal.R.styleable.Window_windowIsFloating, false);
+		int layout_flags = (WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR) & ~forced_flags;
 		if (floating) {
 			params.width = WindowManager.LayoutParams.WRAP_CONTENT;
 			params.height = WindowManager.LayoutParams.WRAP_CONTENT;
-			params.flags &= ~(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR) | forced_flags;
+			params.flags &= ~layout_flags;
+		} else { // the window is laid out in the whole screen, its decor insets its content
+			params.flags |= layout_flags;
 		}
 		if (a.getBoolean(com.android.internal.R.styleable.Window_backgroundDimEnabled, floating)) {
 			if ((forced_flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) == 0)

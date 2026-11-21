@@ -14,10 +14,11 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/* The order of the windows over an activity: dialog A with a panel attached to it, then dialog B,
- * then a TYPE_TOAST window, which stays on top of both dialogs; a panel attached to the activity,
- * added last, stays under them. "raise" shows A again: it goes
- * above B with its panel; "close" dismisses A, and its panel goes with it. The dialogs aren't
+/* The order of the windows over an activity: dialog A with a panel attached to it, a
+ * TYPE_APPLICATION_OVERLAY window, a TYPE_TOAST window, then dialog B: the toast stays above both
+ * dialogs and the overlay above the toast; a panel attached to the activity, added last, stays under
+ * them. "raise" hides and shows A, which leaves it where it was; "close" dismisses A, and its panel goes with it; "reshow" shows A
+ * again, a new add, at the top of the dialogs' layer, its panel not back. The dialogs aren't
  * touch-modal, so the activity's buttons take taps. */
 public class OverlayActivity extends Activity {
 	private static final String TAG = "windows";
@@ -77,8 +78,17 @@ public class OverlayActivity extends Activity {
 				Log.i(TAG, "overlay closed");
 			}
 		});
+		Button reshow = new Button(this);
+		reshow.setText("reshow");
+		reshow.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View view) {
+				first.show();
+				Log.i(TAG, "overlay reshown");
+			}
+		});
 		buttons.addView(raise);
 		buttons.addView(close);
+		buttons.addView(reshow);
 		setContentView(buttons);
 
 		first = dialog("dialog A", 0, 0);
@@ -86,6 +96,9 @@ public class OverlayActivity extends Activity {
 		panel.token = first.getWindow().getDecorView().getWindowToken();
 		panel.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE; // else touch-modal: it would take the activity's taps
 		getWindowManager().addView(text("panel of A"), panel);
+		WindowManager.LayoutParams overlay = small(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, 700, 400);
+		overlay.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+		getWindowManager().addView(text("overlay"), overlay);
 		WindowManager.LayoutParams toast = small(WindowManager.LayoutParams.TYPE_TOAST, 600, 0);
 		toast.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 		getWindowManager().addView(text("toast"), toast);

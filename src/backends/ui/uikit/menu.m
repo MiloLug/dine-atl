@@ -118,14 +118,14 @@ void *ui_menu_show(struct ui_window *window, struct ui_view *anchor, const struc
 {
 	struct uikit_menu *shown = calloc(1, sizeof(*shown));
 	shown->app = window->app;
-	NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:n];
 	struct ui_menu_item *copy = malloc((n ? n : 1) * sizeof(*copy));
-	for (int i = 0; i < n; i++) {
-		[titles addObject:@(items[i].title)];
-		copy[i] = items[i];
-		copy[i].title = NULL;
-	}
 	@autoreleasepool {
+		NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:n];
+		for (int i = 0; i < n; i++) {
+			[titles addObject:@(items[i].title)];
+			copy[i] = items[i];
+			copy[i].title = NULL;
+		}
 		uikit_enqueue(window->app, ^{
 			ATLMenuButton *button = [ATLMenuButton buttonWithType:UIButtonTypeCustom];
 			button.atlMenu = menu;

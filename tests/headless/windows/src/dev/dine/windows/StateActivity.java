@@ -16,8 +16,9 @@ import android.widget.TextView;
 import java.util.Collections;
 
 /* A dialog's window state reaches the host as the activity's does: it keeps the screen on, sets
- * the brightness and excludes a strip of the left edge, all from its onCreate before its show. Its
- * window, 200x100 px at the left edge, 100 px down, takes the part of the insets it overlaps. */
+ * the brightness (over the activity's own) and excludes a strip of the left edge, and is
+ * fullscreen, all from its onCreate before its show. Its window, 200x100 px at the left edge, 100
+ * px down, takes the part of the insets it overlaps. */
 public class StateActivity extends Activity {
 	private static final String TAG = "windows";
 
@@ -27,11 +28,14 @@ public class StateActivity extends Activity {
 		TextView text = new TextView(this);
 		text.setText("state");
 		setContentView(text);
+		WindowManager.LayoutParams own = getWindow().getAttributes();
+		own.screenBrightness = 0.6f;
+		getWindow().setAttributes(own);
 		Dialog dialog = new Dialog(this) {
 			@Override
 			protected void onCreate(Bundle savedInstanceState) {
 				getWindow().setBackgroundDrawable(new ColorDrawable(Color.WHITE));
-				getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+				getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_FULLSCREEN);
 				WindowManager.LayoutParams params = getWindow().getAttributes();
 				params.screenBrightness = 0.3f;
 				params.gravity = Gravity.LEFT | Gravity.TOP;

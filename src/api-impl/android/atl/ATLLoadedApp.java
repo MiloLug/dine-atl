@@ -223,11 +223,11 @@ public final class ATLLoadedApp {
 	/* atl_nav_set_night's post, on the app's main thread: AOSP's ActivityThread.handleConfigurationChanged
 	 * for the night bits. An activity whose manifest's configChanges covers uiMode hears it, any other
 	 * keeps its configuration until a recreation (multi-app MA5). */
-	private void applyNight(int night, Activity[] activities) {
+	private boolean applyNight(int night, Activity[] activities) {
 		applySystemNight(night);
 		int old = config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
 		if (old == night)
-			return;
+			return false;
 		config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
 		java.util.ArrayList<Resources> live = new java.util.ArrayList<>();
 		synchronized (made_resources) {
@@ -246,7 +246,7 @@ public final class ATLLoadedApp {
 		if (application != null)
 			application.onConfigurationChanged(changed);
 		for (Activity activity : activities) {
-			if ((manifestConfigChanges(activity) & android.content.pm.ActivityInfo.CONFIG_UI_MODE) == 0) {
+			if (!atlHandlesUiMode(activity)) {
 				Log.i(TAG, activity.getClass().getName() + " doesn't handle uiMode; keeps its configuration");
 				continue;
 			}
@@ -254,6 +254,12 @@ public final class ATLLoadedApp {
 			activity.onConfigurationChanged(own);
 			activity.getWindow().getDecorView().dispatchConfigurationChanged(own);
 		}
+		return true; // windows.c goes on to the registry's windows
+	}
+
+	/** @hide whether the activity's manifest covers uiMode: its windows hear a night change */
+	public boolean atlHandlesUiMode(Activity activity) {
+		return (manifestConfigChanges(activity) & android.content.pm.ActivityInfo.CONFIG_UI_MODE) != 0;
 	}
 
 	// a configuration context that overrides the night bits keeps them

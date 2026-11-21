@@ -64,6 +64,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 	// native code's (shared/activity.c): 0 created, 1 started, 2 resumed, 3 stopped
 	private int lifecycle;
 	private boolean windowFocus;
+	private boolean soft_forward; // activity.c: its resume came going forward (ActivityThread's isForward), until its window's focus reads it
 	private CharSequence title = null;
 	private ActionBar action_bar;
 	private boolean title_ready; // AOSP's mTitleReady: from onPostCreate
@@ -352,6 +353,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
 			return;
 		windowFocus = hasFocus;
 		onWindowFocusChanged(hasFocus);
+		if (hasFocus) { // after the callbacks, as ViewRootImpl calls onPostWindowFocus
+			boolean forward = soft_forward;
+			soft_forward = false;
+			window.atlSoftInputState(forward);
+		}
 	}
 
 	protected void onSaveInstanceState(Bundle outState) {

@@ -38,11 +38,20 @@
 	bool stale;                    // the model changed in a way the presented alert can't show
 	UIAlertController *controller; // built and presenting, presented or dismissing
 	UIAlertAction *actions[3];     // the controller's buttons
+	int rank;                      // its place among the windows over the activities, the bottom 0 (view.m)
 }
 @end
 
 @implementation ATLDialog
 @end
+
+// the actions' handlers hold the dialog: they go with the controller
+static void forget_controller(ATLDialog *dialog)
+{
+	dialog->controller = nil;
+	for (int i = 0; i < 3; i++)
+		dialog->actions[i] = nil;
+}
 
 struct ui_dialog_state {
 	void *dialog; // an ATLDialog, retained
@@ -55,6 +64,44 @@ struct ui_dialog_state {
 		struct ui_chrome chrome;
 	} measured;
 };
+
+/* Every alert of the process, for the order of the stack: UIKit's thread only. UIKit stacks the
+ * controllers in the order they present, and the registry has its own: an alert goes in its place by
+ * taking the ones above it down and presenting them again after it. */
+static NSHashTable<ATLDialog *> *live_dialogs(void)
+{
+	static NSHashTable<ATLDialog *> *table;
+	if (!table)
+		table = [NSHashTable weakObjectsHashTable];
+	return table;
+}
+
+// the alerts presented above a controller, bottom first: UIKit takes them down with the controller's child
+static NSArray<ATLDialog *> *presented_above(UIViewController *controller)
+{
+	NSMutableArray<ATLDialog *> *above = [NSMutableArray array];
+	for (UIViewController *up = controller.presentedViewController; up; up = up.presentedViewController) {
+		for (ATLDialog *other in live_dialogs()) {
+			if (other->controller == up)
+				[above addObject:other];
+		}
+	}
+	return above;
+}
+
+// the alerts of its app that the registry has above it and that are presented, bottom first
+static NSArray<ATLDialog *> *uppers_of(ATLDialog *dialog)
+{
+	NSMutableArray<ATLDialog *> *uppers = [NSMutableArray array];
+	for (ATLDialog *other in live_dialogs()) {
+		if (other != dialog && other->app == dialog->app && other->controller.presentingViewController && other->rank > dialog->rank)
+			[uppers addObject:other];
+	}
+	[uppers sortUsingComparator:^NSComparisonResult(ATLDialog *a, ATLDialog *b) {
+		return a->rank < b->rank ? NSOrderedAscending : a->rank > b->rank ? NSOrderedDescending : NSOrderedSame;
+	}];
+	return uppers;
+}
 
 static ATLDialog *get_dialog(struct ui_window *window)
 {
@@ -71,15 +118,39 @@ struct ui_window *ui_dialog_new(struct atl_app *app, struct atl_ref *dialog_ref)
 		window->app = app;
 		window->dialog = calloc(1, sizeof(*window->dialog));
 		window->dialog->dialog = (void *)CFBridgingRetain(dialog);
+		uikit_enqueue(app, ^{
+			[live_dialogs() addObject:dialog];
+		});
 		return window;
 	}
 }
 
 static void log_line(const char *line)
 {
+#ifdef ATL_TEST_HOOKS
 	printf("dialog: %s\n", line);
 	fflush(stdout);
+#endif
 }
+
+#ifdef ATL_TEST_HOOKS
+// the presented alert's title, and the one it is presented over: the order of stacked alerts shows in the lines
+static void log_presented(ATLDialog *dialog)
+{
+	ATLDialog *under = nil;
+	for (ATLDialog *other in live_dialogs()) {
+		if (other->controller && other->controller == dialog->controller.presentingViewController)
+			under = other;
+	}
+	if (under)
+		printf("dialog: presented \"%s\" above \"%s\"\n", dialog->title.UTF8String ?: "", under->title.UTF8String ?: "");
+	else
+		printf("dialog: presented \"%s\"\n", dialog->title.UTF8String ?: "");
+	fflush(stdout);
+}
+#else
+static void log_presented(ATLDialog *dialog) {}
+#endif
 
 static void request_present(ATLDialog *dialog, bool animated);
 
@@ -123,7 +194,7 @@ static UIAlertAction *action(ATLDialog *dialog, UIAlertController *controller, N
 	return [UIAlertAction actionWithTitle:title style:style handler:^(UIAlertAction *tapped) {
 		// UIKit dismissed the alert before calling this; a newer one may be up already
 		if (dialog->controller == weak_controller)
-			dialog->controller = nil;
+			forget_controller(dialog);
 		log_line("closed");
 		post_answer(dialog, which);
 	}];
@@ -169,6 +240,45 @@ static UIViewController *top_controller(void)
 
 static void rebuild(ATLDialog *dialog);
 
+/* UIKit's dismiss on a controller takes down its child and everything above it, whichever alerts
+ * those are: they lose their controllers here, and present_again (bottom first) puts back the ones
+ * still wanted once the dismissal is done. */
+static NSArray<ATLDialog *> *forget_above(UIViewController *controller)
+{
+	NSArray<ATLDialog *> *above = presented_above(controller);
+	for (ATLDialog *upper in above)
+		forget_controller(upper);
+	return above;
+}
+
+static void present_again(NSArray<ATLDialog *> *alerts)
+{
+	for (ATLDialog *alert in alerts) {
+		if (alert->wanted && !alert->panel && !alert->covered)
+			request_present(alert, false);
+	}
+}
+
+// a controller that presents another leaves with that one: the alerts above go first, one dismiss, then it goes
+static void take_down(UIAlertController *controller, bool animated, void (^done)(void))
+{
+	NSArray<ATLDialog *> *above = forget_above(controller);
+	void (^finish)(void) = ^{
+		if (done)
+			done();
+		present_again(above);
+	};
+	if (!controller.presentingViewController || controller.isBeingDismissed) {
+		finish();
+	} else if (controller.presentedViewController) {
+		[controller dismissViewControllerAnimated:NO completion:^{
+			[controller dismissViewControllerAnimated:animated completion:finish];
+		}];
+	} else {
+		[controller dismissViewControllerAnimated:animated completion:finish];
+	}
+}
+
 static void present(ATLDialog *dialog, bool animated)
 {
 	// closed before it could show, shown again meanwhile, or not a controller's now
@@ -190,13 +300,25 @@ static void present(ATLDialog *dialog, bool animated)
 		}];
 		return;
 	}
+	/* The registry's order: the presented alerts it has above this one go first and come back after it;
+	 * the dismissal from the lowest one's presenter takes down everything above that one. */
+	NSArray<ATLDialog *> *uppers = uppers_of(dialog);
+	if (uppers.count) {
+		UIViewController *presenter = uppers.firstObject->controller.presentingViewController;
+		NSArray<ATLDialog *> *above = forget_above(presenter);
+		[presenter dismissViewControllerAnimated:NO completion:^{
+			present(dialog, animated);
+			present_again(above);
+		}];
+		return;
+	}
 	dialog->presenting = false;
 	dialog->stale = false;
 	UIAlertController *controller = dialog->controller = build(dialog);
 	controller.popoverPresentationController.sourceView = top.view;
 	controller.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(top.view.bounds), CGRectGetMidY(top.view.bounds), 0, 0);
 	[top presentViewController:controller animated:animated completion:^{
-		log_line("presented");
+		log_presented(dialog);
 		if (dialog->stale && dialog->controller == controller)
 			rebuild(dialog);
 	}];
@@ -217,10 +339,10 @@ static void request_present(ATLDialog *dialog, bool animated)
 static void rebuild(ATLDialog *dialog)
 {
 	UIAlertController *old = dialog->controller;
-	dialog->controller = nil;
-	[old dismissViewControllerAnimated:NO completion:^{
+	forget_controller(dialog);
+	take_down(old, false, ^{
 		request_present(dialog, false);
-	}];
+	});
 }
 
 static NSString *string(const char *chars)
@@ -232,9 +354,9 @@ static NSString *string(const char *chars)
 static void dismiss_controller(ATLDialog *dialog)
 {
 	UIAlertController *controller = dialog->controller;
-	dialog->controller = nil;
+	forget_controller(dialog);
 	if (controller.presentingViewController && !controller.isBeingDismissed)
-		[controller dismissViewControllerAnimated:NO completion:nil];
+		take_down(controller, false, nil);
 }
 
 static void show_panel(struct ui_window *window, const struct ui_alert *alert)
@@ -350,12 +472,12 @@ void ui_dialog_close(struct ui_window *window)
 			UIAlertController *controller = dialog->controller;
 			if (!controller) // a tap closed it already, or it never showed
 				return;
-			dialog->controller = nil;
+			forget_controller(dialog);
 			// dialog 2 may be up already: dismiss only this one, and only while it is presented
 			if (controller.presentingViewController && !controller.isBeingDismissed) {
-				[controller dismissViewControllerAnimated:YES completion:^{
+				take_down(controller, true, ^{
 					log_line("closed");
-				}];
+				});
 			}
 		});
 	}
@@ -379,7 +501,7 @@ void ui_dialog_free(struct ui_window *window)
 			struct atl_ref *ref = dialog->ref;
 			dialog->ref = NULL;
 			dialog->wanted = false;
-			dialog->controller = nil;
+			forget_controller(dialog);
 			dialog->panelView.action = nil; // it holds the dialog
 			dialog->panelView = nil;
 			// answers posted from this thread before stay ahead of it and still use the ref
@@ -466,4 +588,9 @@ void uikit_dialog_set_covered(ATLDialog *dialog, bool covered)
 		dismiss_controller(dialog);
 	else if (dialog->wanted && !dialog->panel && !dialog->controller)
 		request_present(dialog, false);
+}
+
+void uikit_dialog_set_rank(ATLDialog *dialog, int rank)
+{
+	dialog->rank = rank;
 }

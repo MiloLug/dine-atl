@@ -1,7 +1,7 @@
 /*
  * Portions Copyright (C) 2008 The Android Open Source Project, from
- * core/java/android/app/AlertDialog.java at android-security-10.0.0_r75, Apache License 2.0;
- * see doc/AOSP.md.
+ * core/java/android/app/AlertDialog.java and core/java/com/android/internal/app/AlertController.java
+ * at android-security-10.0.0_r75, Apache License 2.0; see doc/AOSP.md.
  */
 package android.app;
 
@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -28,7 +29,8 @@ import android.widget.TextView;
 /* The ui slot draws the alert: a plain one (title, message, buttons, setItems) by itself, any other
  * as a panel around the window's decor view, which holds the Android content (setView, setAdapter,
  * setCustomTitle). String choice lists are the alert's own rows; getListView's ListView then keeps
- * their state undrawn. */
+ * their state undrawn. AOSP's views of the alert (message, alertTitle, button1 to button3) are
+ * undrawn stand-ins outside any window, which findViewById finds once the dialog is created. */
 public class AlertDialog extends Dialog implements DialogInterface {
 	// ui_alert_check
 	private static final int CHECK_NONE = 0;
@@ -58,6 +60,8 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	private final CharSequence[] buttonLabels = new CharSequence[3];
 	private final OnClickListener[] buttonListeners = new OnClickListener[3];
 	private final AlertButton[] buttons = new AlertButton[3]; // getButton's, made on demand
+	private AlertText messageView, titleView; // from onCreate
+	private TextView customMessage; // under a custom title, the content's own
 
 	private native void nativeShowAlert(long ptr, String title, String message, String[] items, int check, boolean[] checked,
 	                                    int progress, boolean indeterminate, int value, int max, boolean panel, boolean content,
@@ -86,6 +90,8 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	@Override
 	public void setTitle(CharSequence title) {
 		super.setTitle(title);
+		if (titleView != null && !titleView.syncing)
+			titleView.sync(title);
 		changed();
 	}
 
@@ -95,6 +101,10 @@ public class AlertDialog extends Dialog implements DialogInterface {
 
 	public void setMessage(CharSequence message) {
 		this.message = message;
+		if (messageView != null && !messageView.syncing)
+			messageView.sync(message);
+		if (customMessage != null)
+			customMessage.setText(message);
 		changed();
 	}
 
@@ -136,6 +146,47 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		return buttons[i];
 	}
 
+	// AOSP's button1 to button3: positive, negative, neutral
+	private static int buttonId(int which) {
+		return which == DialogInterface.BUTTON_POSITIVE ? android.R.id.button1 : which == DialogInterface.BUTTON_NEGATIVE ? android.R.id.button2 : android.R.id.button3;
+	}
+
+	/* A stand-in for AOSP's message and alertTitle views, as AlertButton is for its buttons: an
+	 * app's setText on it is setMessage or setTitle. */
+	private static class AlertText extends TextView {
+		private final AlertDialog dialog;
+		private final boolean title;
+		private boolean bound; // TextView's constructor sets the text before the dialog is known
+		boolean syncing;
+
+		AlertText(AlertDialog dialog, boolean title) {
+			super(dialog.getContext());
+			this.dialog = dialog;
+			this.title = title;
+			bound = true;
+		}
+
+		// the model's text, which doesn't go back to the model
+		void sync(CharSequence text) {
+			syncing = true;
+			setText(text);
+			syncing = false;
+		}
+
+		@Override
+		public void setText(CharSequence text, TextView.BufferType type) {
+			super.setText(text, type);
+			if (!bound || syncing)
+				return;
+			syncing = true;
+			if (title)
+				dialog.setTitle(text);
+			else
+				dialog.setMessage(text);
+			syncing = false;
+		}
+	}
+
 	private static class AlertButton extends Button {
 		private final AlertDialog dialog;
 		private final int which;
@@ -145,6 +196,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
 			super(dialog.getContext());
 			this.dialog = dialog;
 			this.which = which;
+			setId(buttonId(which));
 			CharSequence label = dialog.buttonLabels[-1 - which];
 			setText(label);
 			setVisibility(label != null ? View.VISIBLE : View.GONE);
@@ -301,6 +353,16 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		firstPanel = panel();
+		// AlertController's: an alert without a field to type into leaves the keyboard alone
+		if (view == null || !canTextInput(view))
+			getWindow().setFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM, WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+		messageView = new AlertText(this, false);
+		messageView.setId(android.R.id.message);
+		messageView.sync(message);
+		messageView.setVisibility(message != null ? View.VISIBLE : View.GONE);
+		titleView = new AlertText(this, true);
+		titleView.setId(com.android.internal.R.id.alertTitle);
+		titleView.sync(title);
 		if (!content())
 			return;
 		LinearLayout content = new LinearLayout(getContext());
@@ -308,9 +370,10 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		if (customTitle != null) {
 			content.addView(customTitle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 			if (message != null) { // under the custom title, as AlertController's
-				TextView shown = new TextView(getContext());
-				shown.setText(message);
-				content.addView(shown, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+				customMessage = new TextView(getContext());
+				customMessage.setId(android.R.id.message);
+				customMessage.setText(message);
+				content.addView(customMessage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 			}
 		}
 		if (adapter != null)
@@ -325,6 +388,20 @@ public class AlertDialog extends Dialog implements DialogInterface {
 		View decor = getWindow().getDecorView();
 		decor.setBackground(null);
 		decor.setPadding(0, 0, 0, 0);
+	}
+
+	/* Copyright (C) 2008 The Android Open Source Project: AlertController.canTextInput */
+	private static boolean canTextInput(View view) {
+		if (view.onCheckIsTextEditor())
+			return true;
+		if (view instanceof ViewGroup) {
+			ViewGroup group = (ViewGroup)view;
+			for (int i = group.getChildCount() - 1; i >= 0; i--) {
+				if (canTextInput(group.getChildAt(i)))
+					return true;
+			}
+		}
+		return false;
 	}
 
 	private ListView adapterList() {
@@ -351,6 +428,25 @@ public class AlertDialog extends Dialog implements DialogInterface {
 	@Override
 	protected boolean atlNativeAlert() {
 		return true;
+	}
+
+	// the decor's views first (the content's, a custom title's message), then the stand-ins: AOSP has none before onCreate
+	@Override
+	public View findViewById(int id) {
+		View found = super.findViewById(id);
+		if (found != null || firstPanel == null)
+			return found;
+		if (id == android.R.id.message)
+			return messageView;
+		if (id == com.android.internal.R.id.alertTitle)
+			return titleView;
+		if (id == android.R.id.button1)
+			return getButton(BUTTON_POSITIVE);
+		if (id == android.R.id.button2)
+			return getButton(BUTTON_NEGATIVE);
+		if (id == android.R.id.button3)
+			return getButton(BUTTON_NEUTRAL);
+		return null;
 	}
 
 	// the theme the content draws in: the panel takes its lightness

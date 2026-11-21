@@ -3,6 +3,7 @@ package dev.dine.framework.windows;
 import android.app.Dialog;
 import android.content.Intent;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
@@ -194,5 +195,64 @@ public class WindowManagerTest extends android.test.InstrumentationTestCase {
 				activity.getWindowManager().removeView(view);
 			}
 		});
+	}
+
+	// AppCompat's delegate replaces the activity window's callback: the window's owner stays the activity
+	private void wrapCallback() {
+		onMain(new Runnable() {
+			public void run() {
+				activity.getWindow().setCallback(new CallbackWrapper(activity));
+			}
+		});
+	}
+
+	public void testApplicationWindowAfterTheCallbackIsReplaced() {
+		wrapCallback();
+		final RuntimeException[] thrown = new RuntimeException[1];
+		final View view = new View(activity);
+		onMain(new Runnable() {
+			public void run() {
+				try {
+					activity.getWindowManager().addView(view, new WindowManager.LayoutParams(WindowManager.LayoutParams.TYPE_APPLICATION));
+				} catch (RuntimeException e) {
+					thrown[0] = e;
+				}
+			}
+		});
+		assertNull("no exception", thrown[0]);
+		assertTrue("attached", view.isAttachedToWindow());
+		onMain(new Runnable() {
+			public void run() {
+				activity.getWindowManager().removeView(view);
+			}
+		});
+	}
+
+	// ATLInput.key gives a shown dialog the Back key whatever callback the activity's window has
+	public void testDialogTakesBackAfterTheCallbackIsReplaced() throws Exception {
+		wrapCallback();
+		final Dialog[] dialog = new Dialog[1];
+		onMain(new Runnable() {
+			public void run() {
+				dialog[0] = new Dialog(activity);
+				dialog[0].setContentView(new TextView(activity));
+				dialog[0].show();
+			}
+		});
+		final java.lang.reflect.Method key = Class.forName("android.view.ATLInput").getDeclaredMethod("key", View.class, KeyEvent.class);
+		key.setAccessible(true);
+		onMain(new Runnable() {
+			public void run() {
+				try {
+					long now = android.os.SystemClock.uptimeMillis();
+					View root = activity.getWindow().getDecorView();
+					key.invoke(null, root, new KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0));
+					key.invoke(null, root, new KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
+				} catch (ReflectiveOperationException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		});
+		assertFalse("the dialog took Back", dialog[0].isShowing());
 	}
 }

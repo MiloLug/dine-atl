@@ -94,8 +94,8 @@ send home
 expect "nav: A onPause" "dialog: close" "nav: A onStop" "host: task back host"
 send front
 expect "nav: A onRestart" "nav: A onStart" "nav: A insets $insets" "nav: A onResume" "$list" "host: task front host"
-send back # the shown list takes it: cancel, then the close
-expect "nav: list canceled" "dialog: close"
+send back # the shown list takes it: its removal, then the cancel listener, as AOSP's cancel() sends the message after it dismisses
+expect "dialog: close" "nav: list canceled"
 # the status bars and the IME, a 24 dp bar and a 200 dp keyboard; then the window's own size
 send "insets $insets 0 24 0 0 0 0 0 200"
 expect "nav: A insets $insets" "nav: A edges status 0 24 0 0 ime 0 0 0 200 shown"

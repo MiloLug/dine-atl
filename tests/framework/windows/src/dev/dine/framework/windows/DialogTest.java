@@ -4,6 +4,7 @@ import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -113,6 +114,7 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 	// the window's visibility as its views hear it
 	static class Seen extends TextView {
 		final List<Integer> visibility = new ArrayList<>();
+		final List<Boolean> on_main = new ArrayList<>();
 
 		Seen(android.content.Context context) {
 			super(context);
@@ -121,6 +123,7 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 		// View's own only shows the scroll bars
 		protected void onWindowVisibilityChanged(int visibility) {
 			this.visibility.add(visibility);
+			on_main.add(Looper.myLooper() == Looper.getMainLooper());
 		}
 	}
 
@@ -195,17 +198,24 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 		dismiss(dialog);
 	}
 
-	// the window goes with its activity (WindowLeaked); the Dialog doesn't know
+	// the window goes with its activity (WindowLeaked): the dismiss throws as AOSP's removeView does,
+	// and the Dialog is done by then, as dismissDialog's finally leaves it
 	public void testLeakedWhenTheActivityFinishes() throws InterruptedException {
 		final Dialog dialog = shown();
+		final boolean[] dismissed = new boolean[1];
 		getInstrumentation().runOnMainSync(new Runnable() {
 			public void run() {
+				dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+					public void onDismiss(android.content.DialogInterface d) {
+						dismissed[0] = true;
+					}
+				});
 				activity.finish();
 			}
 		});
 		for (int i = 0; i < 250 && !activity.isDestroyed(); i++)
 			Thread.sleep(20);
-		final Object[] got = new Object[2];
+		final Object[] got = new Object[4];
 		getInstrumentation().runOnMainSync(new Runnable() {
 			public void run() {
 				got[0] = dialog.isShowing();
@@ -214,10 +224,21 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 				} catch (IllegalArgumentException e) {
 					got[1] = e;
 				}
+				got[2] = dialog.isShowing();
+				try {
+					dialog.dismiss();
+				} catch (IllegalArgumentException e) {
+					got[3] = e;
+				}
 			}
 		});
+		for (int i = 0; i < 100 && !dismissed[0]; i++)
+			Thread.sleep(20);
 		assertEquals(true, got[0]);
 		assertNotNull("dismiss of a leaked window", got[1]);
+		assertEquals("showing after the throw", false, got[2]);
+		assertNull("a second dismiss returns", got[3]);
+		assertTrue("the dismiss listener ran", dismissed[0]);
 	}
 
 	// no token: an Application context's Dialog
@@ -385,5 +406,232 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 		assertNull(decor.getBackground());
 		assertEquals("0,0,0,0", padding(decor));
 		dismiss(dialog);
+	}
+
+	private void waitFor(java.util.concurrent.Callable<Boolean> condition) throws Exception {
+		for (int i = 0; i < 100 && !condition.call(); i++)
+			Thread.sleep(20);
+	}
+
+	// AOSP's dismiss() posts to the dialog's thread from another one: the registry and the views run on the main looper
+	public void testDismissFromAnotherThreadRunsOnTheMainLooper() throws Exception {
+		final Seen seen = new Seen(activity);
+		seen.setText("seen");
+		final Dialog dialog = shownWith(seen, Gravity.CENTER, 0, 0, WindowManager.LayoutParams.WRAP_CONTENT);
+		dialog.dismiss(); // this thread is the instrumentation's
+		waitFor(new java.util.concurrent.Callable<Boolean>() {
+			public Boolean call() {
+				return seen.visibility.size() > 1;
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		assertEquals(View.GONE, (int)seen.visibility.get(seen.visibility.size() - 1));
+		assertEquals("the views heard it on the main looper", Boolean.TRUE, seen.on_main.get(seen.on_main.size() - 1));
+		assertFalse(dialog.isShowing());
+	}
+
+	// hide() is the window manager's too, here: the registry is the main thread's
+	public void testHideFromAnotherThreadRunsOnTheMainLooper() throws Exception {
+		final Seen seen = new Seen(activity);
+		seen.setText("seen");
+		final Dialog dialog = shownWith(seen, Gravity.CENTER, 0, 0, WindowManager.LayoutParams.WRAP_CONTENT);
+		dialog.hide();
+		waitFor(new java.util.concurrent.Callable<Boolean>() {
+			public Boolean call() {
+				return seen.visibility.size() > 1;
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		assertEquals(View.GONE, (int)seen.visibility.get(seen.visibility.size() - 1));
+		assertEquals("the views heard it on the main looper", Boolean.TRUE, seen.on_main.get(seen.on_main.size() - 1));
+		dismiss(dialog);
+	}
+
+	// AOSP's Dialog.cancel() sends the cancel message, then dismisses: the listener runs after the removal
+	public void testCancelListenerRunsAfterTheRemoval() throws Exception {
+		final List<String> got = new ArrayList<>();
+		final Dialog[] dialog = new Dialog[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog[0] = new Dialog(activity);
+				dialog[0].setContentView(text("cancel"));
+				dialog[0].setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+					public void onCancel(android.content.DialogInterface d) {
+						got.add("cancel showing=" + ((Dialog)d).isShowing());
+					}
+				});
+				dialog[0].setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+					public void onDismiss(android.content.DialogInterface d) {
+						got.add("dismiss");
+					}
+				});
+				dialog[0].show();
+			}
+		});
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog[0].cancel();
+				got.add("returned");
+			}
+		});
+		waitFor(new java.util.concurrent.Callable<Boolean>() {
+			public Boolean call() {
+				return got.size() >= 3;
+			}
+		});
+		assertEquals("[returned, cancel showing=false, dismiss]", got.toString());
+	}
+
+	// AOSP's hide() sets the decor GONE, which isShowing() reads
+	public void testHideMakesTheDecorGone() {
+		final Dialog dialog = shown();
+		final Object[] got = new Object[4];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				dialog.hide();
+				got[0] = dialog.getWindow().getDecorView().getVisibility();
+				got[1] = dialog.isShowing();
+				dialog.show();
+				got[2] = dialog.isShowing();
+				got[3] = dialog.getWindow().getDecorView().getVisibility();
+			}
+		});
+		assertEquals(View.GONE, got[0]);
+		assertEquals("showing while hidden", false, got[1]);
+		assertEquals(true, got[2]);
+		assertEquals(View.VISIBLE, got[3]);
+		dismiss(dialog);
+	}
+
+	// a hide and a show leave the window where it was added: only a new add goes on top
+	public void testHideThenShowKeepsItsPlace() {
+		final Dialog first = shown();
+		final Dialog second = shown();
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				first.hide();
+				first.show();
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		assertSame("the newer dialog still takes the keys", second.getWindow(), android.view.Window.atlKeyWindow(activity));
+		dismiss(first);
+		dismiss(second);
+	}
+
+	// the window's owner is the dialog, whatever callback AppCompat puts in front of it
+	static class Probe extends Dialog {
+		final List<Boolean> visible = new ArrayList<>();
+
+		Probe(android.content.Context context) {
+			super(context);
+		}
+
+		@Override
+		public void atlWindowVisible(boolean visible) {
+			this.visible.add(visible);
+			super.atlWindowVisible(visible);
+		}
+	}
+
+	public void testReplacedCallbackStillShowsAndHidesTheDialog() {
+		final Probe[] probe = new Probe[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				probe[0] = new Probe(activity);
+				probe[0].setContentView(text("probe"));
+				probe[0].getWindow().setCallback(new CallbackWrapper(probe[0]));
+				probe[0].show();
+			}
+		});
+		getInstrumentation().waitForIdleSync();
+		dismiss(probe[0]);
+		assertEquals("[true, false]", probe[0].visible.toString());
+	}
+
+	// PhoneWindow.generateLayout: a non-floating window is laid out in the whole screen, a floating one in the content frame
+	public void testLayoutFlagsFollowTheTheme() {
+		final int mask = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR;
+		final int[] flags = new int[3];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			public void run() {
+				flags[0] = new Dialog(activity).getWindow().getAttributes().flags & mask;
+				Dialog plain = new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar);
+				flags[1] = plain.getWindow().getAttributes().flags & mask;
+				plain.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
+				flags[2] = plain.getWindow().getAttributes().flags & mask;
+			}
+		});
+		assertEquals("floating", 0, flags[0]);
+		assertEquals("not floating", mask, flags[1]);
+		assertEquals("one the app cleared stays cleared", WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR, flags[2]);
+	}
+
+	// AOSP's show() calls onStart() after onCreate(), dismissDialog() onStop() in its finally
+	static class Lifecycle extends Dialog {
+		final List<String> calls = new ArrayList<>();
+
+		Lifecycle(android.content.Context context) {
+			super(context);
+		}
+
+		@Override
+		protected void onCreate(android.os.Bundle state) {
+			calls.add("create");
+		}
+
+		protected void onStart() {
+			calls.add("start");
+		}
+
+		protected void onStop() {
+			calls.add("stop " + isShowing());
+		}
+	}
+
+	public void testOnStartAndOnStopFollowShowAndDismiss() {
+		final Lifecycle[] dialog = new Lifecycle[1];
+		onMain(new Runnable() {
+			public void run() {
+				dialog[0] = new Lifecycle(activity);
+				dialog[0].setContentView(text("lifecycle"));
+				dialog[0].show();
+				dialog[0].hide();
+				dialog[0].show(); // a showing dialog: no new start
+				dialog[0].dismiss();
+				dialog[0].show(); // created already: a start only
+				dialog[0].dismiss();
+			}
+		});
+		assertEquals("[create, start, stop false, start, stop false]", dialog[0].calls.toString());
+	}
+
+	// a dialog that went with its activity is stopped as well: the throw doesn't skip onStop
+	public void testOnStopRunsForALeakedDialog() throws InterruptedException {
+		final Lifecycle[] dialog = new Lifecycle[1];
+		onMain(new Runnable() {
+			public void run() {
+				dialog[0] = new Lifecycle(activity);
+				dialog[0].setContentView(text("leaked"));
+				dialog[0].show();
+				activity.finish();
+			}
+		});
+		for (int i = 0; i < 250 && !activity.isDestroyed(); i++)
+			Thread.sleep(20);
+		onMain(new Runnable() {
+			public void run() {
+				try {
+					dialog[0].dismiss();
+				} catch (IllegalArgumentException e) {
+				}
+			}
+		});
+		assertEquals("[create, start, stop false]", dialog[0].calls.toString());
+	}
+
+	private void onMain(Runnable runnable) {
+		getInstrumentation().runOnMainSync(runnable);
+		getInstrumentation().waitForIdleSync();
 	}
 }

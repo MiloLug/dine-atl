@@ -11,6 +11,8 @@
 		<activity android:name=".StateActivity"/>
 		<activity android:name=".OverlayActivity"/>
 		<activity android:name=".PopupActivity"/>
+		<activity android:name=".PlaceActivity"/>
+		<activity android:name=".DrawActivity"/>
 		<activity android:name=".MenuActivity"/>
 		<activity android:name=".ToastActivity"/>
 		<activity android:name=".SelfActivity"/>
@@ -21,6 +23,14 @@
 		<activity android:name=".ResizePlainActivity" android:windowSoftInputMode="adjustResize"/>
 		<activity android:name=".UnspecifiedPlainActivity"/>
 		<activity android:name=".PanTopActivity" android:windowSoftInputMode="adjustPan"/>
+		<activity android:name=".DialogPanActivity"/>
+		<activity android:name=".DialogResizeActivity"/>
+		<activity android:name=".DialogBottomActivity"/>
+		<activity android:name=".DialogTallActivity"/>
+		<activity android:name=".DialogOverActivity"/>
+		<activity android:name=".DialogVisibleActivity"/>
+		<activity android:name=".VisibleActivity" android:windowSoftInputMode="stateVisible"/>
+		<activity android:name=".PopupKeyboardActivity" android:windowSoftInputMode="adjustPan"/>
 		<activity android:name=".ConfigActivity" android:configChanges="uiMode"/>
 		<activity android:name=".PlainConfigActivity"/>
 	</application>

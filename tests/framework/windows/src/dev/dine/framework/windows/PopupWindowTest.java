@@ -202,4 +202,23 @@ public class PopupWindowTest extends android.test.InstrumentationTestCase {
 		}));
 		dismiss(popup[0]);
 	}
+
+	// AppCompat's delegate replaces the activity window's callback: a popup attaches to the window all the same
+	public void testPopupAfterTheCallbackIsReplaced() throws InterruptedException {
+		anchorAt(20, 30);
+		onMain(new Runnable() {
+			public void run() {
+				activity.getWindow().setCallback(new CallbackWrapper(activity));
+			}
+		});
+		final TextView content = new TextView(activity);
+		content.setText("popup");
+		onMain(new Runnable() {
+			public void run() {
+				new PopupWindow(content, 120, 60).showAsDropDown(anchor);
+			}
+		});
+		assertTrue("attached", content.isAttachedToWindow());
+		assertSame(activity.getWindow().getDecorView().getWindowToken(), content.getApplicationWindowToken());
+	}
 }

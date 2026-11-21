@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "nav.h"
+#include "windows.h"
 
 void atl_night_apply(JNIEnv *env, struct atl_app *app)
 {
@@ -18,8 +19,10 @@ void atl_night_apply(JNIEnv *env, struct atl_app *app)
 	jobjectArray activities = (*env)->NewObjectArray(env, app->backlog_len, (*env)->FindClass(env, "android/app/Activity"), NULL);
 	for (size_t i = 0; i < app->backlog_len; i++)
 		(*env)->SetObjectArrayElement(env, activities, i, app->backlog[i]);
-	(*env)->CallVoidMethod(env, app->record, _METHOD_OF(app->record, "applyNight", "(I[Landroid/app/Activity;)V"), night, activities);
+	bool changed = (*env)->CallBooleanMethod(env, app->record, _METHOD_OF(app->record, "applyNight", "(I[Landroid/app/Activity;)Z"), night, activities);
 	exit_on_exception(env);
+	if (changed)
+		windows_dispatch_configuration(app);
 	(*env)->PopLocalFrame(env, NULL);
 }
 

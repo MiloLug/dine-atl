@@ -4,6 +4,7 @@
 
 #include "src/shared/input.h"
 #include "src/shared/upcall.h"
+#include "src/shared/windows.h"
 #include "src/slots/loop.h"
 
 #include "../records/records.h"
@@ -257,7 +258,15 @@ static struct ui_view *edit_at(struct ui_view *view, float x, float y)
 
 static void tap(struct ui_window *window, float x, float y)
 {
-	struct ui_view *view = window->shown ? edit_at(window->shown, x, y) : NULL;
+	// in the root a touch there goes to, as records_touch picks it
+	const struct ui_root *root = windows_touch_target(window->roots, window->n_roots, x, y);
+	struct ui_view *view = NULL;
+	if (root) {
+		const struct atl_window_frame *frame = windows_frame(root->window);
+		view = edit_at(root->view, x - frame->left, y - frame->top);
+	} else if (window->shown) {
+		view = edit_at(window->shown, x, y);
+	}
 	if (!view) {
 		printf("text: no field at %g,%g\n", x, y);
 		fflush(stdout);
