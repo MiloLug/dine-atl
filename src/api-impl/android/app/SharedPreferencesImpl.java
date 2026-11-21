@@ -135,7 +135,8 @@ public final class SharedPreferencesImpl implements SharedPreferences {
 		notifyAll();
 	}
 
-	private static File makeBackupFile(File prefsFile) {
+	/** @hide Context.deleteSharedPreferences removes it too */
+	public static File makeBackupFile(File prefsFile) {
 		return new File(prefsFile.getPath() + ".bak");
 	}
 

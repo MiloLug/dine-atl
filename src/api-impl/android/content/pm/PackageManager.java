@@ -2292,18 +2292,6 @@ public class PackageManager {
 	 */
 	public List<ResolveInfo> queryIntentActivities(Intent intent,
 	                                               int flags) {
-		if ("android.intent.action.VIEW".equals(intent.getAction()) && intent.getData() != null
-		    && ("http".equals(intent.getData().getScheme()) || "https".equals(intent.getData().getScheme()))) {
-			ResolveInfo ri = new ResolveInfo();
-			ri.activityInfo.exported = true;
-			ri.activityInfo.name = "atl.browser";
-			ri.activityInfo.packageName = "atl";
-			ri.filter.addAction("android.intent.action.VIEW");
-			ri.filter.addCategory("android.intent.category.BROWSABLE");
-			ri.filter.addDataScheme("http");
-			ri.filter.addDataScheme("https");
-			return Arrays.asList(ri);
-		}
 		return query(intent, flags, "activity");
 	}
 
@@ -2935,11 +2923,14 @@ public class PackageManager {
 		if (pkg == null) {
 			return null;
 		}
-		if ((flags & GET_SIGNATURES) != 0) {
+		if ((flags & (GET_SIGNATURES | GET_SIGNING_CERTIFICATES)) != 0) {
 			packageParser.collectCertificates(pkg, 0);
 		}
 		PackageUserState state = new PackageUserState();
-		return PackageParser.generatePackageInfo(pkg, null, flags, 0, 0, null, state, 0);
+		PackageInfo info = PackageParser.generatePackageInfo(pkg, null, flags, 0, 0, null, state, 0);
+		if (info != null)
+			putSigners(info, pkg.mSignatures, flags);
+		return info;
 	}
 
 	/**
@@ -3145,7 +3136,10 @@ public class PackageManager {
 	 * @param packageName The name of the package to query
 	 */
 	public String getInstallerPackageName(String packageName) {
-		return "com.example.installer";
+		ATLRegistry.Row row = ATLRegistry.get().row(packageName);
+		if (row == null)
+			throw new IllegalArgumentException("Unknown package: " + packageName);
+		return row.installer;
 	}
 
 	/**
@@ -3619,11 +3613,15 @@ public class PackageManager {
 		String fake = row.fakeSignature ? ATLInstaller.fakeSignature(pkg) : null;
 		if (fake != null)
 			signatures = new Signature[] {new Signature(fake)};
+		putSigners(info, signatures, flags);
+		return info;
+	}
+
+	private static void putSigners(PackageInfo info, Signature[] signatures, int flags) {
 		if ((flags & GET_SIGNATURES) != 0)
 			info.signatures = signatures == null ? null : signatures.clone();
 		if ((flags & GET_SIGNING_CERTIFICATES) != 0 && signatures != null)
 			info.signingInfo = new SigningInfo(signatures.clone());
-		return info;
 	}
 
 	private static int compareSignatures(Signature[] s1, Signature[] s2) {
@@ -3651,9 +3649,50 @@ public class PackageManager {
 		}
 	}
 
+	// AOSP's ComponentResolver.RESOLVE_PRIORITY_SORTER less preferredOrder and system, which no installed component has
+	private static final Comparator<ResolveInfo> RESOLVE_PRIORITY_SORTER = (r1, r2) -> {
+		if (r1.priority != r2.priority)
+			return r1.priority > r2.priority ? -1 : 1;
+		if (r1.isDefault != r2.isDefault)
+			return r1.isDefault ? -1 : 1;
+		if (r1.match != r2.match)
+			return r1.match > r2.match ? -1 : 1;
+		ComponentInfo c1 = r1.activityInfo != null ? r1.activityInfo : r1.serviceInfo != null ? r1.serviceInfo : r1.providerInfo;
+		ComponentInfo c2 = r2.activityInfo != null ? r2.activityInfo : r2.serviceInfo != null ? r2.serviceInfo : r2.providerInfo;
+		return c1.packageName.compareTo(c2.packageName);
+	};
+
+	// ATL's browser: the host opens http and https links (ContextImpl.startActivity)
+	private static final IntentFilter BROWSER = new IntentFilter(Intent.ACTION_VIEW);
+	static {
+		BROWSER.addCategory(Intent.CATEGORY_DEFAULT);
+		BROWSER.addCategory(Intent.CATEGORY_BROWSABLE);
+		BROWSER.addDataScheme("http");
+		BROWSER.addDataScheme("https");
+	}
+
+	private static ResolveInfo browser(Intent intent, int flags) {
+		int match = BROWSER.match(null, intent, false, TAG);
+		if (match < 0)
+			return null;
+		ResolveInfo info = new ResolveInfo();
+		info.serviceInfo = null;
+		info.activityInfo.name = "atl.browser";
+		info.activityInfo.packageName = "atl";
+		info.activityInfo.exported = true;
+		info.activityInfo.applicationInfo = new ApplicationInfo();
+		info.activityInfo.applicationInfo.packageName = "atl";
+		info.filter = (flags & GET_RESOLVED_FILTER) != 0 ? BROWSER : null;
+		info.priority = 0;
+		info.isDefault = true;
+		info.match = match;
+		return info;
+	}
+
 	/**
 	 * Components of one kind (activity, receiver, service, provider) across installed packages: by the
-	 * intent's component, else its package, else the packages whose filters name its action.
+	 * intent's component, else its package, else the packages whose filters name its action; best
+	 * match first, as Android orders them.
 	 */
 	private static List<ResolveInfo> query(Intent intent, int flags, String kind) {
 		ATLRegistry registry = ATLRegistry.get();
@@ -3682,14 +3721,22 @@ public class PackageManager {
 					continue;
 				}
 				for (PackageParser.IntentInfo filter : component.intents) {
-					if (filter.match(null, intent, false, TAG) >= 0 &&
-					    ((flags & MATCH_DEFAULT_ONLY) == 0 || filter.hasCategory(Intent.CATEGORY_DEFAULT))) {
-						infos.add(resolveInfo(component, filter, flags));
+					int match = filter.match(null, intent, false, TAG);
+					if (match >= 0 && ((flags & MATCH_DEFAULT_ONLY) == 0 || filter.hasCategory(Intent.CATEGORY_DEFAULT))) {
+						ResolveInfo info = resolveInfo(component, filter, flags);
+						info.match = match;
+						infos.add(info);
 						break;
 					}
 				}
 			}
 		}
+		if (kind.equals("activity") && target == null && intent.getPackage() == null) {
+			ResolveInfo browser = browser(intent, flags);
+			if (browser != null)
+				infos.add(browser);
+		}
+		infos.sort(RESOLVE_PRIORITY_SORTER);
 		return infos;
 	}
 
@@ -3701,6 +3748,7 @@ public class PackageManager {
 		info.providerInfo = component instanceof PackageParser.Provider ? PackageParser.generateProviderInfo((PackageParser.Provider)component, flags, state, 0) : null;
 		info.filter = (flags & GET_RESOLVED_FILTER) != 0 ? filter : null;
 		info.priority = filter != null ? filter.priority : 0;
+		info.isDefault = filter != null && filter.hasCategory(Intent.CATEGORY_DEFAULT);
 		return info;
 	}
 }

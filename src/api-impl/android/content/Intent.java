@@ -1,6 +1,7 @@
 package android.content;
 
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Rect;
@@ -894,7 +895,10 @@ public class Intent implements Parcelable {
 	}
 
 	public ComponentName resolveActivity(PackageManager pm) {
-		return component;
+		if (component != null)
+			return component;
+		ResolveInfo info = pm.resolveActivity(this, PackageManager.MATCH_DEFAULT_ONLY);
+		return info != null ? new ComponentName(info.activityInfo.applicationInfo.packageName, info.activityInfo.name) : null;
 	}
 
 	public void setSourceBounds(Rect sourceBounds) {}

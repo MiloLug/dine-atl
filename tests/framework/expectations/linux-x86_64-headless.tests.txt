@@ -4,6 +4,9 @@ dev.dine.framework.basics.ActionBarTest#testListNavigationReportsItsItems
 dev.dine.framework.basics.ActionBarTest#testNoBarWithoutTheFeature
 dev.dine.framework.basics.ActionBarTest#testTabsCallTheirListeners
 dev.dine.framework.basics.ActionBarTest#testWindowTitleUntilTheAppSetsOne
+dev.dine.framework.basics.AppStateTest#testPreferencesAreTheApps
+dev.dine.framework.basics.AppStateTest#testReceiversAreTheApps
+dev.dine.framework.basics.AppStateTest#testSessionsAreTheApps
 dev.dine.framework.basics.AppThreadTest#testThreadsJoinTheAppsGroup
 dev.dine.framework.basics.AsyncTaskTest#testPoolThreadsAreTheApps
 dev.dine.framework.basics.AttachTest#testAttachViewToParentAddsAViewThatWasNotDetached
@@ -11,6 +14,7 @@ dev.dine.framework.basics.AttachTest#testDetachedChildLeavesTheWindow
 dev.dine.framework.basics.AttachTest#testRemovalFromAShownWindowSendsGone
 dev.dine.framework.basics.AttachTest#testSubtreeFollowsTheWindow
 dev.dine.framework.basics.CleanupTest#testCleanerRunsInTheApp
+dev.dine.framework.basics.CleanupTest#testFinalizerOfAnObjectMadeOutsideTheApp
 dev.dine.framework.basics.CleanupTest#testFinalizerRunsInTheApp
 dev.dine.framework.basics.DrawClipTest#testCanvasHasTheViewsSize
 dev.dine.framework.basics.DrawClipTest#testEachDrawStartsAtTheViewsSize
@@ -36,6 +40,8 @@ dev.dine.framework.basics.LooperTest#testAChainOfDueMessagesLetsLayoutRun
 dev.dine.framework.basics.LooperTest#testAViewThatKeepsInvalidatingLetsMessagesRun
 dev.dine.framework.basics.LooperTest#testIdleHandlersRunAfterThePendingLayout
 dev.dine.framework.basics.PermissionTest#testRequestIsAnsweredAfterItReturns
+dev.dine.framework.basics.PreferencesTest#testOneInstanceUnderConcurrentFirstUse
+dev.dine.framework.basics.ProviderTest#testEachAuthorityReachesTheProvider
 dev.dine.framework.basics.RectTest#testInsetsAdd
 dev.dine.framework.basics.RectTest#testIntersect
 dev.dine.framework.basics.SystemResTest#testApiLevel
@@ -68,6 +74,9 @@ dev.dine.framework.controls.CompoundTest#testSetCheckedInTheListenerDoesNotRecur
 dev.dine.framework.controls.CompoundTest#testToggleButtonShowsItsOnAndOffText
 dev.dine.framework.controls.ConstructorTest#testThreeAndFourArgumentConstructorsExist
 dev.dine.framework.controls.SubclassConstructorTest#testConstructThroughTheThreeArgumentSuper
+dev.dine.framework.graphics.AppStateTest#testPreferencesAreTheApps
+dev.dine.framework.graphics.AppStateTest#testReceiversAreTheApps
+dev.dine.framework.graphics.AppStateTest#testSessionsAreTheApps
 dev.dine.framework.graphics.AsyncTaskTest#testPoolThreadsAreTheApps
 dev.dine.framework.graphics.BackgroundPaddingTest#testBackgroundPads
 dev.dine.framework.graphics.BackgroundPaddingTest#testColorAfterImageLaysOutAgain

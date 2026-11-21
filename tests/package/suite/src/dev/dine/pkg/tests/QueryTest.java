@@ -146,6 +146,73 @@ public class QueryTest extends android.test.InstrumentationTestCase {
 		ProviderInfo provider = pm().resolveContentProvider("dev.dine.pkg.app.prov", PackageManager.GET_META_DATA);
 		assertEquals(APP + ".Prov", provider.name);
 		assertEquals("prov", provider.metaData.getString("dine.test.prov"));
+		assertEquals(APP + ".Prov", pm().resolveContentProvider("dev.dine.pkg.app.prov2", 0).name);
+	}
+
+	private static List<String> ordered(List<ResolveInfo> infos) {
+		List<String> names = new java.util.ArrayList<>();
+		for (ResolveInfo info : infos)
+			names.add((info.activityInfo != null ? info.activityInfo : info.serviceInfo).packageName);
+		return names;
+	}
+
+	// AOSP's order: the filter's priority, then the package name (plain's BIND filter has priority 100)
+	public void testMatchOrder() {
+		Intent bind = new Intent("dev.dine.pkg.BIND");
+		List<ResolveInfo> services = pm().queryIntentServices(bind, 0);
+		assertEquals(Arrays.asList("dev.dine.pkg.plain", APP), ordered(services));
+		assertEquals(100, services.get(0).priority);
+		assertEquals("dev.dine.pkg.plain", pm().resolveService(bind, 0).serviceInfo.packageName);
+		assertEquals(Arrays.asList(APP, "dev.dine.pkg.plain"), ordered(pm().queryBroadcastReceivers(new Intent("dev.dine.pkg.PING"), 0)));
+	}
+
+	// ATL's browser answers http and https VIEW intents (the host opens the link)
+	public void testBrowserResolves() {
+		Intent https = new Intent(Intent.ACTION_VIEW, Uri.parse("https://example.org"));
+		ResolveInfo browser = pm().resolveActivity(https, PackageManager.MATCH_DEFAULT_ONLY);
+		assertNotNull(browser);
+		assertEquals("atl.browser", browser.activityInfo.name);
+		assertEquals("atl.browser", pm().queryIntentActivities(https, 0).get(0).activityInfo.name);
+		assertEquals(new ComponentName("atl", "atl.browser"), https.resolveActivity(pm()));
+	}
+
+	public void testIntentResolveActivity() {
+		assertEquals(new ComponentName(APP, APP + ".Viewer"), new Intent(Intent.ACTION_VIEW, Uri.parse("dineapp:x")).resolveActivity(pm()));
+		assertNull(new Intent(Intent.ACTION_VIEW, Uri.parse("other:x")).resolveActivity(pm()));
+		ComponentName explicit = new ComponentName(APP, APP + ".Main");
+		assertEquals(explicit, new Intent().setComponent(explicit).resolveActivity(pm()));
+	}
+
+	// an intent's categories must all be in the filter; MATCH_DEFAULT_ONLY wants CATEGORY_DEFAULT in it
+	public void testCategoriesAndDefaultOnly() {
+		assertTrue(pm().queryIntentActivities(new Intent(Intent.ACTION_VIEW, Uri.parse("dineapp:x")).addCategory(Intent.CATEGORY_BROWSABLE), 0).isEmpty());
+		Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(APP);
+		assertEquals(APP + ".Main", pm().queryIntentActivities(launcher, 0).get(0).activityInfo.name);
+		assertTrue(pm().queryIntentActivities(launcher, PackageManager.MATCH_DEFAULT_ONLY).isEmpty());
+	}
+
+	public void testMissingComponents() {
+		try {
+			pm().getServiceInfo(new ComponentName(APP, APP + ".Missing"), 0);
+			fail("a missing service has info");
+		} catch (PackageManager.NameNotFoundException expected) {
+		}
+		try {
+			pm().getActivityInfo(new ComponentName("dev.dine.pkg.missing", "dev.dine.pkg.missing.Main"), 0);
+			fail("an activity of a missing package has info");
+		} catch (PackageManager.NameNotFoundException expected) {
+		}
+	}
+
+	// the CLI and the system install with no installer app; the driver's scenarios check an app's install
+	public void testInstallerPackageName() {
+		assertNull(pm().getInstallerPackageName(APP));
+		assertNull(pm().getInstallerPackageName("com.google.android.gms"));
+		try {
+			pm().getInstallerPackageName("dev.dine.pkg.missing");
+			fail("a missing package has an installer");
+		} catch (IllegalArgumentException expected) {
+		}
 	}
 
 	// the harness set this row to an older parse version

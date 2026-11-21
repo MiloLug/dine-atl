@@ -31,8 +31,12 @@ public abstract class ContentProvider {
 				System.out.println("not creating provider " + provider_parsed.className + ", it wants to be started in a new process (" + process_name + ")");
 				continue;
 			}
-			atl_providers.put(provider_parsed.info.authority,
-			                  new ATLProvider(app, provider_parsed));
+			if (provider_parsed.info.authority == null)
+				continue;
+			// android:authorities is a ';'-separated list
+			ATLProvider provider = new ATLProvider(app, provider_parsed);
+			for (String authority : provider_parsed.info.authority.split(";"))
+				atl_providers.put(authority, provider);
 		}
 		// getContentProvider() initializes the content providers,
 		// we also opportunistically remove the ones that failed to load

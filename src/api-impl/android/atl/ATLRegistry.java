@@ -377,10 +377,22 @@ public final class ATLRegistry {
 	}
 
 	/**
-	 * Inside a write transaction, so it never races an install or an uninstall: removes version dirs
-	 * no row names, trash, and staging dirs older than a day (younger ones may be live sessions).
+	 * Inside a write transaction, so it never races an install or an uninstall: puts back a trash dir
+	 * that holds its row's files (an uninstall that never committed), then removes other trash,
+	 * version dirs no row names and staging dirs older than a day (younger ones may be live sessions).
 	 */
 	private void sweep() {
+		for (String entry : list(trash)) {
+			File dir = new File(trash, entry);
+			String name = entry.substring(0, Math.max(entry.lastIndexOf('-'), 0));
+			Row row = name.isEmpty() ? null : row(name);
+			if (row != null && !row.generated &&
+			    ((!new File(apps, name).exists() && new File(dir, "apps/" + new File(row.apks[0]).getParentFile().getName()).isDirectory()) ||
+			     (!dataDir(name).exists() && new File(dir, "data").exists())))
+				putBack(dir, new File(apps, name), dataDir(name));
+			else
+				deleteTree(dir);
+		}
 		Set<String> referenced = new HashSet<>();
 		for (Row row : rowsWhere("generated = 0", new String[0]))
 			for (String apk : row.apks)
@@ -401,8 +413,23 @@ public final class ATLRegistry {
 			if (now - dir.lastModified() > STAGING_MAX_AGE_MS)
 				deleteTree(dir);
 		}
-		for (String name : list(trash))
-			deleteTree(new File(trash, name));
+	}
+
+	/**
+	 * An uninstall's trash dir back in place: its apps and data where none is. A move that fails
+	 * keeps the dir for the next registry open; else it goes.
+	 */
+	static void putBack(File trashDir, File apps, File data) {
+		boolean back = back(new File(trashDir, "apps"), apps) & back(new File(trashDir, "data"), data);
+		if (back)
+			deleteTree(trashDir);
+	}
+
+	private static boolean back(File moved, File to) {
+		if (!moved.exists() || to.exists() || moved.renameTo(to))
+			return true;
+		Slog.w(TAG, "can't move " + moved + " back");
+		return false;
 	}
 
 	static String[] list(File dir) {
@@ -426,16 +453,17 @@ public final class ATLRegistry {
 		}
 	}
 
-	static void fsyncDir(File dir) throws IOException {
+	/** A file or a dir. */
+	public static void fsync(File file) throws IOException {
 		try {
-			FileDescriptor fd = Os.open(dir.getPath(), OsConstants.O_RDONLY, 0);
+			FileDescriptor fd = Os.open(file.getPath(), OsConstants.O_RDONLY, 0);
 			try {
 				Os.fsync(fd);
 			} finally {
 				Os.close(fd);
 			}
 		} catch (ErrnoException e) {
-			throw new IOException("fsync " + dir, e);
+			throw new IOException("fsync " + file, e);
 		}
 	}
 }

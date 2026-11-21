@@ -1,6 +1,8 @@
 package android.content.pm;
 
 import android.atl.ATLInstaller;
+import android.atl.ATLLoadedApp;
+import android.atl.ATLRegistry;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.graphics.Bitmap;
@@ -14,11 +16,14 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Sessions of this process; a commit asks the user through STATUS_PENDING_USER_ACTION, as Android
- * does for an installer without INSTALL_PACKAGES. ATLInstaller writes the package.
+ * Sessions of this VM, each its creating app's: only that app lists, opens or abandons it. A commit
+ * asks the user through STATUS_PENDING_USER_ACTION, as Android does for an installer without
+ * INSTALL_PACKAGES. ATLInstaller writes the package.
  */
 public class PackageInstaller {
 	private static final String TAG = "PackageInstaller";
@@ -46,22 +51,25 @@ public class PackageInstaller {
 	public int createSession(SessionParams params) throws IOException {
 		synchronized (sessions) {
 			int id = nextSessionId++;
-			sessions.put(id, new Session(id, params, ATLInstaller.newStagingDir()));
+			sessions.put(id, new Session(id, params, ATLInstaller.newStagingDir(), ATLLoadedApp.ofCurrentThreadOrThrow()));
 			return id;
 		}
 	}
 
-	public Session openSession(int sessionId) throws IOException {
+	// Android's answer for another app's session and for none
+	private static Session own(int sessionId) {
 		Session session = session(sessionId);
-		if (session == null)
-			throw new SecurityException("no session " + sessionId);
+		if (session == null || session.owner != ATLLoadedApp.ofCurrentThread())
+			throw new SecurityException("Caller has no access to session " + sessionId);
 		return session;
 	}
 
+	public Session openSession(int sessionId) throws IOException {
+		return own(sessionId);
+	}
+
 	public void abandonSession(int sessionId) {
-		Session session = session(sessionId);
-		if (session != null)
-			session.abandon();
+		own(sessionId).abandon();
 	}
 
 	public SessionInfo getSessionInfo(int sessionId) {
@@ -70,16 +78,23 @@ public class PackageInstaller {
 	}
 
 	public List<SessionInfo> getMySessions() {
+		ATLLoadedApp app = ATLLoadedApp.ofCurrentThread();
+		List<SessionInfo> infos = new ArrayList<>();
+		synchronized (sessions) {
+			for (Session session : sessions.values())
+				if (session.owner == app)
+					infos.add(new SessionInfo(session));
+		}
+		return infos;
+	}
+
+	public List<SessionInfo> getAllSessions() {
 		List<SessionInfo> infos = new ArrayList<>();
 		synchronized (sessions) {
 			for (Session session : sessions.values())
 				infos.add(new SessionInfo(session));
 		}
 		return infos;
-	}
-
-	public List<SessionInfo> getAllSessions() {
-		return getMySessions();
 	}
 
 	public void registerSessionCallback(SessionCallback callback) {}
@@ -176,15 +191,18 @@ public class PackageInstaller {
 	public static class Session implements Closeable {
 		final int id;
 		final SessionParams params;
+		final ATLLoadedApp owner;
 		private final File dir;
-		private final List<String> names = new ArrayList<>();
+		// the installer's names, in the order first written, and their files in dir: a name never reaches the disk
+		private final Map<String, File> files = new LinkedHashMap<>();
 		ATLInstaller.Staged staged;
 		private IntentSender statusReceiver;
 
-		Session(int id, SessionParams params, File dir) {
+		Session(int id, SessionParams params, File dir, ATLLoadedApp owner) {
 			this.id = id;
 			this.params = params;
 			this.dir = dir;
+			this.owner = owner;
 		}
 
 		public OutputStream openWrite(String name, long offsetBytes, long lengthBytes) throws IOException {
@@ -192,10 +210,14 @@ public class PackageInstaller {
 				throw new SecurityException("session " + id + " is committed");
 			if (name.isEmpty() || name.contains("/") || name.startsWith("."))
 				throw new IllegalArgumentException("invalid name " + name);
-			File file = new File(dir, name);
-			synchronized (names) {
-				if (!names.contains(name))
-					names.add(name);
+			File file;
+			synchronized (files) {
+				file = files.get(name);
+				if (file == null) {
+					// a dot: no stored name (ATLInstaller.storedName) starts with one
+					file = new File(dir, ".write" + files.size());
+					files.put(name, file);
+				}
 			}
 			if (offsetBytes == 0)
 				return new FileOutputStream(file);
@@ -215,8 +237,8 @@ public class PackageInstaller {
 		}
 
 		public String[] getNames() {
-			synchronized (names) {
-				return names.toArray(new String[0]);
+			synchronized (files) {
+				return files.keySet().toArray(new String[0]);
 			}
 		}
 
@@ -230,33 +252,51 @@ public class PackageInstaller {
 		/** Sends STATUS_PENDING_USER_ACTION; the confirmation then installs and sends the final status. */
 		public void commit(IntentSender statusReceiver) {
 			this.statusReceiver = statusReceiver;
-			String[] files = getNames();
+			if (staged != null) {
+				askUser();
+				return;
+			}
+			String[] names = getNames();
 			// the base APK first: "base.apk" when the installer named it so, else the first file written
-			for (int i = 1; i < files.length; i++) {
-				if (files[i].equals("base.apk")) {
-					files[i] = files[0];
-					files[0] = "base.apk";
+			for (int i = 1; i < names.length; i++) {
+				if (names[i].equals("base.apk")) {
+					names[i] = names[0];
+					names[0] = "base.apk";
 				}
 			}
 			try {
-				if (files.length == 0)
+				if (names.length == 0)
 					throw new IOException("no APK written");
-				staged = ATLInstaller.stageDir(dir, files);
+				// stored and synced whatever the installer synced, before the row can name them
+				String[] stored = new String[names.length];
+				for (int i = 0; i < names.length; i++) {
+					stored[i] = ATLInstaller.storedName(i);
+					File file = new File(dir, stored[i]);
+					if (!files.get(names[i]).renameTo(file))
+						throw new IOException("can't store " + names[i]);
+					ATLRegistry.fsync(file);
+				}
+				ATLRegistry.fsync(dir);
+				staged = ATLInstaller.stageDir(dir, stored);
 			} catch (IOException | RuntimeException e) {
 				ATLInstaller.deleteDir(dir);
 				finish(STATUS_FAILURE_INVALID, null, e.getMessage());
 				return;
 			}
+			askUser();
+		}
+
+		private void askUser() {
 			Intent confirm = new Intent(ACTION_CONFIRM_INSTALL).putExtra(EXTRA_SESSION_ID, id);
 			send(new Intent().putExtra(EXTRA_STATUS, STATUS_PENDING_USER_ACTION).putExtra(Intent.EXTRA_INTENT, confirm)
 			         .putExtra(EXTRA_PACKAGE_NAME, staged.pkg.packageName));
 		}
 
-		/** @hide the confirmation's answer: installs, or abandons on a refusal */
-		public ATLInstaller.Result confirmed(boolean accepted, boolean allowFakeSignature, String installer) {
+		/** @hide the confirmation's answer: installs, with the session's app as installer, or abandons on a refusal */
+		public ATLInstaller.Result confirmed(boolean accepted, boolean allowFakeSignature) {
 			ATLInstaller.Result result;
 			if (accepted) {
-				result = ATLInstaller.commit(staged, true, allowFakeSignature, installer);
+				result = ATLInstaller.commit(staged, true, allowFakeSignature, owner.pkg.packageName);
 			} else {
 				ATLInstaller.abandon(staged);
 				result = null;

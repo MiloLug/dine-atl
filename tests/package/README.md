@@ -15,11 +15,13 @@ check runs in a prefix of its own (`DINE_PREFIX`).
   rows (read with Python's `sqlite3`) and the files in the prefix.
 - `suite/`: a JUnit APK run with `--instrument` after the harness installs its fixtures; its rows are
   `<Class>#<test>`.
-- Rows `scenario:*`: the `driver` app installs the way apps do (sessions, intents), one process per
-  scenario, its dialogs answered in order by `ATL_DIALOG_ANSWERS`.
+- Rows `scenario:*`: the `driver` app installs the way apps do (sessions, intents, a content URI from
+  its own provider), one process per scenario, its dialogs answered in order by `ATL_DIALOG_ANSWERS`;
+  after each, every stored APK must exist and staging and the trash must be empty.
 - On the phone, the dev build's atl screen has an `installer` tile: `driver` installs `ext` through a
   session and confirms from its Application context, the dialog answered by hand or `dbg ui tap`.
 - `expectations/linux-x86_64-headless.json`: rows expected to fail; `.tests.txt` beside it: the rows a
   whole run executes (the superproject's `tests/harness/README.md` "Baselines").
 
-Not covered yet: multidex, per-ABI native libs, broken zips, v2 and v3 signatures.
+Not covered yet: v2 and v3 signatures (ATL-35 in `notes/bug-tracker.md`), per-ABI native libraries
+(ATL-106), multidex, broken zips and the other gaps listed in TOOL-16 (`notes/general-todo.md`).

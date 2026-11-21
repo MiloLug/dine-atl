@@ -9,6 +9,8 @@ extern "C" {
 #endif
 #undef android_content_Context_MODE_PRIVATE
 #define android_content_Context_MODE_PRIVATE 0L
+#undef android_content_Context_MODE_APPEND
+#define android_content_Context_MODE_APPEND 32768L
 #undef android_content_Context_CONTEXT_INCLUDE_CODE
 #define android_content_Context_CONTEXT_INCLUDE_CODE 1L
 #undef android_content_Context_CONTEXT_IGNORE_SECURITY

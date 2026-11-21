@@ -23,6 +23,7 @@ import java.io.OutputStream;
 public class Main extends Activity {
 	private static final String STATUS = "dev.dine.pkg.driver.STATUS";
 	private String kind;
+	private String argument;
 
 	private static void log(String line) {
 		System.out.println("scenario: " + line);
@@ -34,22 +35,30 @@ public class Main extends Activity {
 		super.onCreate(savedInstanceState);
 		String scenario = System.getenv("DINE_TEST_SCENARIO");
 		kind = scenario.substring(0, scenario.indexOf(':'));
-		String argument = scenario.substring(scenario.indexOf(':') + 1);
+		argument = scenario.substring(scenario.indexOf(':') + 1);
 		listenForPackages();
 		try {
 			switch (kind) {
 				case "session":
 				case "session-app-context":
 				case "self-update":
-					session(fixture(argument));
+					session(fixture(argument), "base.apk");
+					break;
+				case "session-named":
+					session(fixture(argument), "my:app.apk");
 					break;
 				case "intent-install":
-					startActivityForResult(new Intent(Intent.ACTION_INSTALL_PACKAGE, Uri.fromFile(fixture(argument)))
-					                           .putExtra(Intent.EXTRA_RETURN_RESULT, true), 1);
+					install(Uri.fromFile(fixture(argument)));
+					break;
+				case "intent-install-content":
+					install(Uri.parse("content://" + Apks.AUTHORITY + "/" + argument));
 					break;
 				case "intent-uninstall":
-					startActivityForResult(new Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.parse("package:" + argument))
-					                           .putExtra(Intent.EXTRA_RETURN_RESULT, true), 2);
+				case "self-uninstall":
+					uninstall(Intent.ACTION_UNINSTALL_PACKAGE, argument);
+					break;
+				case "intent-delete":
+					uninstall(Intent.ACTION_DELETE, argument);
 					break;
 				default:
 					log("unknown scenario " + scenario);
@@ -61,8 +70,20 @@ public class Main extends Activity {
 		}
 	}
 
-	private static File fixture(String name) {
+	static File fixture(String name) {
 		return new File(System.getenv("DINE_TEST_FIXTURES"), name + ".apk");
+	}
+
+	private void install(Uri apk) {
+		startActivityForResult(new Intent(Intent.ACTION_INSTALL_PACKAGE, apk).putExtra(Intent.EXTRA_RETURN_RESULT, true), 1);
+	}
+
+	private void uninstall(String action, String name) {
+		startActivityForResult(new Intent(action, Uri.parse("package:" + name)).putExtra(Intent.EXTRA_RETURN_RESULT, true), 2);
+	}
+
+	private void logInstaller(String name) {
+		log("installer " + getPackageManager().getInstallerPackageName(name));
 	}
 
 	private void listenForPackages() {
@@ -87,12 +108,14 @@ public class Main extends Activity {
 		}, new IntentFilter(Intent.ACTION_PACKAGE_ADDED));
 	}
 
-	private void session(File apk) throws Exception {
+	private void session(File apk, String name) throws Exception {
 		registerReceiver(new BroadcastReceiver() {
 			@Override
 			public void onReceive(Context context, Intent intent) {
 				int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, 99);
 				log("status " + status + " " + intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME));
+				if (status == PackageInstaller.STATUS_SUCCESS)
+					logInstaller(intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME));
 				if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
 					Intent confirm = (Intent)intent.getParcelableExtra(Intent.EXTRA_INTENT);
 					Context starter = kind.equals("session-app-context") ? getApplicationContext() : Main.this;
@@ -105,7 +128,7 @@ public class Main extends Activity {
 		PackageInstaller installer = getPackageManager().getPackageInstaller();
 		int id = installer.createSession(new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL));
 		PackageInstaller.Session session = installer.openSession(id);
-		try (InputStream in = new FileInputStream(apk); OutputStream out = session.openWrite("base.apk", 0, apk.length())) {
+		try (InputStream in = new FileInputStream(apk); OutputStream out = session.openWrite(name, 0, apk.length())) {
 			byte[] buffer = new byte[64 * 1024];
 			for (int n; (n = in.read(buffer)) > 0;)
 				out.write(buffer, 0, n);
@@ -117,8 +140,11 @@ public class Main extends Activity {
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		log("result " + resultCode + " " + data.getIntExtra(Intent.EXTRA_INSTALL_RESULT, 0));
-		finishSoon();
+		log("result " + resultCode + " " + (data.hasExtra(Intent.EXTRA_INSTALL_RESULT) ? data.getIntExtra(Intent.EXTRA_INSTALL_RESULT, 0) : "none"));
+		if (requestCode == 1 && resultCode == RESULT_OK)
+			logInstaller(getPackageManager().getPackageArchiveInfo(fixture(argument).getPath(), 0).packageName);
+		if (!kind.equals("self-uninstall"))
+			finishSoon();
 	}
 
 	// after the broadcasts that follow the result

@@ -7,5 +7,6 @@
 		<activity android:name=".BareActivity" android:theme="@android:style/Theme.Material.NoActionBar"/>
 		<service android:name=".TestJobService" android:permission="android.permission.BIND_JOB_SERVICE"/>
 		<service android:name=".CreateGateJobService" android:permission="android.permission.BIND_JOB_SERVICE"/>
+		<provider android:name=".TwoNamesProvider" android:authorities="dev.dine.framework.basics.one;dev.dine.framework.basics.two"/>
 	</application>
 </manifest>

@@ -33,6 +33,23 @@ public class CleanupTest extends TestCase {
 		assertTrue(finalizerHasLooper);
 	}
 
+	// made on a thread of no app: the class's loader names the app
+	public void testFinalizerOfAnObjectMadeOutsideTheApp() throws Exception {
+		final CountDownLatch done = new CountDownLatch(1);
+		ThreadGroup root = Thread.currentThread().getThreadGroup();
+		while (root.getParent() != null)
+			root = root.getParent();
+		Thread maker = new Thread(root, new Runnable() {
+			public void run() {
+				makeFinalizable(done);
+			}
+		});
+		maker.start();
+		maker.join();
+		collectUntil(done);
+		assertEquals("dev.dine.framework.basics", finalizedIn);
+	}
+
 	public void testCleanerRunsInTheApp() throws Exception {
 		CountDownLatch done = new CountDownLatch(1);
 		String[] cleanedIn = new String[1];

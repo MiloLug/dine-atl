@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.function.BooleanSupplier;
 
 /**
  * Every install and uninstall: the CLI's, a run by APK path, and an app's (PackageInstaller sessions,
@@ -111,13 +112,18 @@ public final class ATLInstaller {
 		}
 	}
 
+	/** The file a package's i-th APK is stored as, the base first; no name an app chose reaches the ':'-joined paths. */
+	public static String storedName(int i) {
+		return i == 0 ? "base.apk" : "split" + i + ".apk";
+	}
+
 	/** Copies the APKs (the base first) into a new staging dir and parses the base. */
 	public static Staged stage(File... apks) throws IOException {
 		File dir = newStagingDir();
 		try {
 			String[] files = new String[apks.length];
 			for (int i = 0; i < apks.length; i++) {
-				files[i] = i == 0 ? "base.apk" : "split" + i + ".apk";
+				files[i] = storedName(i);
 				try (InputStream in = new FileInputStream(apks[i])) {
 					copy(in, new File(dir, files[i]));
 				}
@@ -129,7 +135,7 @@ public final class ATLInstaller {
 		}
 	}
 
-	/** files: the APKs already written into dir (synced), the base first. */
+	/** files: the APKs already written into dir under their stored names (synced), the base first. */
 	public static Staged stageDir(File dir, String[] files) throws IOException {
 		return new Staged(dir, files, ATLRegistry.parse(new File(dir, files[0])));
 	}
@@ -156,82 +162,120 @@ public final class ATLInstaller {
 	/**
 	 * Moves the staged APKs into apps/<pkg>/ and writes the row in one transaction, then deletes the
 	 * replaced version. Every install refuses a provider authority another package holds; an
-	 * app-started one also keeps Android's rules: the same signer, no downgrade.
+	 * app-started one also keeps Android's rules: the same signer, no downgrade. A failure takes
+	 * away the APKs, wherever they are by then.
 	 */
 	public static Result commit(Staged staged, boolean appStarted, boolean allowFakeSignature, String installer) {
 		ATLRegistry registry = ATLRegistry.get();
 		PackageParser.Package pkg = staged.pkg;
 		String name = pkg.packageName;
-		ATLRegistry.Row old;
-		File versionDir;
-		int uid;
 		// decoded before the write lock: a row in an older format is parsed again, which takes seconds under -Xint
 		ATLRegistry.Entry before;
 		try {
 			before = appStarted ? registry.entry(name) : null;
 		} catch (RuntimeException e) {
-			return failed(staged, PackageInstaller.STATUS_FAILURE, name, "can't read the installed package: " + e);
+			abandon(staged);
+			return Result.failure(PackageInstaller.STATUS_FAILURE, name, "can't read the installed package: " + e);
 		}
+		ATLRegistry.Row old = null;
+		File versionDir = null; // the APKs' dir once they moved
+		long serial = -1;
+		Result result = null;
 		synchronized (registry) {
 			registry.db.beginTransactionNonExclusive();
 			try {
 				old = registry.row(name);
-				if (appStarted && old != null && !old.generated) {
-					// the lock holds the row: entry(old) is old's own package
-					PackageParser.Package installed = before != null && before.row.generation == old.generation ? before.pkg : registry.entry(old).pkg;
-					if (!sameSigners(installed.mSignatures, pkg.mSignatures))
-						return failed(staged, PackageInstaller.STATUS_FAILURE_CONFLICT, name, "signatures differ from the installed package's");
-					if (pkg.mVersionCode < old.versionCode)
-						return failed(staged, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, name,
-						              "version " + pkg.mVersionCode + " is older than the installed " + old.versionCode);
-				}
-				// Android's rule: one package per authority; an update keeps its own
-				for (PackageParser.Provider provider : pkg.providers) {
-					if (provider.info.authority == null)
-						continue;
-					for (String authority : provider.info.authority.split(";")) {
-						String holder = registry.authorityHolder(authority, name);
-						if (holder != null) {
-							abandon(staged);
-							return Result.failure(PackageInstaller.STATUS_FAILURE_CONFLICT, PackageManager.INSTALL_FAILED_CONFLICTING_PROVIDER,
-							                      name, "provider authority " + authority + " is held by " + holder);
-						}
+				result = refusal(registry, staged, old, before, appStarted);
+				if (result == null) {
+					serial = registry.nextSerial();
+					File pkgDir = new File(registry.apps, name);
+					pkgDir.mkdirs();
+					File dir = new File(pkgDir, pkg.mVersionCode + "-" + serial);
+					if (staged.dir.renameTo(dir)) {
+						versionDir = dir;
+						ATLRegistry.fsync(pkgDir);
+						StringBuilder apks = new StringBuilder();
+						for (String file : staged.files)
+							apks.append(apks.length() == 0 ? "" : ":").append("apps/" + name + "/" + dir.getName() + "/" + file);
+						int uid = old != null ? old.uid : registry.nextUid();
+						long now = System.currentTimeMillis();
+						boolean fakeSignature = allowFakeSignature && staged.fakeSignature() != null;
+						registry.putRow(pkg, uid, apks.toString(), false, fakeSignature, installer,
+						                old != null && !old.generated ? old.firstInstallTime : now, now, serial);
+						new File(registry.dataDir(name), "lib").mkdirs();
+						registry.db.setTransactionSuccessful();
+						result = new Result(PackageInstaller.STATUS_SUCCESS, name, null, uid, old != null);
+					} else {
+						result = Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move the APK to " + dir);
 					}
 				}
-				long serial = registry.nextSerial();
-				File pkgDir = new File(registry.apps, name);
-				pkgDir.mkdirs();
-				versionDir = new File(pkgDir, pkg.mVersionCode + "-" + serial);
-				if (!staged.dir.renameTo(versionDir))
-					return failed(staged, PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move the APK to " + versionDir);
-				ATLRegistry.fsyncDir(pkgDir);
-				StringBuilder apks = new StringBuilder();
-				for (String file : staged.files)
-					apks.append(apks.length() == 0 ? "" : ":").append("apps/" + name + "/" + versionDir.getName() + "/" + file);
-				uid = old != null ? old.uid : registry.nextUid();
-				long now = System.currentTimeMillis();
-				boolean fakeSignature = allowFakeSignature && staged.fakeSignature() != null;
-				registry.putRow(pkg, uid, apks.toString(), false, fakeSignature, installer,
-				                old != null && !old.generated ? old.firstInstallTime : now, now, serial);
-				new File(registry.dataDir(name), "lib").mkdirs();
-				registry.db.setTransactionSuccessful();
 			} catch (IOException e) {
-				return failed(staged, PackageInstaller.STATUS_FAILURE_STORAGE, name, e.toString());
+				result = Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, e.toString());
 			} catch (RuntimeException e) {
-				return failed(staged, PackageInstaller.STATUS_FAILURE, name, e.toString());
+				result = Result.failure(PackageInstaller.STATUS_FAILURE, name, e.toString());
 			} finally {
-				registry.db.endTransaction();
+				// before the lock goes: after a rollback another process may take the same serial
+				boolean failed = result == null || result.status != PackageInstaller.STATUS_SUCCESS;
+				if (failed)
+					ATLRegistry.deleteTree(versionDir != null ? versionDir : staged.dir);
+				long written = serial;
+				Result ended = end(registry, result, () -> {
+					ATLRegistry.Row now = registry.row(name);
+					return now != null && now.generation == written;
+				});
+				if (!failed && ended.status != PackageInstaller.STATUS_SUCCESS)
+					ATLRegistry.deleteTree(versionDir);
+				result = ended;
 			}
+			if (result.status != PackageInstaller.STATUS_SUCCESS)
+				return result;
 		}
 		if (old != null && !old.generated)
 			ATLRegistry.deleteTree(registry.file(old.apks[0]).getParentFile());
-		Slog.i(TAG, "installed " + name + " " + pkg.mVersionName + " (" + pkg.mVersionCode + ") uid " + uid);
-		return new Result(PackageInstaller.STATUS_SUCCESS, name, null, uid, old != null);
+		Slog.i(TAG, "installed " + name + " " + pkg.mVersionName + " (" + pkg.mVersionCode + ") uid " + result.uid);
+		return result;
 	}
 
-	private static Result failed(Staged staged, int status, String name, String message) {
-		abandon(staged);
-		return Result.failure(status, name, message);
+	/** Under the write lock: why Android refuses this install, or null. */
+	private static Result refusal(ATLRegistry registry, Staged staged, ATLRegistry.Row old, ATLRegistry.Entry before, boolean appStarted) {
+		PackageParser.Package pkg = staged.pkg;
+		String name = pkg.packageName;
+		if (appStarted && old != null && !old.generated) {
+			// the lock holds the row: entry(old) is old's own package
+			PackageParser.Package installed = before != null && before.row.generation == old.generation ? before.pkg : registry.entry(old).pkg;
+			if (!sameSigners(installed.mSignatures, pkg.mSignatures))
+				return Result.failure(PackageInstaller.STATUS_FAILURE_CONFLICT, name, "signatures differ from the installed package's");
+			if (pkg.mVersionCode < old.versionCode)
+				return Result.failure(PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, name,
+				                      "version " + pkg.mVersionCode + " is older than the installed " + old.versionCode);
+		}
+		// one package per authority; an update keeps its own
+		for (PackageParser.Provider provider : pkg.providers) {
+			if (provider.info.authority == null)
+				continue;
+			for (String authority : provider.info.authority.split(";")) {
+				String holder = registry.authorityHolder(authority, name);
+				if (holder != null)
+					return Result.failure(PackageInstaller.STATUS_FAILURE_CONFLICT, PackageManager.INSTALL_FAILED_CONFLICTING_PROVIDER,
+					                      name, "provider authority " + authority + " is held by " + holder);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Ends the write transaction; result is null when an Error is on its way. A throw from the commit
+	 * doesn't say whether it landed: landed reads the row.
+	 */
+	private static Result end(ATLRegistry registry, Result result, BooleanSupplier landed) {
+		try {
+			registry.db.endTransaction();
+			return result;
+		} catch (RuntimeException e) {
+			if (result == null || result.status != PackageInstaller.STATUS_SUCCESS || landed.getAsBoolean())
+				return result;
+			return Result.failure(PackageInstaller.STATUS_FAILURE, result.packageName, "the commit failed: " + e);
+		}
 	}
 
 	/** Android's rule: the same set of signing certificates; unsigned matches only unsigned. */
@@ -243,47 +287,75 @@ public final class ATLInstaller {
 
 	/**
 	 * Removes the row, the APKs and the app's data. Its dirs move to the trash inside the transaction,
-	 * so a concurrent install of the same package never loses its files. A Play Services name gets its
+	 * so a concurrent install of the same package never loses its files; a failure moves them back,
+	 * and so does the registry's sweep after a kill before the commit. A Play Services name gets its
 	 * generated row back.
 	 */
 	public static Result uninstall(String name) {
 		ATLRegistry registry = ATLRegistry.get();
-		File trash;
-		ATLRegistry.Row old;
+		File apps = new File(registry.apps, name);
+		File data = registry.dataDir(name);
+		File trash = null;
+		long serial = -1;
+		Result result = null;
 		synchronized (registry) {
 			registry.db.beginTransactionNonExclusive();
 			try {
-				old = registry.row(name);
-				if (old == null)
-					return Result.failure(PackageInstaller.STATUS_FAILURE, name, "not installed");
-				if (old.generated)
-					return Result.failure(PackageInstaller.STATUS_FAILURE_BLOCKED, name, "a preinstalled package");
-				long serial = registry.nextSerial();
-				trash = new File(registry.trash, name + "-" + serial);
-				if (!trash.mkdir())
-					return Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't create " + trash);
-				File apps = new File(registry.apps, name);
-				File appsTrash = new File(trash, "apps");
-				if (apps.exists() && !apps.renameTo(appsTrash))
-					return Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move " + apps + " to the trash");
-				File data = registry.dataDir(name);
-				if (data.exists() && !data.renameTo(new File(trash, "data"))) {
-					appsTrash.renameTo(apps);
-					return Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move " + data + " to the trash");
+				ATLRegistry.Row old = registry.row(name);
+				if (old == null) {
+					result = Result.failure(PackageInstaller.STATUS_FAILURE, name, "not installed");
+				} else if (old.generated) {
+					result = Result.failure(PackageInstaller.STATUS_FAILURE_BLOCKED, name, "a preinstalled package");
+				} else {
+					serial = registry.nextSerial();
+					File dir = new File(registry.trash, name + "-" + serial);
+					if (dir.mkdir()) {
+						trash = dir;
+						result = toTrash(apps, data, trash, name);
+						if (result == null) {
+							registry.deleteRow(name);
+							if (ATLGStub.PACKAGES.contains(name)) {
+								long now = System.currentTimeMillis();
+								registry.putRow(ATLGStub.makePackage(name), old.uid, null, true, false, null, now, now, serial);
+							}
+							registry.db.setTransactionSuccessful();
+							result = new Result(PackageInstaller.STATUS_SUCCESS, name, null, old.uid, false);
+						}
+					} else {
+						result = Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't create " + dir);
+					}
 				}
-				registry.deleteRow(name);
-				if (ATLGStub.PACKAGES.contains(name)) {
-					long now = System.currentTimeMillis();
-					registry.putRow(ATLGStub.makePackage(name), old.uid, null, true, false, null, now, now, serial);
-				}
-				registry.db.setTransactionSuccessful();
+			} catch (RuntimeException e) {
+				result = Result.failure(PackageInstaller.STATUS_FAILURE, name, e.toString());
 			} finally {
-				registry.db.endTransaction();
+				// before the lock goes: after a rollback another process may install the package
+				boolean failed = result == null || result.status != PackageInstaller.STATUS_SUCCESS;
+				if (failed && trash != null)
+					ATLRegistry.putBack(trash, apps, data);
+				long written = serial;
+				Result ended = end(registry, result, () -> {
+					ATLRegistry.Row now = registry.row(name);
+					return now == null || (now.generated && now.generation == written);
+				});
+				if (!failed && ended.status != PackageInstaller.STATUS_SUCCESS)
+					ATLRegistry.putBack(trash, apps, data);
+				result = ended;
 			}
+			if (result.status != PackageInstaller.STATUS_SUCCESS)
+				return result;
 		}
 		ATLRegistry.deleteTree(trash);
 		Slog.i(TAG, "uninstalled " + name);
-		return new Result(PackageInstaller.STATUS_SUCCESS, name, null, old.uid, false);
+		return result;
+	}
+
+	// on a failure the caller moves back what moved (ATLRegistry.putBack)
+	private static Result toTrash(File apps, File data, File trash, String name) {
+		if (apps.exists() && !apps.renameTo(new File(trash, "apps")))
+			return Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move " + apps + " to the trash");
+		if (data.exists() && !data.renameTo(new File(trash, "data")))
+			return Result.failure(PackageInstaller.STATUS_FAILURE_STORAGE, name, "can't move " + data + " to the trash");
+		return null;
 	}
 
 	/**

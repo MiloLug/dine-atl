@@ -101,7 +101,7 @@ public final class ATLInstallerUi {
 			return;
 		}
 		confirm(context, session.staged(), (install, allowFakeSignature) -> {
-			ATLInstaller.Result result = session.confirmed(install, allowFakeSignature, context.getPackageName());
+			ATLInstaller.Result result = session.confirmed(install, allowFakeSignature);
 			if (result != null && result.status == PackageInstaller.STATUS_SUCCESS)
 				announce(context, result, false);
 		});

@@ -22,6 +22,29 @@ public class RegistryTest extends android.test.InstrumentationTestCase {
 		}
 	}
 
+	private static String pragma(String name) throws Exception {
+		Field field = ATLRegistry.class.getDeclaredField("db");
+		field.setAccessible(true);
+		SQLiteDatabase db = (SQLiteDatabase)field.get(ATLRegistry.get());
+		db.beginTransactionNonExclusive();
+		try (Cursor c = db.rawQuery("PRAGMA " + name, null)) {
+			assertTrue(c.moveToFirst());
+			return c.getString(0);
+		} finally {
+			db.endTransaction();
+		}
+	}
+
+	// readers in other processes don't wait for an install
+	public void testJournalModeIsWal() throws Exception {
+		assertEquals("wal", pragma("journal_mode"));
+	}
+
+	// FULL's commit is durable on Apple too, where fsync alone isn't
+	public void testFullfsync() throws Exception {
+		assertEquals("1", pragma("fullfsync"));
+	}
+
 	private static ATLRegistry.Row install(String fixture) throws Exception {
 		ATLInstaller.Result result = ATLInstaller.commit(ATLInstaller.stage(Fixtures.apk(fixture)), false, false, null);
 		assertEquals(PackageInstaller.STATUS_SUCCESS, result.status);

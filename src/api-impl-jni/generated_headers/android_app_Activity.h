@@ -9,6 +9,8 @@ extern "C" {
 #endif
 #undef android_app_Activity_MODE_PRIVATE
 #define android_app_Activity_MODE_PRIVATE 0L
+#undef android_app_Activity_MODE_APPEND
+#define android_app_Activity_MODE_APPEND 32768L
 #undef android_app_Activity_CONTEXT_INCLUDE_CODE
 #define android_app_Activity_CONTEXT_INCLUDE_CODE 1L
 #undef android_app_Activity_CONTEXT_IGNORE_SECURITY

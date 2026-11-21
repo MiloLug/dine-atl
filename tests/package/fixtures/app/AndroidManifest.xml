@@ -27,7 +27,7 @@
 			</intent-filter>
 			<meta-data android:name="dine.test.svc" android:value="svc"/>
 		</service>
-		<provider android:name=".Prov" android:authorities="dev.dine.pkg.app.prov">
+		<provider android:name=".Prov" android:authorities="dev.dine.pkg.app.prov;dev.dine.pkg.app.prov2">
 			<meta-data android:name="dine.test.prov" android:value="prov"/>
 			<grant-uri-permission android:pathPrefix="/shared"/>
 			<grant-uri-permission android:pathPattern="/files/.*"/>

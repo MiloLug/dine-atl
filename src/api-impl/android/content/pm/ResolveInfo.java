@@ -9,6 +9,10 @@ public class ResolveInfo {
 	public ProviderInfo providerInfo;
 	public IntentFilter filter = new IntentFilter();
 	public int priority = -500;
+	/** The filter has CATEGORY_DEFAULT. */
+	public boolean isDefault;
+	/** IntentFilter.match's answer for the intent. */
+	public int match;
 
 	private ComponentInfo componentInfo() {
 		return activityInfo != null ? activityInfo : serviceInfo != null ? serviceInfo : providerInfo;

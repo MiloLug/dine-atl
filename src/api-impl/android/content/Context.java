@@ -78,6 +78,7 @@ public abstract class Context {
 	private final static String TAG = "Context";
 
 	public static final int MODE_PRIVATE = 0;
+	public static final int MODE_APPEND = 0x8000;
 	public static final String ACTIVITY_SERVICE = "activity";
 	public static final String AUDIO_SERVICE = "audio";
 	public static final String CLIPBOARD_SERVICE = "clipboard";
@@ -224,16 +225,9 @@ public abstract class Context {
 		if (files_dir == null) {
 			files_dir = new File(getDataDirFile(), "files");
 		}
-		if (!files_dir.exists()) {
-			if (!files_dir.mkdirs()) {
-				if (files_dir.exists()) {
-					// spurious failure; probably racing with another process for this app
-					return files_dir;
-				}
-				Slog.w(TAG, "Unable to create files directory " + files_dir.getPath());
-				return null;
-			}
-		}
+		// AOSP's ensurePrivateDirExists: the dir either way, so a name never resolves against the working dir
+		if (!files_dir.mkdirs() && !files_dir.exists())
+			Slog.w(TAG, "Unable to create files directory " + files_dir.getPath());
 		return files_dir;
 	}
 
@@ -320,7 +314,7 @@ public abstract class Context {
 	}
 
 	public File getDir(String name, int mode) {
-		File dir = new File(getFilesDir(), name);
+		File dir = makeFilename(getDataDirFile(), "app_" + name);
 		if (!dir.exists()) {
 			if (!dir.mkdirs()) {
 				if (dir.exists()) {
@@ -345,13 +339,14 @@ public abstract class Context {
 	public SharedPreferences getSharedPreferences(String name, int mode) {
 		if (Log.isLoggable(TAG, Log.VERBOSE))
 			Slog.v(TAG, "\n\n...> getSharedPreferences(" + name + ")\n\n");
+		// one instance per name: two would each write their own map to the file
 		Map<String, SharedPreferences> sharedPrefs = get_atl_loaded_app().shared_prefs;
-		if (sharedPrefs.containsKey(name)) {
-			return sharedPrefs.get(name);
-		} else {
-			File prefsFile = getSharedPrefsFile(name);
-			SharedPreferences prefs = new SharedPreferencesImpl(prefsFile, mode);
-			sharedPrefs.put(name, prefs);
+		synchronized (sharedPrefs) {
+			SharedPreferences prefs = sharedPrefs.get(name);
+			if (prefs == null) {
+				prefs = new SharedPreferencesImpl(getSharedPrefsFile(name), mode);
+				sharedPrefs.put(name, prefs);
+			}
 			return prefs;
 		}
 	}
@@ -360,19 +355,16 @@ public abstract class Context {
 
 	public abstract ComponentName startService(Intent intent);
 
-	// TODO: do these both work? make them look more alike
 	public FileInputStream openFileInput(String name) throws FileNotFoundException {
-		if (Log.isLoggable(TAG, Log.VERBOSE))
-			Slog.v(TAG, "openFileInput called for: '" + name + "'");
-		File file = new File(getFilesDir(), name);
-
-		return new FileInputStream(file);
+		return new FileInputStream(getFileStreamPath(name));
 	}
 
-	public FileOutputStream openFileOutput(String name, int mode) throws java.io.FileNotFoundException {
-		if (Log.isLoggable(TAG, Log.VERBOSE))
-			Slog.v(TAG, "openFileOutput called for: '" + name + "'");
-		return new FileOutputStream(new File(getDataDirFile(), "files/" + name));
+	public FileOutputStream openFileOutput(String name, int mode) throws FileNotFoundException {
+		return new FileOutputStream(getFileStreamPath(name), (mode & MODE_APPEND) != 0);
+	}
+
+	public boolean deleteFile(String name) {
+		return getFileStreamPath(name).delete();
 	}
 
 	public int checkCallingOrSelfPermission(String permission) {
@@ -461,7 +453,7 @@ public abstract class Context {
 			databaseDir = databaseFile.getParentFile();
 		} else {
 			databaseDir = new File(getDataDirFile(), "databases");
-			databaseFile = new File(databaseDir, dbName);
+			databaseFile = makeFilename(databaseDir, dbName);
 		}
 		if (!databaseDir.exists())
 			databaseDir.mkdirs();
@@ -522,8 +514,7 @@ public abstract class Context {
 		if ((mode & MODE_NO_LOCALIZED_COLLATORS) != 0) {
 			flags |= SQLiteDatabase.NO_LOCALIZED_COLLATORS;
 		}
-		SQLiteDatabase db = SQLiteDatabase.openDatabase(filename, factory, flags, errorHandler);
-		return db;
+		return SQLiteDatabase.openDatabase(getDatabasePath(filename).getPath(), factory, flags, errorHandler);
 	}
 
 	public boolean deleteDatabase(String name) {
@@ -544,7 +535,8 @@ public abstract class Context {
 	}
 
 	public String[] fileList() {
-		return new String[0];
+		String[] names = getFilesDir().list();
+		return names != null ? names : new String[0];
 	}
 
 	public void revokeUriPermission(Uri uri, int mode) {
@@ -581,9 +573,15 @@ public abstract class Context {
 	}
 
 	public boolean deleteSharedPreferences(String name) {
-		getSharedPrefsFile(name).delete();
-		get_atl_loaded_app().shared_prefs.remove(name);
-		return true;
+		Map<String, SharedPreferences> sharedPrefs = get_atl_loaded_app().shared_prefs;
+		synchronized (sharedPrefs) {
+			sharedPrefs.remove(name);
+			File file = getSharedPrefsFile(name);
+			File backup = SharedPreferencesImpl.makeBackupFile(file);
+			file.delete();
+			backup.delete();
+			return !file.exists() && !backup.exists();
+		}
 	}
 
 	public String getPackageResourcePath() {
