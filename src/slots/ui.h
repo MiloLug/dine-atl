@@ -356,8 +356,18 @@ struct ui_view *ui_image_new(struct atl_ref *view_ref, const char *class_name, c
 void ui_image_set_drawable(struct ui_view *view, struct gfx_drawable *drawable, int width, int height);
 void ui_image_set_scale_type(struct ui_view *view, int scale_type); // ImageView.ScaleType.nativeInt
 
-/* A ScrollView or HorizontalScrollView: the toolkit scrolls its one child along the axis. */
+/* A ScrollView or HorizontalScrollView: the toolkit scrolls its one child along the axis. It takes a
+ * gesture from the views under it by panning, as Android's does by intercepting: a ScrollView takes
+ * none while its content fits (scroll 0 and nothing to scroll), a HorizontalScrollView takes a drag
+ * past the touch slop along its axis whatever its content. */
 struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits, bool horizontal);
+/* ViewGroup.requestDisallowInterceptTouchEvent reached the scroll node, from a view under it: while
+ * disallow holds, its pan doesn't take the gesture in progress. The setting is the gesture's: the
+ * backend drops it at the gesture's DOWN and when it ends, as the ViewGroup does. Any time on the
+ * app's Android main thread, with the node alive; ignored when no gesture is on the node. A toolkit
+ * that gives Java the gesture first (gtk) or whose own thread can't wait for the Android one (uikit)
+ * does nothing. */
+void ui_scroll_disallow_intercept(struct ui_view *view, bool disallow);
 
 /* A ProgressBar: a bar for a fraction, or a spinner when indeterminate. */
 struct ui_view *ui_progress_new(struct atl_ref *view_ref, const char *class_name, const struct ui_view_traits *traits);

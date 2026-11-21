@@ -24,8 +24,13 @@ struct atl_app;
 /* A tap on the button or row whose label is label of app's last shown alert; prints "answer:
  * <label>" or "answer: no <label>". */
 void headless_answer(struct atl_app *app, const char *label);
-/* down: KeyEvent.ACTION_DOWN, else ACTION_UP; unicode: the character it types, or 0. */
-void headless_key(struct ui_window *window, int down, int code, int meta, int unicode);
+enum headless_key {
+	HEADLESS_KEY_DOWN,
+	HEADLESS_KEY_UP,
+	HEADLESS_KEY_CANCEL, // an UP the system canceled
+};
+/* unicode: the character it types, or 0. */
+void headless_key(struct ui_window *window, enum headless_key what, int code, int meta, int unicode);
 
 /* A text line for the keyboard's field (edit.c): text for COMMIT and COMPOSE, a and b for DELETE
  * (before, after) and SELECT (start, end) in UTF-16 code units, x and y for TAP (px in the window).

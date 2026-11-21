@@ -1,9 +1,11 @@
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 #include <pthread.h>
 #include <stdlib.h>
 
 #include "src/shared/input.h"
+#include "src/shared/pointers.h"
 #include "src/shared/upcall.h"
 #include "src/slots/loop.h"
 
@@ -13,13 +15,9 @@
 
 /* UIKit gives a touch to the view it hits, and each node view hands its touches here. Scroll views
  * and Dine's edge pans cancel the touches they take, which Java gets as CANCEL. A MOVE still
- * waiting for the Android thread takes the newer one's pointers instead of queueing behind it. */
-
-// UIKit's thread
-static UITouch *touches[ATL_POINTERS_MAX]; // per pointer index
-static struct atl_touch gesture;
-static UIView *gesture_surface; // the gesture's coordinates
-static int64_t key_down_times[512];
+ * waiting for the Android thread takes the newer one's pointers instead of queueing behind it.
+ * Each app has its own state (ATLInput): a finger on one app's surface and one on another's are two
+ * gestures. */
 
 struct posted_touch {
 	struct atl_app *app;
@@ -27,51 +25,83 @@ struct posted_touch {
 	struct atl_touch touch;
 };
 
-static pthread_mutex_t post_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct posted_touch *pending_move; // posted and not run yet
+/* One app's input. UIKit's thread owns it, but the lock and pendingMove: the Android thread clears
+ * pendingMove when its MOVE runs. */
+@interface ATLInput : NSObject {
+@public
+	struct atl_pointers pointers;     // keyed by the UITouch's address
+	int64_t keyDownTimes[512];        // by Android key code
+	pthread_mutex_t lock;
+	struct posted_touch *pendingMove; // posted and not run yet
+}
+// The touches in pointers: their addresses are the handles, so they live as long as the gesture
+// keeps them, and an ended one's address can't come again as another touch.
+@property(nonatomic, strong) NSMutableArray<UITouch *> *held;
+@property(nonatomic, strong) UIView *surface; // the gesture's coordinates
+@end
+
+@implementation ATLInput
+- (instancetype)init
+{
+	if ((self = [super init])) {
+		pthread_mutex_init(&lock, NULL);
+		_held = [NSMutableArray array];
+	}
+	return self;
+}
+@end
+
+void *input_new(void)
+{
+	return (void *)CFBridgingRetain([[ATLInput alloc] init]);
+}
+
+static ATLInput *input_of_app(struct atl_app *app)
+{
+	return app ? (__bridge ATLInput *)uikit_input_of(app) : nil;
+}
 
 static void deliver_touch(void *data)
 {
 	struct posted_touch *posted = data;
-	pthread_mutex_lock(&post_lock);
-	if (pending_move == posted)
-		pending_move = NULL;
+	ATLInput *input = input_of_app(posted->app);
+	pthread_mutex_lock(&input->lock);
+	if (input->pendingMove == posted)
+		input->pendingMove = NULL;
 	struct atl_touch touch = posted->touch;
 	struct ui_window *window = uikit_window_of(posted->app, posted->surface);
-	pthread_mutex_unlock(&post_lock);
+	pthread_mutex_unlock(&input->lock);
 	free(posted);
 	if (window)
 		records_touch(window, &touch);
 }
 
-static void post(int action)
+static void post(ATLInput *input, const struct atl_touch *event)
 {
-	gesture.action = action;
-	gesture.time = atl_uptime_ms();
-	void *surface = (__bridge void *)gesture_surface;
-	pthread_mutex_lock(&post_lock);
-	if (action == ATL_ACTION_MOVE && pending_move && pending_move->surface == surface) {
-		pending_move->touch = gesture;
-		pthread_mutex_unlock(&post_lock);
+	void *surface = (__bridge void *)input.surface;
+	pthread_mutex_lock(&input->lock);
+	if (event->action == ATL_ACTION_MOVE && input->pendingMove && input->pendingMove->surface == surface) {
+		input->pendingMove->touch = *event;
+		pthread_mutex_unlock(&input->lock);
 		return;
 	}
 	struct atl_app *app = uikit_app_of(surface);
 	if (!app) {
-		pending_move = NULL;
-		pthread_mutex_unlock(&post_lock);
+		input->pendingMove = NULL;
+		pthread_mutex_unlock(&input->lock);
 		return;
 	}
 	struct posted_touch *posted = malloc(sizeof(*posted));
 	posted->app = app;
 	posted->surface = surface;
-	posted->touch = gesture;
-	pending_move = action == ATL_ACTION_MOVE ? posted : NULL;
-	pthread_mutex_unlock(&post_lock);
+	posted->touch = *event;
+	input->pendingMove = event->action == ATL_ACTION_MOVE ? posted : NULL;
+	pthread_mutex_unlock(&input->lock);
 	if (!loop_main_post(atl_app_loop(app), deliver_touch, posted)) {
-		pthread_mutex_lock(&post_lock);
-		if (pending_move == posted)
-			pending_move = NULL;
-		pthread_mutex_unlock(&post_lock);
+		pthread_mutex_lock(&input->lock);
+		if (input->pendingMove == posted)
+			input->pendingMove = NULL;
+		pthread_mutex_unlock(&input->lock);
 		free(posted);
 	}
 }
@@ -86,49 +116,34 @@ static UIView *surface_of(UIView *view)
 	return nil;
 }
 
-static void locate(int index)
+static ATLInput *input_of(UIView *surface)
+{
+	return surface ? input_of_app(uikit_app_of((__bridge void *)surface)) : nil;
+}
+
+/* The app whose gesture a touch is in, from its Began to its end: its view may leave the window
+ * meanwhile, and then no surface names it. Not retained: an app's ATLInput lives as long as the app. */
+static const void *const owner_key = &owner_key;
+
+static ATLInput *owner_of(UITouch *touch)
+{
+	return objc_getAssociatedObject(touch, owner_key);
+}
+
+// px in the surface
+static CGPoint located(UITouch *touch, UIView *surface)
 {
 	CGFloat scale = atl_screen_get()->density_dpi / 160.;
-	CGPoint point = [touches[index] locationInView:gesture_surface];
-	gesture.pointers[index].x = point.x * scale;
-	gesture.pointers[index].y = point.y * scale;
+	CGPoint point = [touch locationInView:surface];
+	return CGPointMake(point.x * scale, point.y * scale);
 }
 
-static int pointer_index(UITouch *touch)
+static void end_gesture(ATLInput *input)
 {
-	for (int i = 0; i < gesture.count; i++) {
-		if (touches[i] == touch)
-			return i;
-	}
-	return -1;
-}
-
-// Android's: the lowest id no pointer has
-static int free_pointer_id(void)
-{
-	for (int id = 0;; id++) {
-		bool taken = false;
-		for (int i = 0; i < gesture.count; i++)
-			taken |= gesture.pointers[i].id == id;
-		if (!taken)
-			return id;
-	}
-}
-
-static void remove_pointer(int index)
-{
-	for (int i = index; i < gesture.count - 1; i++) {
-		touches[i] = touches[i + 1];
-		gesture.pointers[i] = gesture.pointers[i + 1];
-	}
-	touches[--gesture.count] = nil;
-}
-
-static void end_gesture(void)
-{
-	while (gesture.count)
-		touches[--gesture.count] = nil;
-	gesture_surface = nil;
+	for (UITouch *touch in input.held)
+		objc_setAssociatedObject(touch, owner_key, nil, OBJC_ASSOCIATION_ASSIGN);
+	[input.held removeAllObjects];
+	input.surface = nil;
 }
 
 void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase)
@@ -136,52 +151,60 @@ void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase
 	switch (phase) {
 		case UITouchPhaseBegan:
 			for (UITouch *touch in changed) {
-				if (pointer_index(touch) >= 0 || gesture.count == ATL_POINTERS_MAX)
+				UIView *surface = surface_of(touch.view);
+				ATLInput *input = input_of(surface);
+				if (!input)
 					continue;
-				if (!gesture.count) {
-					gesture_surface = surface_of(touch.view);
-					if (!gesture_surface)
-						return;
-					gesture.down_time = atl_uptime_ms();
-				}
-				int index = gesture.count++;
-				touches[index] = touch;
-				gesture.pointers[index].id = free_pointer_id();
-				locate(index);
-				post(index ? ATL_ACTION_POINTER_DOWN | index << ATL_ACTION_INDEX_SHIFT : ATL_ACTION_DOWN);
+				if (!input->pointers.touch.count)
+					input.surface = surface;
+				CGPoint at = located(touch, input.surface);
+				struct atl_touch down;
+				if (!atl_pointers_down(&input->pointers, (__bridge void *)touch, at.x, at.y, atl_uptime_ms(), &down))
+					continue;
+				[input.held addObject:touch];
+				objc_setAssociatedObject(touch, owner_key, input, OBJC_ASSOCIATION_ASSIGN);
+				post(input, &down);
 			}
 			break;
 		case UITouchPhaseMoved: {
-			bool moved = false;
+			ATLInput *moved_input = nil;
+			struct atl_touch moved;
 			for (UITouch *touch in changed) {
-				int index = pointer_index(touch);
-				if (index >= 0) {
-					locate(index);
-					moved = true;
-				}
+				ATLInput *input = owner_of(touch);
+				if (!input || atl_pointers_find(&input->pointers, (__bridge void *)touch) < 0)
+					continue;
+				if (moved_input && moved_input != input)
+					post(moved_input, &moved);
+				CGPoint at = located(touch, input.surface);
+				atl_pointers_move(&input->pointers, (__bridge void *)touch, at.x, at.y, atl_uptime_ms(), &moved);
+				moved_input = input;
 			}
-			if (moved)
-				post(ATL_ACTION_MOVE);
+			if (moved_input)
+				post(moved_input, &moved);
 			break;
 		}
 		case UITouchPhaseEnded:
 			for (UITouch *touch in changed) {
-				int index = pointer_index(touch);
-				if (index < 0)
+				ATLInput *input = owner_of(touch);
+				if (!input || atl_pointers_find(&input->pointers, (__bridge void *)touch) < 0)
 					continue;
-				locate(index);
-				post(gesture.count == 1 ? ATL_ACTION_UP : ATL_ACTION_POINTER_UP | index << ATL_ACTION_INDEX_SHIFT);
-				remove_pointer(index);
+				CGPoint at = located(touch, input.surface);
+				struct atl_touch up;
+				atl_pointers_up(&input->pointers, (__bridge void *)touch, at.x, at.y, atl_uptime_ms(), &up);
+				post(input, &up);
+				[input.held removeObject:touch];
+				objc_setAssociatedObject(touch, owner_key, nil, OBJC_ASSOCIATION_ASSIGN);
+				if (!input->pointers.touch.count)
+					end_gesture(input);
 			}
-			if (!gesture.count)
-				end_gesture();
 			break;
 		case UITouchPhaseCancelled:
 			for (UITouch *touch in changed) {
-				if (pointer_index(touch) >= 0) { // Android cancels the whole gesture
-					post(ATL_ACTION_CANCEL);
-					end_gesture();
-					break;
+				ATLInput *input = owner_of(touch);
+				struct atl_touch cancel;
+				if (input && atl_pointers_find(&input->pointers, (__bridge void *)touch) >= 0 && atl_pointers_cancel(&input->pointers, atl_uptime_ms(), &cancel)) {
+					post(input, &cancel); // Android cancels the whole gesture
+					end_gesture(input);
 				}
 			}
 			break;
@@ -193,19 +216,20 @@ void input_touches(NSSet<UITouch *> *changed, UIEvent *event, UITouchPhase phase
 void input_tap(UIView *view, CGPoint point)
 {
 	UIView *surface = surface_of(view);
-	if (gesture.count || !surface)
+	ATLInput *input = input_of(surface);
+	if (!input || input->pointers.touch.count)
 		return;
 	CGFloat scale = atl_screen_get()->density_dpi / 160.;
 	CGPoint at = [view convertPoint:point toView:surface];
-	gesture_surface = surface;
-	gesture.count = 1;
-	gesture.down_time = atl_uptime_ms();
-	gesture.pointers[0].id = 0;
-	gesture.pointers[0].x = at.x * scale;
-	gesture.pointers[0].y = at.y * scale;
-	post(ATL_ACTION_DOWN);
-	post(ATL_ACTION_UP);
-	end_gesture();
+	input.surface = surface;
+	struct atl_touch event;
+	// the app's own state's address stands for the pointer: no touch has it
+	const void *handle = (__bridge void *)input;
+	atl_pointers_down(&input->pointers, handle, at.x * scale, at.y * scale, atl_uptime_ms(), &event);
+	post(input, &event);
+	atl_pointers_up(&input->pointers, handle, at.x * scale, at.y * scale, atl_uptime_ms(), &event);
+	post(input, &event);
+	end_gesture(input);
 }
 
 static void deliver_native_down(void *data)
@@ -248,11 +272,12 @@ static void deliver_key(void *data)
 	free(posted);
 }
 
-void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down)
+void input_presses(UIView *view, NSSet<UIPress *> *presses, enum input_press what)
 {
 	void *surface = (__bridge void *)surface_of(view);
 	struct atl_app *app = uikit_app_of(surface);
-	if (!app)
+	ATLInput *input = input_of_app(app);
+	if (!input)
 		return;
 	for (UIPress *press in presses) {
 		UIKey *key = press.key;
@@ -262,13 +287,14 @@ void input_presses(UIView *view, NSSet<UIPress *> *presses, bool down)
 		posted_key->app = app;
 		posted_key->surface = surface;
 		struct atl_key *posted = &posted_key->key;
-		posted->action = down ? ATL_KEY_DOWN : ATL_KEY_UP;
+		posted->action = what == INPUT_PRESS_DOWN ? ATL_KEY_DOWN : ATL_KEY_UP;
+		posted->canceled = what == INPUT_PRESS_CANCEL;
 		posted->code = keys_android_code(key.keyCode);
 		posted->meta = keys_android_meta(key.modifierFlags);
 		posted->unicode = key.characters.length ? [key.characters characterAtIndex:0] : 0;
 		posted->time = atl_uptime_ms();
-		int64_t *down_time = &key_down_times[posted->code % 512];
-		if (down)
+		int64_t *down_time = &input->keyDownTimes[posted->code % 512];
+		if (what == INPUT_PRESS_DOWN)
 			*down_time = posted->time;
 		posted->down_time = *down_time;
 		if (!loop_main_post(atl_app_loop(app), deliver_key, posted_key))

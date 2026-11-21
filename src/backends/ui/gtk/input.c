@@ -2,6 +2,7 @@
 
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
 #include "src/shared/input.h"
+#include "src/shared/pointers.h"
 
 #include "gtk_ui.h"
 
@@ -18,8 +19,8 @@ static struct {
 	GtkNative *native;   // its events' surface
 	bool native_input;   // GTK keeps it
 	bool claimed;        // Java took the first DOWN: GTK doesn't see the gesture
-	struct atl_touch touch;
-	GdkEventSequence *sequences[ATL_POINTERS_MAX]; // per pointer index; NULL: the mouse
+	struct atl_pointers pointers; // keyed by the event sequence; NULL: the mouse
+	int delivering;               // events on their way to Java: hover exits wait for them
 } gesture;
 
 void input_take_native(GtkWidget *widget)
@@ -32,9 +33,10 @@ void input_return_native(GtkWidget *widget)
 	g_object_set_data(G_OBJECT(widget), NATIVE_INPUT, NULL);
 }
 
+// the tracker is empty before the last event is delivered, but the pointer is up only once Java has it
 bool input_pointers_up(void)
 {
-	return gesture.touch.count == 0;
+	return gesture.pointers.touch.count == 0 && !gesture.delivering;
 }
 
 // the root view a native shows: the app window's shown activity, or a window's content
@@ -103,68 +105,66 @@ static bool picks_native_input(GtkNative *native, double x, double y)
 	return false;
 }
 
-static bool set_pointer(int index, GdkEvent *event)
+// the position in the gesture's root of x, y in its native, px; false when the two don't relate
+static bool root_point(double x, double y, float *root_x, float *root_y)
 {
-	double x, y;
-	native_point(event, gesture.native, &x, &y);
 	graphene_point_t point;
 	if (!gtk_widget_compute_point(GTK_WIDGET(gesture.native), GTK_WIDGET(gesture.root), &GRAPHENE_POINT_INIT(x, y), &point))
 		return false;
-	gesture.touch.pointers[index].x = point.x;
-	gesture.touch.pointers[index].y = point.y;
+	*root_x = point.x;
+	*root_y = point.y;
 	return true;
 }
 
-static int pointer_index(GdkEventSequence *sequence)
-{
-	for (int i = 0; i < gesture.touch.count; i++) {
-		if (gesture.sequences[i] == sequence)
-			return i;
-	}
-	return -1;
-}
-
-// Android's: the lowest id no pointer has
-static int free_pointer_id(void)
-{
-	for (int id = 0;; id++) {
-		bool taken = false;
-		for (int i = 0; i < gesture.touch.count; i++)
-			taken |= gesture.touch.pointers[i].id == id;
-		if (!taken)
-			return id;
-	}
-}
-
-static bool deliver(int action)
-{
-	gesture.touch.action = action;
-	gesture.touch.time = atl_uptime_ms();
-	return atl_upcall_touch((struct atl_ref *)gesture.root->jobj, &gesture.touch);
-}
-
+// The gesture's root and native go; the caller holds the root to deliver the last event, then lets
+// the hover exits out.
 static void end_gesture(void)
 {
-	gesture.touch.count = 0;
 	g_clear_object(&gesture.root);
 	gesture.native = NULL;
-	view_flush_hover_exits();
 }
 
+/* The tracker is current before an event reaches Java, which may end the gesture meanwhile (a
+ * window closing from its own UP: input_root_gone): delivery uses a copy of the event and a held
+ * root, and no pointer state is read afterwards. The hover exits a gesture's end held back go out
+ * when the last delivery of it returns, also when Java ended it during a DOWN or a MOVE. */
+static bool deliver(WrapperWidget *root, const struct atl_touch *event)
+{
+	gesture.delivering++;
+	bool handled = atl_upcall_touch((struct atl_ref *)root->jobj, event);
+	gesture.delivering--;
+	if (!gesture.delivering && !gesture.pointers.touch.count)
+		view_flush_hover_exits();
+	return handled;
+}
+
+// a new DOWN starts over: Android cancels what was down
 static void cancel_gesture(void)
 {
-	if (!gesture.native_input)
-		deliver(ATL_ACTION_CANCEL);
+	struct atl_touch event;
+	if (!atl_pointers_cancel(&gesture.pointers, atl_uptime_ms(), &event))
+		return;
+	WrapperWidget *root = g_object_ref(gesture.root);
+	bool native_input = gesture.native_input;
 	end_gesture();
+	if (native_input)
+		view_flush_hover_exits();
+	else
+		deliver(root, &event);
+	g_object_unref(root);
 }
 
-static gboolean pointer_down(GdkEvent *event, GtkNative *native, GdkEventSequence *sequence)
+static gboolean pointer_down(GtkNative *native, GdkEventSequence *sequence, double x, double y)
 {
-	if (!gesture.touch.count) {
+	if (gesture.pointers.touch.count && (native != gesture.native || atl_pointers_find(&gesture.pointers, sequence) >= 0)) {
+		// its surface went before its UP (a closed dialog or popover), or its pointer came down
+		// again
+		cancel_gesture();
+	}
+	bool first = !gesture.pointers.touch.count;
+	if (first) {
 		if (!native)
 			return FALSE;
-		double x, y;
-		native_point(event, native, &x, &y);
 		WrapperWidget *root = down_root(native, x, y);
 		if (!root)
 			return FALSE;
@@ -172,37 +172,45 @@ static gboolean pointer_down(GdkEvent *event, GtkNative *native, GdkEventSequenc
 		gesture.native = native;
 		gesture.native_input = picks_native_input(native, x, y);
 		gesture.claimed = false;
-		gesture.touch.down_time = atl_uptime_ms();
-	} else if (native != gesture.native || pointer_index(sequence) >= 0) {
-		// its surface went before its UP (a closed dialog or popover), or its pointer came down
-		// again: Android starts over at a DOWN
-		cancel_gesture();
-		return pointer_down(event, native, sequence);
-	} else if (gesture.touch.count == ATL_POINTERS_MAX) {
+	} else if (gesture.pointers.touch.count == ATL_POINTERS_MAX) {
 		return gesture.claimed;
 	}
-	int index = gesture.touch.count++;
-	gesture.sequences[index] = sequence;
-	gesture.touch.pointers[index].id = free_pointer_id();
-	set_pointer(index, event);
+	float root_x, root_y;
+	struct atl_touch event;
+	if (!root_point(x, y, &root_x, &root_y) || !atl_pointers_down(&gesture.pointers, sequence, root_x, root_y, atl_uptime_ms(), &event)) {
+		if (first)
+			end_gesture();
+		return gesture.claimed;
+	}
 	if (gesture.native_input)
 		return FALSE;
-	bool handled = deliver(index ? ATL_ACTION_POINTER_DOWN | index << ATL_ACTION_INDEX_SHIFT : ATL_ACTION_DOWN);
-	if (!index)
+	WrapperWidget *root = g_object_ref(gesture.root);
+	bool handled = deliver(root, &event);
+	g_object_unref(root);
+	if (first)
 		gesture.claimed = handled;
 	return gesture.claimed;
 }
 
-void input_root_removed(GtkWidget *root)
+void input_root_gone(GtkWidget *root)
 {
-	if (gesture.touch.count && GTK_WIDGET(gesture.root) == root)
-		cancel_gesture();
+	if (!gesture.pointers.touch.count || GTK_WIDGET(gesture.root) != root)
+		return;
+	struct atl_touch event;
+	atl_pointers_cancel(&gesture.pointers, atl_uptime_ms(), &event);
+	// posted: the window may be closing from inside the touch being delivered
+	if (!gesture.native_input)
+		atl_upcall_touch_posted(host_app, (struct atl_ref *)gesture.root->jobj, &event);
+	end_gesture();
+	if (!gesture.delivering) // else the delivery's return lets them out
+		view_flush_hover_exits();
 }
 
 bool input_tap(GtkWidget *view)
 {
 	WrapperWidget *root = view_root(view);
-	if (!root || gesture.touch.count)
+	GtkNative *native = gtk_widget_get_native(view);
+	if (!root || !native || gesture.pointers.touch.count)
 		return false;
 	// wrappers laid out from Java get allocated 0x0 and keep their size in real_width and real_height
 	WrapperWidget *wrapper = WRAPPER_WIDGET(view);
@@ -211,70 +219,103 @@ bool input_tap(GtkWidget *view)
 	graphene_point_t point;
 	if (!gtk_widget_compute_point(view, GTK_WIDGET(root), &GRAPHENE_POINT_INIT(width / 2, height / 2), &point))
 		return false;
-	struct atl_touch touch = {.action = ATL_ACTION_DOWN, .down_time = atl_uptime_ms(), .count = 1};
-	touch.time = touch.down_time;
-	touch.pointers[0] = (struct atl_pointer){.id = 0, .x = point.x, .y = point.y};
-	bool claimed = atl_upcall_touch((struct atl_ref *)root->jobj, &touch);
-	touch.action = ATL_ACTION_UP;
-	touch.time = atl_uptime_ms();
-	atl_upcall_touch((struct atl_ref *)root->jobj, &touch);
+	// a gesture of its own on the view's root, with a made-up handle (this tap's address)
+	static const char handle;
+	gesture.root = g_object_ref(root);
+	gesture.native = native;
+	gesture.native_input = false;
+	gesture.claimed = false;
+	struct atl_touch event;
+	atl_pointers_down(&gesture.pointers, &handle, point.x, point.y, atl_uptime_ms(), &event);
+	WrapperWidget *held = g_object_ref(root);
+	bool claimed = deliver(held, &event);
+	// Java may have ended the gesture meanwhile (its root left)
+	if (atl_pointers_up(&gesture.pointers, &handle, point.x, point.y, atl_uptime_ms(), &event)) {
+		end_gesture();
+		deliver(held, &event);
+	}
+	g_object_unref(held);
 	return claimed;
 }
 
+gboolean input_pointer(enum input_pointer what, GtkNative *native, GdkEventSequence *sequence, double x, double y)
+{
+	if (what == INPUT_POINTER_DOWN)
+		return pointer_down(native, sequence, x, y);
+
+	int index = atl_pointers_find(&gesture.pointers, sequence);
+	if (index < 0 || native != gesture.native)
+		return FALSE;
+	// the pointer stays where it was when the widgets don't relate
+	float root_x = gesture.pointers.touch.pointers[index].x, root_y = gesture.pointers.touch.pointers[index].y;
+	root_point(x, y, &root_x, &root_y);
+	struct atl_touch event;
+	int64_t now = atl_uptime_ms();
+	switch (what) {
+		case INPUT_POINTER_MOVE:
+			atl_pointers_move(&gesture.pointers, sequence, root_x, root_y, now, &event);
+			break;
+		case INPUT_POINTER_UP:
+			atl_pointers_up(&gesture.pointers, sequence, root_x, root_y, now, &event);
+			break;
+		default: // Android cancels the whole gesture
+			atl_pointers_cancel(&gesture.pointers, now, &event);
+			break;
+	}
+	gboolean claimed = gesture.claimed && !gesture.native_input;
+	bool native_input = gesture.native_input;
+	WrapperWidget *root = g_object_ref(gesture.root);
+	bool ended = !gesture.pointers.touch.count;
+	if (ended)
+		end_gesture();
+	if (native_input) {
+		if (ended)
+			view_flush_hover_exits();
+	} else {
+		deliver(root, &event);
+	}
+	g_object_unref(root);
+	return claimed;
+}
+
+// the GdkEvent's part: what it is, which pointer, where in its native
 static gboolean on_pointer_event(GtkEventControllerLegacy *controller, GdkEvent *event, gpointer data)
 {
-	int action;
+	enum input_pointer what;
 	switch (gdk_event_get_event_type(event)) {
 		case GDK_BUTTON_PRESS:
 			if (gdk_button_event_get_button(event) != GDK_BUTTON_PRIMARY)
 				return FALSE;
 			// fallthrough
 		case GDK_TOUCH_BEGIN:
-			action = ATL_ACTION_DOWN;
+			what = INPUT_POINTER_DOWN;
 			break;
 		case GDK_MOTION_NOTIFY:
 			if (!(gdk_event_get_modifier_state(event) & GDK_BUTTON1_MASK))
 				return FALSE;
 			// fallthrough
 		case GDK_TOUCH_UPDATE:
-			action = ATL_ACTION_MOVE;
+			what = INPUT_POINTER_MOVE;
 			break;
 		case GDK_BUTTON_RELEASE:
 			if (gdk_button_event_get_button(event) != GDK_BUTTON_PRIMARY)
 				return FALSE;
 			// fallthrough
 		case GDK_TOUCH_END:
-			action = ATL_ACTION_UP;
+			what = INPUT_POINTER_UP;
 			break;
 		case GDK_TOUCH_CANCEL:
-			action = ATL_ACTION_CANCEL;
+			what = INPUT_POINTER_CANCEL;
 			break;
 		default:
 			return FALSE;
 	}
-	GdkEventSequence *sequence = gdk_event_get_event_sequence(event);
 	GtkNative *native = gtk_native_get_for_surface(gdk_event_get_surface(event));
-	if (action == ATL_ACTION_DOWN)
-		return pointer_down(event, native, sequence);
-
-	int index = pointer_index(sequence);
-	if (index < 0 || native != gesture.native)
+	if (!native)
 		return FALSE;
-	set_pointer(index, event);
-	gboolean claimed = gesture.claimed && !gesture.native_input;
-	if (action == ATL_ACTION_UP && gesture.touch.count > 1)
-		action = ATL_ACTION_POINTER_UP | index << ATL_ACTION_INDEX_SHIFT;
-	if (!gesture.native_input)
-		deliver(action);
-	if (action == ATL_ACTION_CANCEL) {
-		end_gesture(); // Android cancels the whole gesture
-	} else if (action != ATL_ACTION_MOVE) {
-		memmove(&gesture.touch.pointers[index], &gesture.touch.pointers[index + 1], (gesture.touch.count - index - 1) * sizeof(*gesture.touch.pointers));
-		memmove(&gesture.sequences[index], &gesture.sequences[index + 1], (gesture.touch.count - index - 1) * sizeof(*gesture.sequences));
-		if (!--gesture.touch.count)
-			end_gesture();
-	}
-	return claimed;
+	double x, y;
+	native_point(event, native, &x, &y);
+	return input_pointer(what, native, gdk_event_get_event_sequence(event), x, y);
 }
 
 #define KEYCODE_0             7 /* KEYCODE_[1-9] = [8-16] */
@@ -411,9 +452,6 @@ static int map_meta_state(GdkModifierType state)
 }
 
 
-#define ACTION_DOWN 0
-#define ACTION_UP   1
-
 /* Keys by hardware keycode: a release's keyval follows the modifiers at release (Shift+a goes down
  * as A, up as a). The key held down, for repeats and down times. */
 static guint held_keycode;
@@ -456,9 +494,8 @@ static void on_active_changed(GtkWindow *window, GParamSpec *pspec, gpointer dat
 	}
 }
 
-static gboolean on_key(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, int action)
+gboolean input_key(GtkWindow *window, GtkPropagationPhase phase, guint keyval, guint keycode, GdkModifierType state, int action)
 {
-	GtkWidget *window = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
 	GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(window));
 	bool text_focus = focus && (GTK_IS_EDITABLE(focus) || (GTK_IS_LABEL(focus) && gtk_label_get_selectable(GTK_LABEL(focus))));
 	// an EditText takes a hardware Enter first, as Android's does; the GtkText gets what it leaves,
@@ -467,18 +504,18 @@ static gboolean on_key(GtkEventControllerKey *controller, guint keyval, guint ke
 	    && (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_ISO_Enter))
 		text_focus = false;
 	// the capture controller leaves a text widget's keys to it; the bubble one takes what it left
-	if ((gtk_event_controller_get_propagation_phase(GTK_EVENT_CONTROLLER(controller)) == GTK_PHASE_CAPTURE) == text_focus)
+	if ((phase == GTK_PHASE_CAPTURE) == text_focus)
 		return FALSE;
 	WrapperWidget *root = root_wrapper(GTK_NATIVE(window));
 	if (!root)
 		return FALSE;
-	if (action == ACTION_DOWN)
+	if (action == ATL_KEY_DOWN)
 		java_key_pressed(keycode);
 	else if (!java_key_released(keycode))
 		return FALSE;
 
 	int64_t now = atl_uptime_ms();
-	if (action == ACTION_DOWN) {
+	if (action == ATL_KEY_DOWN) {
 		held_repeat = keycode == held_keycode ? held_repeat + 1 : 0;
 		if (!held_repeat)
 			held_down_time = now;
@@ -491,21 +528,28 @@ static gboolean on_key(GtkEventControllerKey *controller, guint keyval, guint ke
 		.code = map_key_code(keyval),
 		.meta = map_meta_state(state),
 		.unicode = gdk_keyval_to_unicode(keyval),
-		.repeat = action == ACTION_DOWN ? held_repeat : 0,
+		.repeat = action == ATL_KEY_DOWN ? held_repeat : 0,
 		.down_time = held_down_time,
 		.time = now,
 	};
 	return atl_upcall_key((struct atl_ref *)root->jobj, &key);
 }
 
+// the GdkEvent's part: which window and phase the controller is for
+static gboolean on_key(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, int action)
+{
+	GtkWidget *window = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
+	return input_key(GTK_WINDOW(window), gtk_event_controller_get_propagation_phase(GTK_EVENT_CONTROLLER(controller)), keyval, keycode, state, action);
+}
+
 static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data)
 {
-	return on_key(controller, keyval, keycode, state, ACTION_DOWN);
+	return on_key(controller, keyval, keycode, state, ATL_KEY_DOWN);
 }
 
 static void on_key_released(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data)
 {
-	on_key(controller, keyval, keycode, state, ACTION_UP);
+	on_key(controller, keyval, keycode, state, ATL_KEY_UP);
 }
 
 static void add_key_controller(GtkWidget *window, GtkPropagationPhase phase)

@@ -6,6 +6,7 @@ dev.dine.framework.basics.ActionBarTest#testTabsCallTheirListeners
 dev.dine.framework.basics.ActionBarTest#testWindowTitleUntilTheAppSetsOne
 dev.dine.framework.basics.AppThreadTest#testThreadsJoinTheAppsGroup
 dev.dine.framework.basics.AsyncTaskTest#testPoolThreadsAreTheApps
+dev.dine.framework.basics.AttachTest#testAttachViewToParentAddsAViewThatWasNotDetached
 dev.dine.framework.basics.AttachTest#testDetachedChildLeavesTheWindow
 dev.dine.framework.basics.AttachTest#testRemovalFromAShownWindowSendsGone
 dev.dine.framework.basics.AttachTest#testSubtreeFollowsTheWindow
@@ -347,6 +348,7 @@ dev.dine.framework.input.TouchTest#testRemoveDetachedViewCancelsTheTouchTarget
 dev.dine.framework.input.TouchTest#testSecondPointerSplitsToItsOwnTarget
 dev.dine.framework.input.TouchTest#testSiblingBeneathGetsDownTheTopOneLeaves
 dev.dine.framework.input.TouchTest#testTargetIsPinnedAtDown
+dev.dine.framework.input.TouchTest#testTranslatedChildIsHitWhereItIsDrawn
 dev.dine.framework.lifecycle.FirstFocusTest#testTheFirstActivityGainsWindowFocusOnce
 dev.dine.framework.lifecycle.TaskEndTest#testTheAppGoesOnAfterItsLastActivityFinishes
 dev.dine.framework.text.EditTextTest#testEditsToTheEditableNotify

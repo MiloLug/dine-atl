@@ -121,7 +121,7 @@ void ui_window_set_roots(struct ui_window *window, const struct ui_root *list, s
 		for (guint j = 0; j < widgets->len; j++)
 			stays |= g_ptr_array_index(widgets, j) == widget;
 		if (!stays && !g_object_get_data(G_OBJECT(widget), "atl-dim") && !g_object_get_data(G_OBJECT(widget), "atl-panel"))
-			input_root_removed(widget);
+			input_root_gone(widget);
 		gtk_overlay_remove_overlay(overlay, widget);
 	}
 	for (guint i = same; i < widgets->len; i++)
@@ -192,11 +192,15 @@ void ui_window_add_activity(struct ui_window *window, struct ui_view *root)
 
 void ui_window_show_activity(struct ui_window *window, struct ui_view *root)
 {
+	GtkWidget *shown = gtk_stack_get_visible_child(window_stack(window));
+	if (shown && shown != view_wrapper(root))
+		input_root_gone(shown);
 	gtk_stack_set_visible_child(window_stack(window), view_wrapper(root));
 }
 
 void ui_window_remove_activity(struct ui_window *window, struct ui_view *root)
 {
+	input_root_gone(view_wrapper(root));
 	gtk_stack_remove(window_stack(window), view_wrapper(root));
 }
 

@@ -90,6 +90,7 @@ void set_up_handle_cache(JNIEnv *env)
 
 	handle_cache.atl_input.class = _REF((*env)->FindClass(env, "android/view/ATLInput"));
 	handle_cache.atl_input.touch = _STATIC_METHOD(handle_cache.atl_input.class, "touch", "(Landroid/view/View;Landroid/view/MotionEvent;)Z");
+	handle_cache.atl_input.touch_posted = _STATIC_METHOD(handle_cache.atl_input.class, "touchPosted", "(Landroid/view/View;Landroid/view/MotionEvent;)Z");
 	handle_cache.atl_input.key = _STATIC_METHOD(handle_cache.atl_input.class, "key", "(Landroid/view/View;Landroid/view/KeyEvent;)Z");
 
 	handle_cache.edit_text.class = _REF((*env)->FindClass(env, "android/widget/EditText"));

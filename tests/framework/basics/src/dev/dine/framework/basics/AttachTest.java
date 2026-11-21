@@ -49,6 +49,10 @@ public class AttachTest extends android.test.InstrumentationTestCase {
 			detachViewFromParent(child);
 			removeDetachedView(child, false);
 		}
+
+		void attach(View child) {
+			attachViewToParent(child, -1, new FrameLayout.LayoutParams(10, 10));
+		}
 	}
 
 	private void onMain(Runnable runnable) {
@@ -92,6 +96,28 @@ public class AttachTest extends android.test.InstrumentationTestCase {
 			}
 		});
 		assertEquals("[a attached true, a visibility 0, a visibility 8, a detached true]", events.toString());
+	}
+
+	// attachViewToParent on a view that was never detached adds it, once
+	public void testAttachViewToParentAddsAViewThatWasNotDetached() {
+		Intent intent = new Intent(getInstrumentation().getTargetContext(), WindowActivity.class);
+		final WindowActivity activity = (WindowActivity)getInstrumentation().startActivitySync(intent);
+		final int[] children = new int[1];
+		final boolean[] parented = new boolean[1];
+		onMain(new Runnable() {
+			public void run() {
+				Scrapping group = new Scrapping(activity);
+				activity.root.addView(group);
+				Probe c = new Probe("c");
+				group.attach(c);
+				children[0] = group.getChildCount();
+				parented[0] = c.getParent() == group;
+				activity.root.removeView(group);
+			}
+		});
+		assertEquals(1, children[0]);
+		assertTrue(parented[0]);
+		assertEquals("[c attached true, c detached true]", events.toString());
 	}
 
 	public void testDetachedChildLeavesTheWindow() {

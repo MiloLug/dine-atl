@@ -41,6 +41,12 @@ public final class ATLInput {
 		return callback != null ? callback.dispatchTouchEvent(event) : root.dispatchTouchEvent(event);
 	}
 
+	// a CANCEL the backend posted for a window that left: a decor detached meanwhile gets nothing, as
+	// AOSP's dead ViewRootImpl does
+	static boolean touchPosted(View root, MotionEvent event) {
+		return root.isAttachedToWindow() && touch(root, event);
+	}
+
 	// the app's window gives keys to its topmost shown focusable window, as Android gives it the focus
 	static boolean key(View root, KeyEvent event) {
 		Window window = root.decor_window;

@@ -26,3 +26,13 @@ JNIEXPORT jlong JNICALL Java_android_widget_HorizontalScrollView_native_1constru
 {
 	return scroll_new(env, this, true);
 }
+
+JNIEXPORT void JNICALL Java_android_widget_ScrollView_native_1disallowIntercept(JNIEnv *env, jobject this, jlong widget, jboolean disallow)
+{
+	ui_scroll_disallow_intercept(_PTR(widget), disallow);
+}
+
+JNIEXPORT void JNICALL Java_android_widget_HorizontalScrollView_native_1disallowIntercept(JNIEnv *env, jobject this, jlong widget, jboolean disallow)
+{
+	ui_scroll_disallow_intercept(_PTR(widget), disallow);
+}

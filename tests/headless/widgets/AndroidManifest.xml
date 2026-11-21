@@ -16,5 +16,6 @@
 		<activity android:name=".FramesActivity"/>
 		<activity android:name=".PassesActivity"/>
 		<activity android:name=".ScrolledActivity"/>
+		<activity android:name=".PanActivity"/>
 	</application>
 </manifest>

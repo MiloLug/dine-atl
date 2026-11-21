@@ -34,11 +34,13 @@ struct atl_touch {
 #define ATL_ACTION_OUTSIDE      4
 #define ATL_ACTION_POINTER_DOWN 5
 #define ATL_ACTION_POINTER_UP   6
+#define ATL_ACTION_MASK         0xff // the action without POINTER_DOWN/UP's index
 #define ATL_ACTION_INDEX_SHIFT  8
 
 /* A KeyEvent from a keyboard. */
 struct atl_key {
 	int action;  // KeyEvent.ACTION_DOWN or ACTION_UP
+	bool canceled; // an UP of a press the system canceled: KeyEvent.FLAG_CANCELED
 	int code;    // KeyEvent.KEYCODE_*
 	int meta;    // KeyEvent.META_* flags
 	int unicode; // the character it types, or 0
@@ -56,6 +58,13 @@ int64_t atl_uptime_ms(void);
 /* On the Android main thread; root: the root view of the window the event came to. True when the
  * app consumed it. */
 bool atl_upcall_touch(struct atl_ref *root, const struct atl_touch *touch);
+/* On a thread attached to the VM (the app's Android main thread, where records and gtk call it):
+ * the same on app's main thread, later, from a copy of the event and its own ref to root, and not
+ * at all when the root's decor is no longer attached to a window then. For a CANCEL sent from inside
+ * a dispatch of the gesture's own events: a window that closes from its UP must not get the CANCEL
+ * inside it. */
+struct atl_app;
+void atl_upcall_touch_posted(struct atl_app *app, struct atl_ref *root, const struct atl_touch *touch);
 bool atl_upcall_key(struct atl_ref *root, const struct atl_key *key);
 /* The toolkit's scroll offset of the view changed (View.atlScrolled), px. */
 void atl_upcall_scrolled(struct atl_ref *view, int x, int y);

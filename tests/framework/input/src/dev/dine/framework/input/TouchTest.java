@@ -115,6 +115,24 @@ public class TouchTest extends android.test.InstrumentationTestCase {
 		assertLog("top DOWN 5,5", "bottom DOWN 5,5", "bottom UP 5,5");
 	}
 
+	// a child with a translation is hit where it is drawn, and sees the point in its own coordinates
+	public void testTranslatedChildIsHitWhereItIsDrawn() {
+		final FrameLayout root = new FrameLayout(context);
+		onMain(new Runnable() {
+			public void run() {
+				Probe child = new Probe("child", true);
+				root.addView(child);
+				root.layout(0, 0, 100, 100);
+				child.layout(0, 0, 50, 50);
+				child.setTranslationX(40);
+			}
+		});
+		dispatch(root, Input.touch(MotionEvent.ACTION_DOWN, 10, 10), Input.touch(MotionEvent.ACTION_UP, 10, 10));
+		assertLog();
+		dispatch(root, Input.touch(MotionEvent.ACTION_DOWN, 60, 10), Input.touch(MotionEvent.ACTION_UP, 60, 10));
+		assertLog("child DOWN 20,10", "child UP 20,10");
+	}
+
 	public void testInterceptCancelsTheTarget() {
 		final Group group = new Group(MotionEvent.ACTION_MOVE);
 		onMain(new Runnable() {

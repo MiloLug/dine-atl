@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "src/shared/input.h"
 #include "src/slots/ui.h"
 
 /* View records (ui.c) for headless and uikit: tree, layout pass, dump. A backend adds the hooks
@@ -94,8 +95,9 @@ struct ui_window {
 	 * window's pass after the activity, their views' window still the app's (view_new). */
 	struct ui_root *roots;
 	size_t n_roots;
-	struct ui_view *touched; // the root the gesture's DOWN went to; NULL: the activity
-	bool touch_dropped;      // that root went mid-gesture: the rest goes nowhere
+	struct ui_view *touched; // the root the gesture's DOWN went to, an activity's or a window's; NULL: none
+	bool touch_dropped;      // that root went mid-gesture, or none took the DOWN: the rest goes nowhere
+	struct atl_touch last_touch; // what the touched root got last, in its coordinates, the pointers still down; count 0: nothing yet
 	void *surface; // an app window's platform view (uikit: a retained UIView), else NULL
 };
 

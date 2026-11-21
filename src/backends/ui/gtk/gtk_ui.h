@@ -34,8 +34,23 @@ void input_attach_window(GtkWindow *window);
  * on it or its children, Java doesn't see it. */
 void input_take_native(GtkWidget *widget);
 void input_return_native(GtkWidget *widget);
-/* A root wrapper left the window: a gesture on it ends with a CANCEL, as Android's does. */
-void input_root_removed(GtkWidget *root);
+/* A root wrapper left the window or stopped being shown: a gesture on it ends with a CANCEL, as
+ * Android's does for a window that is removed or hidden. */
+void input_root_gone(GtkWidget *root);
+/* One pointer's event, what on_pointer_event reads from a GdkEvent: sequence is its handle (NULL:
+ * the mouse), x and y px in native's space. The gtk debug agent feeds it with made-up handles, as GTK 4
+ * has no public GdkEvent constructor. True when the gesture is Java's (the first DOWN was taken). */
+enum input_pointer {
+	INPUT_POINTER_DOWN,
+	INPUT_POINTER_MOVE,
+	INPUT_POINTER_UP,
+	INPUT_POINTER_CANCEL,
+};
+gboolean input_pointer(enum input_pointer what, GtkNative *native, GdkEventSequence *sequence, double x, double y);
+/* One key event of a window's key controller for phase (what on_key reads from the GdkEvent):
+ * action is ATL_KEY_DOWN or ATL_KEY_UP, keycode the hardware keycode. The gtk debug agent feeds it;
+ * true when Java took the key. */
+gboolean input_key(GtkWindow *window, GtkPropagationPhase phase, guint keyval, guint keycode, GdkModifierType state, int action);
 /* No pointer is down; hover exits wait for it. */
 bool input_pointers_up(void);
 /* One pointer's DOWN and UP at the view's centre, through its window's root view as a press there

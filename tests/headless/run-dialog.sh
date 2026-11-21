@@ -357,6 +357,21 @@ if ((headless)); then
   done
   exit_session
 
+  # WatchActivity: the window's first touch lands in the lower dialog, outside the upper one, whose
+  # ACTION_OUTSIDE dismisses the lower dialog before the DOWN reaches it: the dialog gets no event, a
+  # CANCEL included, as it has seen nothing to cancel
+  start watch WatchActivity
+  wait_for 'watch shown$'
+  send dump
+  read_dump "$app_lines"
+  touch_at 260 270
+  for line in 'watch outside$' 'watch lower dismissed$'; do
+    wait_for "$line"
+  done
+  send dump
+  read_dump "$app_lines"
+  end_session
+
   # ModalActivity: Back and a touch outside leave a dialog that isn't cancelable, and the task in
   # front; a "modal canceled" or a task move would come before the lines waited for
   start modal-c ModalActivity

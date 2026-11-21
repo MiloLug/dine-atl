@@ -147,17 +147,17 @@ FORWARD_TOUCHES
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(self, presses, true);
+	input_presses(self, presses, INPUT_PRESS_DOWN);
 }
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(self, presses, false);
+	input_presses(self, presses, INPUT_PRESS_UP);
 }
 
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
 {
-	input_presses(self, presses, false);
+	input_presses(self, presses, INPUT_PRESS_CANCEL);
 }
 @end
 
@@ -657,8 +657,10 @@ FORWARD_TOUCHES
 		self.multipleTouchEnabled = YES;
 		self.showsHorizontalScrollIndicator = horizontal;
 		self.showsVerticalScrollIndicator = !horizontal;
+		// a vertical node doesn't pan while its content fits, as Android's ScrollView takes no drag then;
+		// a horizontal one does, as HorizontalScrollView
 		self.alwaysBounceHorizontal = horizontal;
-		self.alwaysBounceVertical = !horizontal;
+		self.alwaysBounceVertical = NO;
 	}
 	return self;
 }
@@ -700,6 +702,7 @@ struct uikit_app {
 	bool flush_posted;
 	atomic_int batches_in_flight; // flushed, not yet run on UIKit's thread
 	atomic_bool draw_wanted;      // a draw pass waits for the next frame
+	void *input;                  // input.m's state of the app, retained
 };
 
 // every app's, for the frame link and for input on UIKit's thread
@@ -854,6 +857,12 @@ struct atl_app *uikit_app_of(void *surface)
 	return found;
 }
 
+void *uikit_input_of(struct atl_app *app)
+{
+	struct uikit_app *ui = atl_app_ui(app);
+	return ui ? ui->input : NULL;
+}
+
 struct ui_window *uikit_window_of(struct atl_app *app, void *surface)
 {
 	struct uikit_app *ui = atl_app_ui(app);
@@ -872,6 +881,7 @@ void records_window_created(struct ui_window *window, void *surface_view)
 		struct uikit_app *ui = calloc(1, sizeof(*ui));
 		ui->app = app;
 		pthread_mutex_init(&ui->pending_lock, NULL);
+		ui->input = input_new();
 		apps = realloc(apps, (n_apps + 1) * sizeof(*apps));
 		apps[n_apps++] = ui;
 		atl_app_set_ui(app, ui);
@@ -1653,6 +1663,11 @@ void records_draw_done(struct ui_window *window)
 		flush(atl_app_ui(window->app));
 	}
 }
+
+/* Not carried: this arrives on the Android thread after a posted DOWN, and UIKit's thread never
+ * waits for it. With delaysContentTouches at its default a drag past the slop within about 150 ms
+ * gives the child no touchesBegan, so Java would not see the DOWN in time (ATL-142). */
+void ui_scroll_disallow_intercept(struct ui_view *view, bool disallow) {}
 
 // a scroll node's UIScrollView animates and reports; another view's bounds shift its subviews
 void records_scroll_changed(struct ui_view *view, bool animated)

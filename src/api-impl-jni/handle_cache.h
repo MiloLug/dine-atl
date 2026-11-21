@@ -93,6 +93,7 @@ struct handle_cache {
 	struct {
 		jclass class;
 		jmethodID touch;
+		jmethodID touch_posted;
 		jmethodID key;
 	} atl_input;
 	struct {

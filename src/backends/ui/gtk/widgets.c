@@ -106,6 +106,10 @@ struct ui_view *ui_scroll_new(struct atl_ref *view_ref, const char *class_name, 
 	return (struct ui_view *)scrolled_window;
 }
 
+// The capture controller (input.c) gives Java a gesture first and GTK's scroll only the gestures no
+// view took: there is no pan taking a gesture from a view to refuse.
+void ui_scroll_disallow_intercept(struct ui_view *view, bool disallow) {}
+
 // GTK animates nothing here; views other than scroll nodes keep the computeScroll shift
 void ui_view_scroll_to(struct ui_view *view, int x, int y, bool animated)
 {

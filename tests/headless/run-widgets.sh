@@ -3,7 +3,8 @@
 # host's -c touch and key lines in the headless build; rows are found by their text in the view-tree
 # dump. A tap clicks and the selector follows the pressed state; a press on "share a" changes only its
 # own background, though "share b" loads the same selector resource; a hold long-clicks without a click;
-# the first Tab leaves touch mode and focuses the first row, the next ones move on, Enter clicks "one";
+# the first Tab leaves touch mode and focuses the first row, the next ones move on, a canceled Enter
+# clicks nothing and Enter clicks "one"; Enter's character is \n and DEL's is none;
 # a drag from "one" scrolls (headless stands in for the toolkit's pan: the row's touch is canceled)
 # and the "x" row's gesture exclusion follows the scroll and then the translation T gives it; a drag
 # far past the end stops at Java's end, padding included; ESC is Back on the task root. The checked
@@ -61,7 +62,7 @@ center() { echo "$((x[$1] + w[$1] / 2)) $((y[$1] + h[$1] / 2))"; }
 
 # the next checked line, or a dump's end, into REPLY, without the log prefix
 next() {
-  local line re='(widgets (click|longclick|selector|shared|scroll|focus|key|cancel) .*|^host: (exclusion|task) .*|^viewtree: end$)'
+  local line re='(widgets (click|longclick|selector|shared|scroll|focus|key|keychar|cancel) .*|^host: (exclusion|task) .*|^viewtree: end$)'
   while IFS= read -r -t 30 line <&"$atl_out"; do
     printf '%s\n' "$line" >>"$log"
     if [[ $line =~ $re ]]; then
@@ -85,7 +86,7 @@ key() { send "key down $1"; send "key up $1"; }
 # the scroll node's offset as the toolkit holds it: the dump words it after the node's frame
 expect_scroll() {
   send dump
-  read_dump 'widgets (click|longclick|selector|shared|scroll|focus|key|cancel) |^host: (exclusion|task) '
+  read_dump 'widgets (click|longclick|selector|shared|scroll|focus|key|keychar|cancel) |^host: (exclusion|task) '
   printf '%s\n' "${dump[@]}" | grep -q "MainActivity\$2 [^ ]* [0-9]*x[0-9]* scroll 0,$1\$" || fail "the toolkit's scroll isn't 0,$1"
 }
 
@@ -119,8 +120,15 @@ key 61
 expect "widgets focus tap false" "widgets focus hold true"
 key 61
 expect "widgets focus hold false" "widgets focus one true"
-key 66 # Enter
-expect "widgets click one"
+send "key down 66"
+send "key cancel 66" # a press the system cancels clicks nothing
+# the character a key types follows Generic.kcm: Enter's is \n whatever the host sends, DEL has none
+send "key down 66 0 13"
+send "key up 66"
+expect "widgets keychar 66 0" "widgets keychar 66 10" "widgets click one"
+send "key down 67 0 8"
+send "key up 67"
+expect "widgets keychar 67 0"
 
 read -r one_x one_y <<<"$(center one)"
 send "touch down 0 $one_x $one_y"

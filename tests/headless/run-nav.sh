@@ -189,4 +189,38 @@ expect "nav: E onPause" "nav: E onStop" "host: task back host" "nav: E onDestroy
 send front
 expect "nav: T onRestart" "nav: T onStart" "nav: T insets $none" "nav: T onResume" "host: task front host"
 stop
+# A gesture belongs to the window its DOWN went to, and no other window gets a part of it. P starts
+# Q from its DOWN: P is hidden, and a hidden window gets no input (AOSP's InputMonitor skips it), so
+# its gesture is canceled, and the MOVE and the UP that follow reach neither window. U starts Q,
+# which finishes on its DOWN: U comes back in front and gets nothing of that gesture, and Q, whose
+# decor is detached before its onDestroy, gets no CANCEL after it.
+start TouchStartActivity
+expect "nav: P onCreate" "nav: P onStart" "$a_frame" "nav: P insets $none" "nav: P onResume"
+send "touch down 0 100 100"
+expect "nav: P touch ACTION_DOWN" "nav: P onPause" "nav: P onStop" "nav: Q onCreate" "nav: Q onStart" "nav: Q insets $none" "nav: Q onResume"
+send "touch move 0 100 120"
+send "touch up 0 100 120"
+expect "nav: P touch ACTION_CANCEL 100,100 1" # posted when Q showed, ahead of the MOVE, where the DOWN was
+stop
+
+# V starts Q when a second finger lifts: V's CANCEL lists only the finger still down
+start TouchPointersActivity
+expect "nav: V onCreate" "nav: V onStart" "$a_frame" "nav: V insets $none" "nav: V onResume"
+send "touch down 0 100 100"
+send "touch down 1 200 100"
+send "touch up 1 200 100"
+expect "nav: V touch ACTION_DOWN" "nav: V touch ACTION_POINTER_DOWN(1)" "nav: V touch ACTION_POINTER_UP(1)" "nav: V onPause" "nav: V onStop" "nav: Q onCreate" "nav: Q onStart" "nav: Q insets $none" "nav: Q onResume"
+send "touch up 0 100 100"
+expect "nav: V touch ACTION_CANCEL 100,100 1"
+stop
+
+start TouchTapActivity
+u_resumes=("nav: U onRestart" "nav: U onStart" "nav: U insets $none" "nav: U onResume")
+expect "nav: U onCreate" "nav: U onStart" "$a_frame" "nav: U insets $none" "nav: U onResume"
+send "tap go"
+expect "nav: U touch ACTION_DOWN" "nav: U touch ACTION_UP" "nav: U onPause" "nav: U onStop" "nav: Q onCreate" "nav: Q onStart" "nav: Q insets $none" "nav: Q onResume"
+send "touch down 0 100 100"
+expect "nav: Q touch ACTION_DOWN" "nav: Q onPause" "nav: Q onStop" "${u_resumes[@]}" "nav: Q onDestroy"
+send "touch up 0 100 100" # Q's window was hidden, then went: its posted CANCEL finds the decor detached
+stop
 echo "PASS"

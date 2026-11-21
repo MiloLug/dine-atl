@@ -11,8 +11,9 @@
 #include "input.h"
 
 /* No toolkit pans here: a gesture that starts on a scroll node and moves past the touch slop along
- * its axis is taken as UIKit's and GTK's scroll views take it. The app's touch is canceled and the
- * offset follows the first pointer, clamped to the child. */
+ * its axis is taken as UIKit's and GTK's scroll views take it, unless a view under the node asked
+ * it not to (ui_scroll_disallow_intercept) or the node can't scroll. The app's touch is canceled
+ * and the offset follows the first pointer, clamped to the child. */
 
 #define TOUCH_SLOP_DP 8 // ViewConfiguration's
 
@@ -27,6 +28,7 @@ struct posted_touch {
 static __thread struct atl_touch touch; // the pointers that are down
 static __thread struct ui_view *scroll; // the gesture's scroll node, or NULL
 static __thread bool panning;
+static __thread bool disallowed; // a view under the scroll node asked it not to take the gesture
 static __thread float start_x, start_y;
 static __thread int start_scroll_x, start_scroll_y;
 static __thread int64_t key_down_time;
@@ -36,7 +38,27 @@ static bool contains(const struct ui_view *view, float x, float y)
 	return view->visibility == UI_VIEW_VISIBLE && x >= view->left && x < view->right && y >= view->top && y < view->bottom;
 }
 
-// the innermost scroll node holding the view the point hits; the point is in the parent's content
+// how far the child and the node's padding reach past the scroll node, px; margins don't count
+static int scroll_range(const struct ui_view *view)
+{
+	if (!view->n_children)
+		return 0;
+	const struct ui_view *child = view->children[0];
+	int extent = view->horizontal ? view->padding_left + child->right - child->left + view->padding_right
+	                              : view->padding_top + child->bottom - child->top + view->padding_bottom;
+	int size = view->horizontal ? view->right - view->left : view->bottom - view->top;
+	return extent > size ? extent - size : 0;
+}
+
+// A ScrollView takes no drag while its content fits, as Android's ScrollView doesn't intercept
+// then; a HorizontalScrollView takes it whatever its content
+static bool takes_drag(const struct ui_view *view)
+{
+	return view->horizontal || view->scroll_y != 0 || scroll_range(view) > 0;
+}
+
+// the innermost scroll node that takes a drag holding the view the point hits; the point is in the
+// parent's content
 static struct ui_view *scroll_at(struct ui_view *view, float x, float y)
 {
 	float local_x = x - view->left + view->scroll_x;
@@ -50,19 +72,7 @@ static struct ui_view *scroll_at(struct ui_view *view, float x, float y)
 			break;
 		}
 	}
-	return view->kind == NODE_SCROLL ? view : NULL;
-}
-
-// how far the child and the node's padding reach past the scroll node, px; margins don't count
-static int scroll_range(const struct ui_view *view)
-{
-	if (!view->n_children)
-		return 0;
-	const struct ui_view *child = view->children[0];
-	int extent = view->horizontal ? view->padding_left + child->right - child->left + view->padding_right
-	                              : view->padding_top + child->bottom - child->top + view->padding_bottom;
-	int size = view->horizontal ? view->right - view->left : view->bottom - view->top;
-	return extent > size ? extent - size : 0;
+	return view->kind == NODE_SCROLL && takes_drag(view) ? view : NULL;
 }
 
 static void pan(float x, float y)
@@ -119,6 +129,7 @@ static void pointer_down(const struct posted_touch *posted)
 		scroll = window->shown ? scroll_at(window->shown, posted->x, posted->y) : NULL;
 	}
 	panning = false;
+	disallowed = false;
 	start_x = posted->x;
 	start_y = posted->y;
 	if (scroll) {
@@ -132,7 +143,7 @@ static void pointer_move(const struct posted_touch *posted, int index)
 {
 	touch.pointers[index].x = posted->x;
 	touch.pointers[index].y = posted->y;
-	if (scroll && !panning && index == 0) {
+	if (scroll && !panning && !disallowed && index == 0) {
 		float moved = scroll->horizontal ? posted->x - start_x : posted->y - start_y;
 		if (fabsf(moved) > TOUCH_SLOP_DP * atl_screen_get()->density_dpi / 160.f) {
 			panning = true;
@@ -162,6 +173,7 @@ static void pointer_up(const struct posted_touch *posted, int index)
 	if (!touch.count) {
 		scroll = NULL;
 		panning = false;
+		disallowed = false;
 	}
 }
 
@@ -280,12 +292,18 @@ static void on_key(void *data)
 	free(posted);
 }
 
-void headless_key(struct ui_window *window, int down, int code, int meta, int unicode)
+void headless_key(struct ui_window *window, enum headless_key what, int code, int meta, int unicode)
 {
 	struct posted_key *posted = malloc(sizeof(*posted));
-	*posted = (struct posted_key){window, {.action = down ? ATL_KEY_DOWN : ATL_KEY_UP, .code = code, .meta = meta, .unicode = unicode}};
+	*posted = (struct posted_key){window, {.action = what == HEADLESS_KEY_DOWN ? ATL_KEY_DOWN : ATL_KEY_UP, .canceled = what == HEADLESS_KEY_CANCEL, .code = code, .meta = meta, .unicode = unicode}};
 	if (!loop_main_post(atl_app_loop(window->app), on_key, posted))
 		free(posted);
+}
+
+void ui_scroll_disallow_intercept(struct ui_view *view, bool disallow)
+{
+	if (view == scroll)
+		disallowed = disallow;
 }
 
 void headless_input_view_freed(struct ui_view *view)

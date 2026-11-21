@@ -128,6 +128,7 @@ atl_shared = static_library('atl_shared', [
 	'src/shared/night.c',
 	'src/shared/ninepatch.c',
 	'src/shared/path.c',
+	'src/shared/pointers.c',
 	'src/shared/region.c',
 	'src/shared/shader.c',
 	'src/shared/startup.c',
@@ -293,6 +294,10 @@ if loop_backend == 'glib'
 elif loop_backend == 'poll'
   test('loop', executable('loop-test', ['tests/loop/loop_test.c', 'src/backends/loop/poll/loop.c'],
                           dependencies: dependency('threads')))
+endif
+
+if not apple
+  test('pointers', executable('pointers-test', ['tests/loop/pointers_test.c', 'src/shared/pointers.c']))
 endif
 
 if host_backend == 'gtk'

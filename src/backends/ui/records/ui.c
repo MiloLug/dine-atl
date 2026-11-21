@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "src/shared/input.h"
+#include "src/shared/pointers.h"
 #include "src/shared/upcall.h"
 #include "src/shared/windows.h"
 #include "src/slots/gfx.h"
@@ -279,8 +280,10 @@ void records_touch(struct ui_window *window, const struct atl_touch *touch)
 	if (touch->action == ATL_ACTION_DOWN) {
 		float x = touch->pointers[0].x, y = touch->pointers[0].y;
 		const struct ui_root *target = windows_touch_target(window->roots, window->n_roots, x, y);
-		window->touch_dropped = target && windows_in_chrome(target->window, x, y); // the chrome's, no view's
-		window->touched = target && !window->touch_dropped ? target->view : NULL;
+		// the chrome's, no view's; or no activity to take it
+		window->touch_dropped = target ? windows_in_chrome(target->window, x, y) : !window->shown;
+		window->touched = window->touch_dropped ? NULL : target ? target->view : window->shown;
+		window->last_touch.count = 0; // the root has seen nothing of this gesture yet
 		struct ui_view *touched = window->touched;
 		bool dropped = window->touch_dropped;
 		touch_outside(window, target, touch);
@@ -294,47 +297,55 @@ void records_touch(struct ui_window *window, const struct atl_touch *touch)
 			window->touch_dropped = false;
 		return;
 	}
+	if (!target) // no DOWN began this gesture
+		return;
 	if (ends)
 		window->touched = NULL;
-	const struct ui_root *root = target ? root_of(window, target) : NULL;
+	const struct ui_root *root = root_of(window, target);
+	struct atl_touch moved = *touch; // in the root's own coordinates
 	if (!root) {
-		if (!window->shown)
-			return;
-		struct atl_touch moved = *touch; // the root moved up by its pan
-		for (int i = 0; i < moved.count; i++)
-			moved.pointers[i].y -= window->shown->top;
-		atl_upcall_touch(window->shown->ref, &moved);
-		return;
+		for (int i = 0; i < moved.count; i++) // the activity's root, moved up by its pan
+			moved.pointers[i].y -= target->top;
+	} else {
+		const struct atl_window_frame *frame = windows_frame(root->window);
+		for (int i = 0; i < moved.count; i++) {
+			moved.pointers[i].x -= frame->left;
+			moved.pointers[i].y -= frame->top;
+		}
 	}
-	const struct atl_window_frame *frame = windows_frame(root->window);
-	struct atl_touch moved = *touch; // in the window's own coordinates
-	for (int i = 0; i < moved.count; i++) {
-		moved.pointers[i].x -= frame->left;
-		moved.pointers[i].y -= frame->top;
-	}
+	window->last_touch = moved;
+	int action = moved.action & ATL_ACTION_MASK;
+	if (action == ATL_ACTION_POINTER_UP)
+		atl_touch_lift(&window->last_touch, moved.action >> ATL_ACTION_INDEX_SHIFT);
 	atl_upcall_touch(target->ref, &moved);
 }
 
-// posted: the window may close from inside its own touch dispatch
-static void cancel_touch(void *data)
+/* AOSP cancels a gesture whose window leaves the input windows (InputDispatcher::setInputWindows,
+ * "touched window was removed"): a removed window, and a hidden one (AppWindowToken.setVisibility
+ * sets hiddenRequested, WindowState.cantReceiveTouchInput holds, InputMonitor's accept skips it).
+ * The window gets no more of the gesture, nor does another: the rest is dropped up to its UP or
+ * CANCEL, which repeats the last event the window got with the pointers still down, and goes to a
+ * window that got a DOWN. The CANCEL is posted: the window may close from inside its own touch
+ * dispatch. */
+static void drop_touch(struct ui_window *window)
 {
-	struct atl_ref *root = data;
-	struct atl_touch cancel = {.action = ATL_ACTION_CANCEL, .down_time = atl_uptime_ms(), .time = atl_uptime_ms(), .count = 1};
-	atl_upcall_touch(root, &cancel);
-	atl_ref_free(root);
+	struct atl_touch cancel = window->last_touch;
+	cancel.action = ATL_ACTION_CANCEL;
+	cancel.time = atl_uptime_ms();
+	if (cancel.count) // else the root has seen nothing to cancel: an outside touch ended its window first
+		atl_upcall_touch_posted(window->app, window->touched->ref, &cancel);
+	window->touched = NULL;
+	window->touch_dropped = true;
 }
 
 void ui_window_set_roots(struct ui_window *window, const struct ui_root *roots, size_t n)
 {
-	bool touched_stays = false;
-	for (size_t i = 0; i < n; i++)
-		touched_stays |= roots[i].view == window->touched;
-	if (window->touched && !touched_stays) { // AOSP cancels a gesture whose window goes
-		struct atl_ref *root = atl_ref_dup(window->touched->ref);
-		if (!loop_main_post(atl_app_loop(window->app), cancel_touch, root))
-			atl_ref_free(root);
-		window->touched = NULL;
-		window->touch_dropped = true;
+	if (window->touched && root_of(window, window->touched)) { // a window over the activity
+		bool stays = false;
+		for (size_t i = 0; i < n; i++)
+			stays |= roots[i].view == window->touched;
+		if (!stays)
+			drop_touch(window);
 	}
 	free(window->roots);
 	window->roots = n ? memcpy(malloc(n * sizeof(*roots)), roots, n * sizeof(*roots)) : NULL;
@@ -360,6 +371,9 @@ void ui_window_add_activity(struct ui_window *window, struct ui_view *root)
 
 void ui_window_show_activity(struct ui_window *window, struct ui_view *root)
 {
+	// the activity that stops being shown is hidden (Dine has no translucent one under another)
+	if (window->touched && window->touched != root && !root_of(window, window->touched))
+		drop_touch(window);
 	window->shown = root;
 	records_root_shown(window, root);
 	schedule_layout(window);
@@ -369,6 +383,8 @@ void ui_window_remove_activity(struct ui_window *window, struct ui_view *root)
 {
 	if (window->shown == root)
 		window->shown = NULL;
+	if (window->touched == root)
+		drop_touch(window);
 	records_root_removed(window, root);
 }
 

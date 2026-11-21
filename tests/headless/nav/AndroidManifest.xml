@@ -18,5 +18,9 @@
 		<activity android:name=".HandoverActivity"/>
 		<activity android:name=".EndActivity"/>
 		<activity android:name=".BackStartActivity"/>
+		<activity android:name=".TouchStartActivity"/>
+		<activity android:name=".TouchEndActivity"/>
+		<activity android:name=".TouchTapActivity"/>
+		<activity android:name=".TouchPointersActivity"/>
 	</application>
 </manifest>

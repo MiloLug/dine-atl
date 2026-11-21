@@ -64,17 +64,22 @@ static bool parse_touch(struct ui_window *window, const char *line)
 	return false;
 }
 
-// "key down|up <keycode> [<meta> [<unicode>]]": KeyEvent's code and META_* flags, decimal
+// "key down|up|cancel <keycode> [<meta> [<unicode>]]": KeyEvent's code and META_* flags, decimal;
+// cancel is an UP of a press the system canceled
 static bool parse_key(struct ui_window *window, const char *line)
 {
+	static const char *const kinds[] = {[HEADLESS_KEY_DOWN] = "down", [HEADLESS_KEY_UP] = "up", [HEADLESS_KEY_CANCEL] = "cancel"};
 	char action[8];
 	int code, meta = 0, unicode = 0;
 	if (sscanf(line, "key %7s %d %d %d", action, &code, &meta, &unicode) < 2)
 		return false;
-	if (strcmp(action, "down") && strcmp(action, "up"))
-		return false;
-	headless_key(window, !strcmp(action, "down"), code, meta, unicode);
-	return true;
+	for (size_t i = 0; i < sizeof(kinds) / sizeof(*kinds); i++) {
+		if (!strcmp(action, kinds[i])) {
+			headless_key(window, i, code, meta, unicode);
+			return true;
+		}
+	}
+	return false;
 }
 
 // "\n" a newline, "\\" a backslash
@@ -160,7 +165,7 @@ static void *read_commands(void *data)
 			headless_answer(app, line + 7);
 		else if (!parse_touch(app->window, line) && !parse_key(app->window, line) && !parse_text(app->window, line))
 			fprintf(stderr, "commands: back, home, front, insets <12 or 20 dp>, size <width> <height> (dp), night 0|1, dump, tap <text>, answer <label>, touch down|move|up|cancel <id> <x> <y>, "
-			                "key down|up <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
+			                "key down|up|cancel <code> [<meta> [<unicode>]], text commit|compose <text>, text delete <before> <after>, "
 			                "text select <start> <end>, text tap <x> <y>, text action|dismiss|hold|release; not \"%s\"\n",
 			        line);
 	}

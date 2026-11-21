@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "src/api-impl-jni/widgets/WrapperWidget.h"
+#include "src/shared/input.h"
 #include "src/shared/nav.h"
 
 #include "gtk_ui.h"
@@ -24,6 +25,16 @@
  *   back             Android's Back, also run after the reply
  *   settle MS        waits until the last action ran and the labels hold still, or MS pass (at most
  *                    10 s): {"labels", "settled", "ran", "result": the action's bool}
+ *   at N "LABEL"     the centre of element N if it still has LABEL: {"x", "y"} px in the app window,
+ *                    the space `touch` takes
+ *   touch down|move|up|cancel SEQ X Y  one pointer's event at X, Y px in the app window, through the
+ *                    function GTK's own events reach (input_pointer); SEQ is the pointer's made-up
+ *                    handle, 0 the mouse. Runs before the reply: {"ok": true, "claimed": whether the
+ *                    gesture is Java's}
+ *   key down|up KEYVAL KEYCODE [STATE]  one key event of the app window's key controllers (GDK keyval,
+ *                    hardware keycode, GdkModifierType bits), the capture phase's and, when that
+ *                    leaves it, the bubble phase's, as a key a text widget left goes on; runs before the
+ *                    reply: {"ok": true, "handled": whether Java took it}
  * Anything else closes the connection unanswered. */
 
 extern GtkWidget *window; // the gtk host's app window
@@ -290,6 +301,54 @@ static bool same_label(int n, const char *label)
 	return same;
 }
 
+// the centre of the element in the app window, px
+static void element_centre(void *data)
+{
+	struct {
+		int n;
+		const char *label;
+		double x, y;
+		bool ok;
+	} *at = data;
+	if (!same_label(at->n, at->label))
+		return;
+	GtkWidget *widget = items->pdata[at->n];
+	graphene_rect_t bounds;
+	if (gtk_widget_get_native(widget) != GTK_NATIVE(window) || !gtk_widget_compute_bounds(widget, GTK_WIDGET(window), &bounds))
+		return;
+	at->x = bounds.origin.x + bounds.size.width / 2;
+	at->y = bounds.origin.y + bounds.size.height / 2;
+	at->ok = true;
+}
+
+struct feed {
+	enum input_pointer what;
+	int sequence;
+	double x, y;
+	bool claimed;
+};
+
+struct feed_key {
+	int action;
+	guint keyval, keycode;
+	GdkModifierType state;
+	bool handled;
+};
+
+static void feed_key(void *data)
+{
+	struct feed_key *feed = data;
+	GtkWindow *app_window = GTK_WINDOW(window);
+	feed->handled = input_key(app_window, GTK_PHASE_CAPTURE, feed->keyval, feed->keycode, feed->state, feed->action)
+	                || input_key(app_window, GTK_PHASE_BUBBLE, feed->keyval, feed->keycode, feed->state, feed->action);
+}
+
+static void feed_pointer(void *data)
+{
+	struct feed *feed = data;
+	feed->claimed = input_pointer(feed->what, GTK_NATIVE(window), GINT_TO_POINTER(feed->sequence), feed->x, feed->y);
+}
+
 struct ask {
 	struct action *action; // the main thread's once ok
 	bool ok;
@@ -418,6 +477,52 @@ static void handle(int fd)
 		char *label = parse_json_string(&rest);
 		if (label)
 			ask(fd, g_memdup2(&(struct action){.kind = ACTION_TAP, .n = n, .label = label}, sizeof(struct action)));
+	} else if (g_str_has_prefix(line, "at ") && (rest = line + 3) && index_arg(&rest, &n)) {
+		char *label = parse_json_string(&rest);
+		if (label) {
+			struct {
+				int n;
+				const char *label;
+				double x, y;
+				bool ok;
+			} at = {.n = n, .label = label};
+			on_main(element_centre, &at);
+			char *json = at.ok ? g_strdup_printf("{\"x\":%.2f,\"y\":%.2f}", at.x, at.y) : g_strdup("{\"error\":\"the screen changed since the last ls\"}");
+			reply(fd, json);
+			g_free(json);
+			g_free(label);
+		}
+	} else if (g_str_has_prefix(line, "touch ")) {
+		static const char *const kinds[] = {[INPUT_POINTER_DOWN] = "down", [INPUT_POINTER_MOVE] = "move", [INPUT_POINTER_UP] = "up", [INPUT_POINTER_CANCEL] = "cancel"};
+		char kind[8];
+		struct feed feed;
+		bool known = false;
+		if (sscanf(line, "touch %7s %d %lf %lf", kind, &feed.sequence, &feed.x, &feed.y) == 4) {
+			for (int i = 0; i < 4 && !known; i++) {
+				known = !strcmp(kind, kinds[i]);
+				feed.what = i;
+			}
+		}
+		if (known) {
+			on_main(feed_pointer, &feed);
+			char *json = g_strdup_printf("{\"ok\":true,\"claimed\":%s}", feed.claimed ? "true" : "false");
+			reply(fd, json);
+			g_free(json);
+		}
+	} else if (g_str_has_prefix(line, "key ")) {
+		char kind[8];
+		struct feed_key feed = {0};
+		unsigned keyval, keycode, state = 0;
+		if (sscanf(line, "key %7s %u %u %u", kind, &keyval, &keycode, &state) >= 3 && (!strcmp(kind, "down") || !strcmp(kind, "up"))) {
+			feed.action = !strcmp(kind, "down") ? ATL_KEY_DOWN : ATL_KEY_UP;
+			feed.keyval = keyval;
+			feed.keycode = keycode;
+			feed.state = state;
+			on_main(feed_key, &feed);
+			char *json = g_strdup_printf("{\"ok\":true,\"handled\":%s}", feed.handled ? "true" : "false");
+			reply(fd, json);
+			g_free(json);
+		}
 	} else if (g_str_has_prefix(line, "type ") && (rest = line + 5) && index_arg(&rest, &n)) {
 		char *label = NULL, *text = NULL;
 		if (*rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ',' && (text = parse_json_string(&rest)) && *rest == ']')

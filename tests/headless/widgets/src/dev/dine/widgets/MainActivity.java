@@ -197,6 +197,24 @@ public class MainActivity extends Activity {
 		return super.onKeyDown(keyCode, event);
 	}
 
+	// the character the keymap gives a key (Generic.kcm): Enter's is \n, DEL has none
+	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		int keyCode = event.getKeyCode();
+		if (event.getAction() == KeyEvent.ACTION_DOWN && (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DEL))
+			Log.i(TAG, "widgets keychar " + keyCode + " " + event.getUnicodeChar());
+		return super.dispatchKeyEvent(event);
+	}
+
+	@Override
+	public boolean onKeyUp(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_T) {
+			Log.i(TAG, "widgets keyup " + keyCode);
+			return true;
+		}
+		return super.onKeyUp(keyCode, event);
+	}
+
 	@Override
 	protected void onResume() {
 		super.onResume();

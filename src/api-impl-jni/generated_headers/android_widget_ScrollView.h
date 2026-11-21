@@ -261,6 +261,14 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_android_widget_ScrollView_native_1constructor
   (JNIEnv *, jobject, jobject, jobject);
 
+/*
+ * Class:     android_widget_ScrollView
+ * Method:    native_disallowIntercept
+ * Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL Java_android_widget_ScrollView_native_1disallowIntercept
+  (JNIEnv *, jobject, jlong, jboolean);
+
 #ifdef __cplusplus
 }
 #endif

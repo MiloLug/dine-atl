@@ -3,12 +3,16 @@
 
 #include "src/api-impl-jni/defines.h"
 #include "src/api-impl-jni/util.h"
+#include "src/slots/loop.h"
 
+#include "app.h"
 #include "input.h"
+#include "upcall.h"
 
 #define SOURCE_TOUCHSCREEN  0x1002
 #define SOURCE_KEYBOARD     0x101
 #define VIRTUAL_KEYBOARD    (-1)
+#define KEY_FLAG_CANCELED   0x20
 
 /* Backends call these from posted code or toolkit callbacks, in the Android thread's base JNI
  * frame, which never pops: each frees its local refs. */
@@ -38,14 +42,43 @@ static bool call_entry(JNIEnv *env, jmethodID entry, jobject root, jobject event
 	return handled;
 }
 
-bool atl_upcall_touch(struct atl_ref *root, const struct atl_touch *touch)
+static bool touch_call(struct atl_ref *root, const struct atl_touch *touch, jmethodID entry)
 {
 	JNIEnv *env = get_jni_env();
 	(*env)->PushLocalFrame(env, 8);
 	jobject root_obj = (*env)->NewLocalRef(env, (jobject)root);
-	bool handled = root_obj && call_entry(env, handle_cache.atl_input.touch, root_obj, motion_event_new(env, touch));
+	bool handled = root_obj && call_entry(env, entry, root_obj, motion_event_new(env, touch));
 	(*env)->PopLocalFrame(env, NULL);
 	return handled;
+}
+
+bool atl_upcall_touch(struct atl_ref *root, const struct atl_touch *touch)
+{
+	return touch_call(root, touch, handle_cache.atl_input.touch);
+}
+
+struct posted_touch {
+	struct atl_ref *root;
+	struct atl_touch touch;
+};
+
+static void deliver_posted(void *data)
+{
+	struct posted_touch *posted = data;
+	touch_call(posted->root, &posted->touch, handle_cache.atl_input.touch_posted);
+	atl_ref_free(posted->root);
+	free(posted);
+}
+
+void atl_upcall_touch_posted(struct atl_app *app, struct atl_ref *root, const struct atl_touch *touch)
+{
+	struct posted_touch *posted = malloc(sizeof(*posted));
+	posted->root = atl_ref_dup(root);
+	posted->touch = *touch;
+	if (!loop_main_post(atl_app_loop(app), deliver_posted, posted)) {
+		atl_ref_free(posted->root);
+		free(posted);
+	}
 }
 
 // the character Android's Generic.kcm gives: '\n' for Enter, none for the other control keys but Tab
@@ -66,7 +99,8 @@ bool atl_upcall_key(struct atl_ref *root, const struct atl_key *key)
 	bool handled = false;
 	if (root_obj) {
 		jobject event = (*env)->NewObject(env, handle_cache.key_event.class, handle_cache.key_event.constructor_full, (jlong)key->down_time,
-		                                  (jlong)key->time, key->action, key->code, key->repeat, key->meta, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD);
+		                                  (jlong)key->time, key->action, key->code, key->repeat, key->meta, VIRTUAL_KEYBOARD, 0,
+		                                  key->canceled ? KEY_FLAG_CANCELED : 0, SOURCE_KEYBOARD);
 		_SET_INT_FIELD(event, "unicodeValue", key_character(key->unicode));
 		handled = call_entry(env, handle_cache.atl_input.key, root_obj, event);
 	}

@@ -29,6 +29,15 @@ public class ScrollView extends FrameLayout {
 	@Override
 	protected native long native_constructor(Context context, AttributeSet attrs);
 
+	private native void native_disallowIntercept(long widget, boolean disallowIntercept);
+
+	// the toolkit's pan stands in for the node's interception: it learns that a child wants the gesture
+	@Override
+	public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+		super.requestDisallowInterceptTouchEvent(disallowIntercept);
+		native_disallowIntercept(widget, disallowIntercept);
+	}
+
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		int width = 0;
