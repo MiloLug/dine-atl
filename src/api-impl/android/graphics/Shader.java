@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 and 2007 The Android Open Source Project, from
+ * graphics/java/android/graphics/Shader.java and LinearGradient.java at android-security-10.0.0_r75,
+ * Apache License 2.0; see doc/AOSP.md.
+ */
 package android.graphics;
 
 /*
@@ -76,7 +81,8 @@ public class Shader {
 		}
 	}
 
-	// Android's checks of a gradient's arrays
+	/* Copyright (C) 2006 and 2007 The Android Open Source Project: the checks and messages of Shader's
+	 * convertColors and detectColorSpace and LinearGradient's constructor */
 	static void checkColors(int[] colors, float[] positions) {
 		if (colors.length < 2)
 			throw new IllegalArgumentException("needs >= 2 number of colors");

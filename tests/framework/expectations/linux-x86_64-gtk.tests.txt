@@ -367,6 +367,8 @@ dev.dine.framework.input.TouchTest#testTargetIsPinnedAtDown
 dev.dine.framework.input.TouchTest#testTranslatedChildIsHitWhereItIsDrawn
 dev.dine.framework.lifecycle.FirstFocusTest#testTheFirstActivityGainsWindowFocusOnce
 dev.dine.framework.lifecycle.StartSyncTest#testAClassThatIsMissingThrowsWithItsCause
+dev.dine.framework.lifecycle.StartSyncTest#testAComponentOfAnotherPackageThrows
+dev.dine.framework.lifecycle.StartSyncTest#testAnIntentAFilterMatchesStartsItsActivity
 dev.dine.framework.lifecycle.StartSyncTest#testAnIntentNothingResolvesThrows
 dev.dine.framework.lifecycle.TaskEndTest#testTheAppGoesOnAfterItsLastActivityFinishes
 dev.dine.framework.text.EditTextTest#testEditsToTheEditableNotify
@@ -480,6 +482,7 @@ dev.dine.framework.windows.DialogTest#testCardPadsTheContent
 dev.dine.framework.windows.DialogTest#testColorBackgroundDropsThePadding
 dev.dine.framework.windows.DialogTest#testDismissFromAnotherThreadRunsOnTheMainLooper
 dev.dine.framework.windows.DialogTest#testFeatureAfterSetView
+dev.dine.framework.windows.DialogTest#testFillHorizontalWidth
 dev.dine.framework.windows.DialogTest#testFinishedOwnerIsCollected
 dev.dine.framework.windows.DialogTest#testFloatingCenteredDimmed
 dev.dine.framework.windows.DialogTest#testGravityBottomLeftWithOffsets

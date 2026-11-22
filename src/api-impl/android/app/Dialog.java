@@ -217,6 +217,10 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 		nativeDestroy(nativePtr);
 	}
 
+	protected void setCanceledOnTouchOutsideNative(boolean cancel) {
+		nativeSetCanceledOnTouchOutside(nativePtr, cancel);
+	}
+
 	/** @hide windows.c shows or hides the window: with its token, or its own show and dismiss */
 	public void atlWindowVisible(boolean visible) {
 		if (nativePtr == 0)
@@ -289,7 +293,7 @@ public class Dialog implements Window.Callback, KeyEvent.Callback, DialogInterfa
 			cancelable = true;
 		window.setCloseOnTouchOutside(cancel);
 		if (nativePtr != 0)
-			nativeSetCanceledOnTouchOutside(nativePtr, cancel);
+			setCanceledOnTouchOutsideNative(cancel);
 	}
 
 	public class Builder {

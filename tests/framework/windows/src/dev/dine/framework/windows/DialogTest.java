@@ -172,6 +172,21 @@ public class DialogTest extends android.test.InstrumentationTestCase {
 		dismiss(dialog);
 	}
 
+	public void testFillHorizontalWidth() throws InterruptedException {
+		Dialog centered = shownWith(text("narrow"), Gravity.CENTER, 0, 0, WindowManager.LayoutParams.WRAP_CONTENT);
+		View narrow = centered.getWindow().getDecorView();
+		waitForLayout(narrow);
+		int wrapped = narrow.getWidth();
+		dismiss(centered);
+		Dialog dialog = shownWith(text("narrow"), Gravity.FILL_HORIZONTAL, 0, 0, WindowManager.LayoutParams.WRAP_CONTENT);
+		View decor = dialog.getWindow().getDecorView();
+		waitForLayout(decor);
+		int screen = activity.getWindow().getDecorView().getWidth();
+		assertTrue("wraps at " + wrapped, wrapped < screen);
+		assertEquals(screen, decor.getWidth());
+		dismiss(dialog);
+	}
+
 	// AOSP hides an activity's windows while it is stopped, and shows them again
 	public void testHiddenUnderTheNextActivity() {
 		final Seen seen = new Seen(activity);

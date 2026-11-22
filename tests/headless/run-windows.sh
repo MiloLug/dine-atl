@@ -27,7 +27,8 @@
 #   shows.
 # --gtk: the gtk build on a display, which has no -c: SelfActivity drives itself through a popup
 # below its anchor, a menu answered from ATL_DIALOG_ANSWERS and a toast, in that order, then
-# finishes.
+# finishes; KeyboardDialogActivity gives the on-screen keyboard's dialog a title and
+# cancel-on-touch-outside (its natives build only with gtk4-layer-shell).
 # Usage: run-windows.sh [--gtk] <build dir> <windows.apk>
 set -euo pipefail
 
@@ -55,6 +56,18 @@ if ((gtk)); then
   [[ $(grep -oF "${lines[@]/#/-e}" "$log") == "$(printf '%s\n' "${lines[@]}")" ]] || fail "the popup, menu and toast lines are out of order"
   faults "$log"
   [[ $rc == 0 ]] || fail "exit status $rc"
+  # the keyboard's natives own the D-Bus name sm.puri.OSK0: a private bus keeps it off the user's
+  # session bus, and one without activation (a default config's starts services that take over its
+  # sockets in XDG_RUNTIME_DIR)
+  conf="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/private-bus.conf"
+  log="$work/KeyboardDialogActivity.log"
+  mkdir -p "$work/data-keyboard"
+  rc=0
+  (cd "$build" && env "${atl_env[@]}" DINE_PREFIX="$work/data-keyboard" dbus-run-session --config-file="$conf" -- \
+    timeout 60 ./android-translation-layer "$apk" -l dev/dine/windows/KeyboardDialogActivity -X -Xint) >"$log" 2>&1 || rc=$?
+  grep -qF "keyboard dialog configured" "$log" || fail "KeyboardDialogActivity: no \"keyboard dialog configured\" (exit status $rc)"
+  faults "$log"
+  [[ $rc == 0 ]] || fail "KeyboardDialogActivity: exit status $rc"
   echo PASS
   exit 0
 fi

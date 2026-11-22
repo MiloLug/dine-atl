@@ -1,6 +1,12 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * core/java/android/app/Instrumentation.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.app;
 
 import android.atl.ATLLoadedApp;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -33,6 +39,8 @@ public class Instrumentation {
 
 	// the test APK's app, which runs it
 	private ATLLoadedApp app;
+	// its instrumentation's target package, whose activities run in this VM with the test APK's
+	private String targetPackage;
 
 	private static Instrumentation create(ATLLoadedApp app, String className, Intent arguments) throws Exception {
 		Thread.setUncaughtExceptionPreHandler(new ExceptionHandler());
@@ -62,6 +70,7 @@ public class Instrumentation {
 			Constructor<? extends Instrumentation> constructor = cls.getConstructor();
 			Instrumentation i = constructor.newInstance();
 			i.app = app;
+			i.targetPackage = target_package;
 			app.instrumented = true;
 			i.onCreate(arguments != null ? arguments.getExtras() : null);
 
@@ -169,29 +178,31 @@ public class Instrumentation {
 		return startActivitySync(intent, null);
 	}
 
-	/* TODO - deduplicate with startActivityForResult? */
+	/* Copyright (C) 2006 The Android Open Source Project: startActivitySync's order and messages (ATL-181) */
 	public Activity startActivitySync(Intent intent, Bundle options) {
+		validateNotAppThread();
 		Slog.i(TAG, "startActivitySync(" + intent + ", " + options + ") called");
-		if (intent.getComponent() != null) {
-			try {
-				final Activity activity = Activity.internalCreateActivity(app, app,
-				    intent.getComponent().getClassName(), app.getNativeWindow(), intent);
-				runOnMainSync(new Runnable() {
-					@Override
-					public void run() {
-						Activity.nativeStartActivity(activity);
-					}
-				});
-
-				return activity;
-			} catch (Exception e) {
-				throw new RuntimeException("Unable to start activity for: " + intent, e);
-			}
-		} /*else if (FILE_CHOOSER_ACTIONS.contains(intent.getAction())) { // not sure what to do here either
-			nativeFileChooser(FILE_CHOOSER_ACTIONS.indexOf(intent.getAction()), intent.getType(), intent.getStringExtra("android.intent.extra.TITLE"), requestCode);
-		} */
-		else {
+		intent = new Intent(intent);
+		ComponentName component = intent.resolveActivity(getTargetContext().getPackageManager());
+		if (component == null)
 			throw new RuntimeException("Unable to resolve activity for: " + intent);
+		// a package stands for AOSP's process: the test APK and its target share this VM
+		String myProc = app.pkg.packageName;
+		String proc = component.getPackageName();
+		if (!proc.equals(myProc) && !proc.equals(targetPackage))
+			throw new RuntimeException("Intent in process " + myProc + " resolved to different process " + proc + ": " + intent);
+		intent.setComponent(component);
+		try {
+			final Activity activity = Activity.internalCreateActivity(app, app, component.getClassName(), app.getNativeWindow(), intent);
+			runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					Activity.nativeStartActivity(activity);
+				}
+			});
+			return activity;
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to start activity " + component + ": " + e, e);
 		}
 	}
 

@@ -2,11 +2,11 @@
 `doc/` - documentation
 `src/api-impl/` - Java code implementing the android APIs
 `src/api-impl-jni/` - C code implementing things which it doesn't make sense to do in Java (ideally this would be most things); natives not yet behind a slot, which build only with ui=gtk
-`src/slots/` - the C interfaces of the backend slots: loop, host, ui, gfx
-`src/backends/<slot>/<name>/` - one implementation of a slot each; meson options pick one per slot
-`src/shared/` - C code every build shares: startup phases, activities, windows, upcalls
+`src/slots/` - the C headers of the subsystem boundaries: `ui.h` (windows, views, dialogs, text input), `gfx.h` (Canvas, Paint, Path, Bitmap), `loop.h` (the main-thread loop) and `host.h` (task moves, screen on, brightness, the gesture exclusion, the app's end)
+`src/backends/<slot>/<name>/` - the implementations of a slot, chosen by meson options: `ui` (`gtk`, `headless`, `uikit`, with `records` shared by the last two), `gfx` (`gsk`, `record`, `coregraphics`; `cairo` is the CPU painter that `gsk` and `record` share), `loop` (`glib`, `poll`, `cfrunloop`), `host` (`gtk`, `cli`, `embedded`)
+`src/shared/` - C that no toolkit or OS owns: the start phases, the app records, activity lifecycle, upcalls into Java, the window registry, insets and navigation, and JNI glue for classes whose natives sit behind a slot
 `src/libandroid/` - C code implementing `libandroid.so` (this is needed by most JNI libs which come with android apps)
-`src/main-executable` - code for the main executable, which sets stuff up (including the JVM) and launches the activity specified on the cmdline
+`src/main-executable` - code for the gtk host's executable, which sets stuff up (including the JVM) and launches the activity specified on the cmdline
 `src/test-runner/` - Java code for test-runner.jar, which contains helpers for instrumentation / testing; taken from AOSP with some changes
 `res/framework-res/` - sources for framework-res.apk (taken from AOSP, heavily pruned to remove anything not used by apps)
 `res/fonts.xml` - fonts.xml taken from AOSP
@@ -32,7 +32,9 @@ against)
 
 The gtk host is `src/main-executable/main.c`. The cli (`src/backends/host/cli/`) and embedded
 (`src/backends/host/embedded/`) hosts run the same phases (`atl_*`, `src/shared/startup.c`) with
-their own loop and window.
+their own loop and window. The cli host runs each app's loop (`loop_main_run`) on a thread of its
+own (`run_app`); the embedded host's `atl_embedded_main` runs it on its caller's thread, which Dine's
+artbridge makes, one per app.
 
 1. the user executes the main executable (`android-translation-layer`)
 

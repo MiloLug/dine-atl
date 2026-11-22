@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.dine.framework.lifecycle">
 	<uses-sdk android:minSdkVersion="27" android:targetSdkVersion="27"/>
 	<application android:label="framework lifecycle">
-		<activity android:name=".PlainActivity"/>
+		<activity android:name=".PlainActivity">
+			<intent-filter>
+				<action android:name="dev.dine.framework.lifecycle.PLAIN"/>
+				<category android:name="android.intent.category.DEFAULT"/>
+			</intent-filter>
+		</activity>
 	</application>
 </manifest>

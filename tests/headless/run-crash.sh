@@ -5,7 +5,7 @@
 # onLayout, onPause and onDestroy inside a finish): ATL ends through the thread's uncaught handler,
 # exit 10, no CheckJNI abort, with CheckJNI on. The second throws where ATL prints the exception and
 # goes on (a view's onMeasure, its onDraw): the app logs a later message and ATL exits 0. An app's
-# own uncaught handler that returns still ends ATL with exit 10.
+# own uncaught handler that returns still ends ATL with exit 10, and the built-in one doesn't run.
 # Usage: run-crash.sh <headless build dir> <crash.apk>
 set -euo pipefail
 
@@ -48,5 +48,6 @@ for activity in MeasureActivity:onMeasure DrawActivity:onDraw; do
 done
 run HandlerActivity
 grep -q ": crash handled crash under a handler$" "$log" || fail "HandlerActivity: the app's handler didn't run (exit status $rc)"
+! grep -q "hacky_uncaught_exception_handler" "$log" || fail "HandlerActivity: the built-in default handler ran, not only the app's"
 [[ $rc == 10 ]] || fail "HandlerActivity: exit status $rc, not 10, after the app's handler returned"
 echo "PASS"

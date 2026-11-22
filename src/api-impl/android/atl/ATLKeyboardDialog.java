@@ -34,4 +34,8 @@ public class ATLKeyboardDialog extends Dialog {
 	// the keyboard's window lives as long as the process
 	@Override
 	protected void destroyNative() {}
+
+	// its native window is no ui-slot dialog
+	@Override
+	protected void setCanceledOnTouchOutsideNative(boolean cancel) {}
 }

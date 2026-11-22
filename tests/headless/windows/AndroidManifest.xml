@@ -16,6 +16,7 @@
 		<activity android:name=".MenuActivity"/>
 		<activity android:name=".ToastActivity"/>
 		<activity android:name=".SelfActivity"/>
+		<activity android:name=".KeyboardDialogActivity"/>
 		<activity android:name=".PanActivity" android:windowSoftInputMode="adjustPan"/>
 		<activity android:name=".ResizeActivity" android:windowSoftInputMode="adjustResize"/>
 		<activity android:name=".UnspecifiedActivity"/>

@@ -1,3 +1,9 @@
+/*
+ * Portions Copyright (C) 2006, 2008 and 2011 The Android Open Source Project, from
+ * core/jni/android/graphics/NinePatch.cpp, libs/androidfw/ResourceTypes.cpp and
+ * core/jni/android/graphics/NinePatchPeeker.cpp at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,8 +32,8 @@ static int32_t get32(const uint8_t *p)
 	return value;
 }
 
-// AOSP's NinePatchPeeker: the file's chunk is exactly its arrays long, then deserialize (offsets
-// from the counts) and fileToDevice (divs, padding and colors from network order)
+/* Copyright (C) 2011 The Android Open Source Project: NinePatchPeeker::readChunk; Copyright (C) 2008:
+ * Res_png_9patch's deserialize, fill9patchOffsets and fileToDevice */
 void *ninepatch_chunk_from_png(const uint8_t *png, size_t size, size_t *chunk_size)
 {
 	static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
@@ -61,8 +67,8 @@ void *ninepatch_chunk_from_png(const uint8_t *png, size_t size, size_t *chunk_si
 	return NULL;
 }
 
-// AOSP's validateNinePatchChunk and deserialize, whose offsets follow the counts, and the arrays
-// inside the chunk, which AOSP doesn't check
+/* Copyright (C) 2006 The Android Open Source Project: NinePatch.cpp's validateNinePatchChunk, with
+ * Copyright (C) 2008 deserialize; the arrays inside the chunk are checked here, which AOSP doesn't */
 struct gfx_ninepatch *ninepatch_parse(const void *chunk_data, size_t size)
 {
 	const uint8_t *chunk = chunk_data;

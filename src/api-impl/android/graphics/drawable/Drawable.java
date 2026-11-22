@@ -1,3 +1,8 @@
+/*
+ * Portions Copyright (C) 2006 The Android Open Source Project, from
+ * graphics/java/android/graphics/drawable/Drawable.java at android-security-10.0.0_r75, Apache License 2.0;
+ * see doc/AOSP.md.
+ */
 package android.graphics.drawable;
 
 import android.content.res.ColorStateList;
@@ -391,6 +396,8 @@ public class Drawable {
 		return null;
 	}
 
+	/* Copyright (C) 2006 The Android Open Source Project: createFromResourceStream, createFromPath and
+	 * drawableFromBitmap */
 	public static Drawable createFromResourceStream(Resources res, TypedValue value, InputStream is, String srcName,
 	                                                Object opts) {
 		if (is == null)
@@ -407,7 +414,6 @@ public class Drawable {
 		return bm != null ? drawableFromBitmap(null, bm, new Rect(), path) : null;
 	}
 
-	// AOSP's: a valid nine-patch chunk makes a NinePatchDrawable
 	private static Drawable drawableFromBitmap(Resources res, Bitmap bm, Rect pad, String srcName) {
 		byte[] chunk = bm.getNinePatchChunk();
 		if (NinePatch.isNinePatchChunk(chunk))
