@@ -366,6 +366,8 @@ dev.dine.framework.input.TouchTest#testSiblingBeneathGetsDownTheTopOneLeaves
 dev.dine.framework.input.TouchTest#testTargetIsPinnedAtDown
 dev.dine.framework.input.TouchTest#testTranslatedChildIsHitWhereItIsDrawn
 dev.dine.framework.lifecycle.FirstFocusTest#testTheFirstActivityGainsWindowFocusOnce
+dev.dine.framework.lifecycle.StartSyncTest#testAClassThatIsMissingThrowsWithItsCause
+dev.dine.framework.lifecycle.StartSyncTest#testAnIntentNothingResolvesThrows
 dev.dine.framework.lifecycle.TaskEndTest#testTheAppGoesOnAfterItsLastActivityFinishes
 dev.dine.framework.text.EditTextTest#testEditsToTheEditableNotify
 dev.dine.framework.text.EditTextTest#testFiltersApply

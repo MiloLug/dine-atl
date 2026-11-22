@@ -4,7 +4,8 @@
 # app (onCreate, onResume, a posted Runnable, the onCreate of an activity another one started,
 # onLayout, onPause and onDestroy inside a finish): ATL ends through the thread's uncaught handler,
 # exit 10, no CheckJNI abort, with CheckJNI on. The second throws where ATL prints the exception and
-# goes on (a view's onMeasure, its onDraw): the app logs a later message and ATL exits 0.
+# goes on (a view's onMeasure, its onDraw): the app logs a later message and ATL exits 0. An app's
+# own uncaught handler that returns still ends ATL with exit 10.
 # Usage: run-crash.sh <headless build dir> <crash.apk>
 set -euo pipefail
 
@@ -45,4 +46,7 @@ for activity in MeasureActivity:onMeasure DrawActivity:onDraw; do
   ! grep -q "hacky_uncaught_exception_handler" "$log" || fail "$activity: the uncaught handler ran"
   [[ $rc == 0 ]] || fail "$activity: exit status $rc, not 0"
 done
+run HandlerActivity
+grep -q ": crash handled crash under a handler$" "$log" || fail "HandlerActivity: the app's handler didn't run (exit status $rc)"
+[[ $rc == 10 ]] || fail "HandlerActivity: exit status $rc, not 10, after the app's handler returned"
 echo "PASS"

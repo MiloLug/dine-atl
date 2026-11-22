@@ -8,6 +8,7 @@
 #   holds from both caches, so they load again in the new color;
 # - PlainConfigActivity doesn't: only the Application hears each change, ATL logs that the activity
 #   keeps its configuration, and neither its own onConfigurationChanged nor its dialog's view logs.
+# The screen's size in dp is the window's at each density.
 # Usage: run-config.sh <headless build dir> <windows.apk>
 set -euo pipefail
 
@@ -17,14 +18,16 @@ apk="$(realpath "$2")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# start <activity> [<dpi>]
 start() {
-  log="$work/$1.log"
-  mkdir -p "$work/data-$1"
+  local run="$1${2:+-$2}"
+  log="$work/$run.log"
+  mkdir -p "$work/data-$run"
   : >"$log"
   coproc ATL {
     cd "$build"
-    exec env "${headless_env[@]}" DINE_PREFIX="$work/data-$1" timeout 60 \
-      ./android-translation-layer -c "$apk" -l "dev/dine/windows/$1" -X -Xint 2>&1
+    exec env "${headless_env[@]}" DINE_PREFIX="$work/data-$run" timeout 60 \
+      ./android-translation-layer -c ${2:+-d "$2"} "$apk" -l "dev/dine/windows/$1" -X -Xint 2>&1
   }
   session
 }
@@ -51,8 +54,26 @@ expect() {
   done
 }
 
+# screen <want>: ConfigActivity's line about its screen
+screen() {
+  local line
+  while IFS= read -r -t 30 line <&"$atl_out"; do
+    printf '%s\n' "$line" >>"$log"
+    [[ $line == *": screen: "* ]] || continue
+    [[ $line == *": screen: $1" ]] || fail "got \"${line#*: }\", want \"screen: $1\""
+    return 0
+  done
+  fail "ATL went quiet or exited before \"screen: $1\""
+}
+
 night=32 day=16 # Configuration.UI_MODE_NIGHT_YES, _NO
+start ConfigActivity 480
+screen "320x180 dp, 48 dp 144 px"
+expect "activity created color #ff112233"
+stop
+
 start ConfigActivity
+screen "960x540 dp, 48 dp 48 px"
 expect "activity created color #ff112233"
 send "night 1"
 expect "application night $night" "activity night $night color #ffaabbcc" "drawables box #ffaabbcc tint #ffaabbcc" "view night $night" "dialog night $night" "hidden night $night"

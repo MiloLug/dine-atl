@@ -185,16 +185,14 @@ public class Instrumentation {
 
 				return activity;
 			} catch (Exception e) {
-				/* not sure what to do here */
+				throw new RuntimeException("Unable to start activity for: " + intent, e);
 			}
 		} /*else if (FILE_CHOOSER_ACTIONS.contains(intent.getAction())) { // not sure what to do here either
 			nativeFileChooser(FILE_CHOOSER_ACTIONS.indexOf(intent.getAction()), intent.getType(), intent.getStringExtra("android.intent.extra.TITLE"), requestCode);
 		} */
 		else {
-			Slog.i(TAG, "startActivityForResult: intent was not handled.");
+			throw new RuntimeException("Unable to resolve activity for: " + intent);
 		}
-
-		return null;
 	}
 
 	public void runOnMainSync(Runnable runner) {

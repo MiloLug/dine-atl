@@ -8,8 +8,7 @@ import android.content.Context;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
-// jobs start and stop on the main thread: an empty runOnMainSync is the barrier (waitForIdleSync
-// waits for nothing, ATL-70)
+// jobs start and stop on the main thread: an empty runOnMainSync is the barrier
 @SuppressWarnings("deprecation")
 public class JobSchedulerTest extends android.test.InstrumentationTestCase {
 	private Context context() {

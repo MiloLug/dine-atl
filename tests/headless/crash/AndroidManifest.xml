@@ -16,5 +16,6 @@
 		<activity android:name=".DestroyActivity"/>
 		<activity android:name=".MeasureActivity"/>
 		<activity android:name=".DrawActivity"/>
+		<activity android:name=".HandlerActivity"/>
 	</application>
 </manifest>

@@ -9,12 +9,14 @@ check runs in a prefix of its own (`DINE_PREFIX`).
   manifest). `ext` has no launcher activity and requests the feature `dine.test.extension`; `driver`
   is an installer app; `plain` is `app` with its own provider authority, `provdup` is `app` renamed
   with `app`'s authority kept.
-- `keys/`: two test keystores (`a.p12`, `b.p12`, password `dine-test`), our own; fixtures are
-  v1-signed with them, since ATL reads no v2 or v3 signature block.
+- `keys/`: two test keystores (`a.p12`, `b.p12`, password `dine-test`), our own; a fixture with a
+  key in `FIXTURES` is v1-signed with it, since ATL reads no v2 or v3 signature block; the others
+  are unsigned for ATL (a test needs that).
 - Rows `cli:*`: installs, uninstalls and runs through the CLI, graded on exit codes, the registry's
   rows (read with Python's `sqlite3`) and the files in the prefix.
 - `suite/`: a JUnit APK run with `--instrument` after the harness installs its fixtures; its rows are
-  `<Class>#<test>`.
+  `<Class>#<test>`, with `suite:junit` for the run itself and `cli:reparse`, graded in the same
+  phase on a row the harness made stale.
 - Rows `scenario:*`: the `driver` app installs the way apps do (sessions, intents, a content URI from
   its own provider), one process per scenario, its dialogs answered in order by `ATL_DIALOG_ANSWERS`;
   after each, every stored APK must exist and staging and the trash must be empty.

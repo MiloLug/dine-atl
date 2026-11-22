@@ -99,7 +99,7 @@ public class ListScrollTest extends android.test.InstrumentationTestCase {
 	// a scroll moves the rows in AbsListView; a selection near the end, with offsetChildrenTopAndBottom
 	public void testGridViewMovesItsRows() {
 		final Context context = getInstrumentation().getTargetContext();
-		final int[] got = new int[5];
+		final int[] got = new int[6];
 		onMain(new Runnable() {
 			public void run() {
 				GridView grid = new GridView(context);
@@ -107,10 +107,12 @@ public class ListScrollTest extends android.test.InstrumentationTestCase {
 				grid.setAdapter(new Rows(context));
 				lay_out(grid);
 				got[2] = grid.getChildAt(2).getTop() - grid.getChildAt(0).getTop(); // a row and its spacing
-				View first = grid.getChildAt(0);
+				Row first = (Row)grid.getChildAt(0);
+				int before = first.layouts;
 				int top = first.getTop();
 				grid.scrollListBy(10);
 				got[0] = first.getTop() - top;
+				got[5] = first.layouts - before;
 				grid.scrollListBy(50);
 				got[1] = grid.getFirstVisiblePosition();
 				grid.setSelection(49);
@@ -120,6 +122,7 @@ public class ListScrollTest extends android.test.InstrumentationTestCase {
 			}
 		});
 		assertEquals(-10, got[0]);
+		assertEquals("relayouts of a row that moved", 0, got[5]);
 		assertEquals((60 - 1) / got[2] * 2, got[1]);
 		assertEquals("the last row ends at the bottom", got[4], got[3]);
 	}

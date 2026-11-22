@@ -64,7 +64,7 @@ public class SystemUiTest extends android.test.InstrumentationTestCase {
 				activity.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE);
 			}
 		});
-		getInstrumentation().runOnMainSync(new Runnable() { // after the posted dispatch (ATL's waitForIdleSync waits for nothing)
+		getInstrumentation().runOnMainSync(new Runnable() { // after the posted dispatch
 			public void run() {}
 		});
 		assertEquals(View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE, heard);

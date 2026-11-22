@@ -128,7 +128,15 @@ public class PopupWindowTest extends android.test.InstrumentationTestCase {
 		assertTrue("inside the background's padding", at(content, 60, 100));
 		assertEquals(5, content.getPaddingLeft());
 		assertNull(content.getBackground());
+		// the window's root: the dismiss detaches the content by taking it out of this
+		final View root = content.getRootView();
+		assertTrue("attached while shown", content.isAttachedToWindow() && root.isAttachedToWindow());
 		dismiss(popup[0]);
+		assertTrue("detached after the dismiss", waitFor(new Condition() {
+			public boolean holds() {
+				return !content.isAttachedToWindow() && !root.isAttachedToWindow();
+			}
+		}));
 	}
 
 	public void testFocusablePopupClosesOnBack() throws InterruptedException {

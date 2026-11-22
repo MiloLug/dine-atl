@@ -1,7 +1,10 @@
 #### directory structure
 `doc/` - documentation
 `src/api-impl/` - Java code implementing the android APIs
-`src/api-impl-jni/` - C code implementing things which it doesn't make sense to do in Java (ideally this would be most things)
+`src/api-impl-jni/` - C code implementing things which it doesn't make sense to do in Java (ideally this would be most things); natives not yet behind a slot, which build only with ui=gtk
+`src/slots/` - the C interfaces of the backend slots: loop, host, ui, gfx
+`src/backends/<slot>/<name>/` - one implementation of a slot each; meson options pick one per slot
+`src/shared/` - C code every build shares: startup phases, activities, windows, upcalls
 `src/libandroid/` - C code implementing `libandroid.so` (this is needed by most JNI libs which come with android apps)
 `src/main-executable` - code for the main executable, which sets stuff up (including the JVM) and launches the activity specified on the cmdline
 `src/test-runner/` - Java code for test-runner.jar, which contains helpers for instrumentation / testing; taken from AOSP with some changes
@@ -27,22 +30,21 @@ against)
 
 #### current control flow (in broad strokes)
 
-1. the user executes the main executable (`android_translation_layer`)
+The gtk host is `src/main-executable/main.c`. The cli (`src/backends/host/cli/`) and embedded
+(`src/backends/host/embedded/`) hosts run the same phases (`atl_*`, `src/shared/startup.c`) with
+their own loop and window.
 
-2. the executable is compiled from `src/main-executable/main.c`:
-	1. `int main(int argc, char **argv)` sets up a GtkApllication, cmdline handling, and calls `g_application_run`
-	2. GtkApplication glue parses the cmdline and calls `static void open(GtkApplication *app, GFile** files, gint nfiles, const gchar* hint, struct jni_callback_data *d)`
-	3. `static void open(GtkApplication *app, GFile** files, gint nfiles, const gchar* hint, struct jni_callback_data *d)`:
-		1. constructs the classpath from the following:
-			- the path to api-impl.jar (contains all the implementations of android framework functions)
-			- the path to the app's apk (passed to us on cmdline), making the bytecode within available in classpath
-		2. contructs other options (mainly library path) for and launches the dalvik virtual machine
-		3. loads `libtranslation_layer_main.so` using the internal version of Runtime.loadLibrary which lets us register this with the right classloader so the java code which declares the native methods is the java code that can use them
-		4. sets up a JNI handle cache
-		5. sets display size to be passed to apps according to optionally specified window size (some apps handle runtime resizing poorly)
-		6. calls `Context.createApplication` to create the `android.app.Application` object for the app (this also parses AndroidManifest.xml)
-		7. calls `ContentProvider.createContentProviders` to create content providers specified in the manifest
-		8. calls the `OnCreate` method of the application object
-		9. calls `Activity.createMainActivity`, passing the class name specified with the `-l` option (if NULL, the main activity as specified in the manifest will be used)
-		10. calls `activity_start`, which the `onCreate` method of the activity object
-		11. returns to glib main loop - at this point whatever happens is event-driven
+1. the user executes the main executable (`android-translation-layer`)
+
+2. `main` sets up a GtkApplication (a run with `--package` takes the package as its id) and calls
+   `g_application_run`, whose `open` (APKs given) or `activate` (`--package`) handler calls `start_app`
+
+3. `start_app`:
+	1. `atl_prepare`: opens the prefix and finds api-impl.jar, framework-res.apk and, for `--instrument`, the test runner's jar
+	2. `atl_vm_start`: creates the VM with those on the classpath (the app's APKs aren't on it), sets the screen's size and density, loads `libtranslation_layer_main.so` with the framework's class loader (so the classes that declare the native methods can use them) and fills the JNI handle cache
+	3. `atl_app_new` and `atl_app_prepare`: `ATLInstaller.prepareApp` installs the given APKs unless the registry holds them already, or looks `--package` up, and returns the app's record (`ATLLoadedApp`, with the app's own class loader); the app's data dir is made
+	4. builds the GtkApplicationWindow with its stack of activities and extracts the app's native libraries
+	5. `atl_app_create`: joins the calling thread to the app, makes its main Looper, applies a Home, front or night mode that was set before the start, and calls `ATLLoadedApp.start`, which makes the Application, creates the manifest's content providers and calls `Application.onCreate`
+	6. `atl_activity_create_main`: `Activity.createMainActivity` creates the `-l` activity or, without one, the manifest's launcher activity (with `--instrument`, the Instrumentation is created instead and starts the activities itself)
+	7. presents the window and calls `activity_start`, which runs the activity's lifecycle (only `onCreate` while the task is in the back)
+	8. returns to the glib main loop - at this point whatever happens is event-driven

@@ -10,6 +10,7 @@ import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
 
 /* A night change while it runs ("night" from the cli): its manifest covers uiMode, so it, its view,
@@ -78,6 +79,9 @@ public class ConfigActivity extends Activity {
 		hidden.setContentView(hearing(this, "hidden"));
 		hidden.show();
 		hidden.hide();
+		Configuration now = getResources().getConfiguration();
+		float px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 48, getResources().getDisplayMetrics());
+		Log.i(TAG, "screen: " + now.screenWidthDp + "x" + now.screenHeightDp + " dp, 48 dp " + Math.round(px) + " px");
 		Log.i(TAG, "config: activity created color " + color());
 	}
 

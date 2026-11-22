@@ -65,9 +65,9 @@ struct atl_embedded_listener {
 	void (*task_moved)(void *context, struct atl_app *app, bool front, bool by_host);
 	/* right before atl_embedded_main returns its status */
 	void (*exited)(void *context, struct atl_app *app, int status);
-	/* the shown activity's window keeps the screen on (FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn) or stops */
+	/* the drawn windows keep the screen on (any: FLAG_KEEP_SCREEN_ON, View.setKeepScreenOn) or stop */
 	void (*keep_screen_on)(void *context, struct atl_app *app, bool on);
-	/* the shown activity's exclusion changed; valid during the call */
+	/* the drawn windows' exclusion changed; valid during the call */
 	void (*exclusion_changed)(void *context, struct atl_app *app, const struct atl_gesture_exclusion *exclusion);
 };
 
