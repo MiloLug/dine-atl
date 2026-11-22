@@ -261,9 +261,10 @@ static void nav_task(struct atl_app *app, bool front)
 {
 	pthread_mutex_lock(&app->insets_lock);
 	app->front_wanted = front;
-	pthread_mutex_unlock(&app->insets_lock);
-	if (app->running) // before the start: its start takes it (atl_app_create)
+	// posted under the lock, so the last move posted is the one kept; before the start, its start takes it
+	if (app->running)
 		loop_main_post(app->loop, front ? nav_front : nav_home, app);
+	pthread_mutex_unlock(&app->insets_lock);
 }
 
 void atl_nav_home(struct atl_app *app)
