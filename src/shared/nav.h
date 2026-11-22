@@ -34,7 +34,7 @@ struct atl_window_insets {
 	struct atl_edges status_bars;        // where the window covers the status bar
 	struct atl_edges ime;                // the keyboard's overlap with the window
 };
-/* From any thread, also before the app starts: the shown activity gets them now, later ones when
+/* From any thread, also before the app starts: the drawn windows get them now, later ones when
  * shown. */
 void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *insets);
 /* The app's window size in dp, from any thread, also before the start (then the host's config or
