@@ -257,14 +257,35 @@ bool atl_nav_back(struct atl_app *app)
 	return app->running && loop_main_post(app->loop, nav_back, app);
 }
 
-bool atl_nav_home(struct atl_app *app)
+static void nav_task(struct atl_app *app, bool front)
 {
-	return app->running && loop_main_post(app->loop, nav_home, app);
+	pthread_mutex_lock(&app->insets_lock);
+	app->front_wanted = front;
+	pthread_mutex_unlock(&app->insets_lock);
+	if (app->running) // before the start: its start takes it (atl_app_create)
+		loop_main_post(app->loop, front ? nav_front : nav_home, app);
 }
 
-bool atl_nav_front(struct atl_app *app)
+void atl_nav_home(struct atl_app *app)
 {
-	return app->running && loop_main_post(app->loop, nav_front, app);
+	nav_task(app, false);
+}
+
+void atl_nav_front(struct atl_app *app)
+{
+	nav_task(app, true);
+}
+
+void atl_task_apply(struct atl_app *app)
+{
+	pthread_mutex_lock(&app->insets_lock);
+	bool front = app->front_wanted;
+	pthread_mutex_unlock(&app->insets_lock);
+	if (app->task_front == front)
+		return;
+	// not task_move: there is no activity to pause or resume yet
+	app->task_front = front;
+	host_task_moved(app, front, true);
 }
 
 // closes activities[n-1] down to activities[0], the order the stack held them in

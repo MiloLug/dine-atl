@@ -10,15 +10,17 @@ extern "C" {
 struct atl_app; // a host's handle of an app (atl_embedded.h, startup.h)
 
 /* System navigation for the host, from any thread, for one app. Each posts to the app's Android
- * main thread and is false when the app isn't running. */
+ * main thread. */
 
 /* Back: the BACK key, for the shown dialog, then the focused views and the current activity
- * (onBackPressed). Nothing while the task is in the back. */
+ * (onBackPressed). Nothing while the task is in the back; false when the app isn't running. */
 bool atl_nav_back(struct atl_app *app);
-/* Home: the task to the back (onPause, onStop). Nothing while it is in the back. */
-bool atl_nav_home(struct atl_app *app);
-/* The task to the front (onRestart, onStart, onResume). Nothing while it is in front. */
-bool atl_nav_front(struct atl_app *app);
+/* Home: the task to the back (onPause, onStop). Nothing while it is in the back. Also before the
+ * app starts: its first activity is then only created until the task comes to the front. */
+void atl_nav_home(struct atl_app *app);
+/* The task to the front (onRestart, onStart, onResume). Nothing while it is in front. Also before
+ * the app starts, after a Home. */
+void atl_nav_front(struct atl_app *app);
 
 /* dp from the window's edges */
 struct atl_edges {

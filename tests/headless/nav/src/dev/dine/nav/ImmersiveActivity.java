@@ -5,11 +5,12 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.FrameLayout;
 
-/* Asks to run under the status bar with the navigation bar hidden, sticky immersive; logs what its
- * views hear of the flags: "nav: I ui <flags>". An orange band at the top and a teal one at the
- * bottom show by eye where the window reaches. */
+/* Asks to run under the status bar with the navigation bar hidden, sticky immersive, until
+ * "windowed" clears the flags; logs what its views hear of them: "nav: I ui <flags>". An orange band
+ * at the top and a teal one at the bottom show by eye where the window reaches. */
 public class ImmersiveActivity extends LoggingActivity {
 	public ImmersiveActivity() {
 		super("I");
@@ -31,6 +32,14 @@ public class ImmersiveActivity extends LoggingActivity {
 		frame.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		frame.addView(band(0xffff9800, Gravity.TOP));
 		frame.addView(band(0xff009688, Gravity.BOTTOM));
+		Button windowed = new Button(this);
+		windowed.setText("windowed");
+		windowed.setOnClickListener(new View.OnClickListener() {
+			public void onClick(View v) {
+				content.setSystemUiVisibility(0);
+			}
+		});
+		frame.addView(windowed, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 		setContentView(frame);
 		content.setOnSystemUiVisibilityChangeListener(new View.OnSystemUiVisibilityChangeListener() {
 			public void onSystemUiVisibilityChange(int visibility) {

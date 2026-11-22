@@ -315,7 +315,8 @@ jobject atl_app_create(JNIEnv *env, struct atl_app *app, struct ui_window *windo
 	if (!app->night)
 		app->night = atl_screen.night;
 	pthread_mutex_unlock(&app->insets_lock);
-	app->running = true; // first: a night set during the apply posts, so none is lost
+	app->running = true; // first: a night or task move set during the applies posts, so none is lost
+	atl_task_apply(app);
 	atl_night_apply(env, app);
 
 	jobject application = (*env)->CallObjectMethod(env, app->record, _METHOD_OF(app->record, "start", "(J)Landroid/app/Application;"), _INTPTR(window));

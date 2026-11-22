@@ -16,7 +16,7 @@ struct atl_app *atl_app_new(void)
 {
 	struct atl_app *app = calloc(1, sizeof(struct atl_app));
 	pthread_mutex_init(&app->insets_lock, NULL);
-	app->task_front = true;
+	app->task_front = app->front_wanted = true;
 	app->screen_brightness = -1;
 	app->activity_state.brightness = -1;
 	return app;

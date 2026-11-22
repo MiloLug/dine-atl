@@ -19,9 +19,9 @@
 /* Plain C entry for builds without a desktop toolkit: apps in one VM, each with its main activity
  * or an instrumentation; or an install or uninstall into the prefix. */
 
-#define USAGE "usage: %s [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] APK... [{-l ACTIVITY | --instrument CLASS} APK...]...\n" \
-              "       %s [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] --package PACKAGE\n"                                \
-              "       %s --install [--allow-fake-signature] [-X JVM_OPTION]... APK...\n"                                                      \
+#define USAGE "usage: %s [-b] [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] APK... [{-l ACTIVITY | --instrument CLASS} APK...]...\n" \
+              "       %s [-b] [-c] [-d DPI] [-X JVM_OPTION]... [-l ACTIVITY | --instrument CLASS] --package PACKAGE\n"                                \
+              "       %s --install [--allow-fake-signature] [-X JVM_OPTION]... APK...\n"                                                           \
               "       %s --uninstall PACKAGE [-X JVM_OPTION]...\n"
 
 // each app runs on its own thread, with the process main thread's stack size (host_linux.c)
@@ -235,6 +235,7 @@ int main(int argc, char **argv)
 	char **jvm_options = calloc(argc, sizeof(*jvm_options));
 	int n_jvm_options = 0;
 	bool install = false;
+	bool home_first = false; // -b: Home comes before the apps start
 	bool allow_fake_signature = false;
 	const char *uninstall = NULL;
 	const char *package = NULL;
@@ -251,7 +252,7 @@ int main(int argc, char **argv)
 	};
 	int opt;
 	// "-": APKs come in order (as 1), so each belongs to the app opened before it
-	while ((opt = getopt_long(argc, argv, "-cd:l:X:", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "-bcd:l:X:", long_options, NULL)) != -1) {
 		struct cli_app *current = n_apps ? &apps[n_apps - 1] : NULL;
 		switch (opt) {
 			case 1:
@@ -266,6 +267,9 @@ int main(int argc, char **argv)
 				if (!current || current->activity || current->instrumentation)
 					current = &apps[n_apps++];
 				*(opt == 'I' ? &current->instrumentation : &current->activity) = optarg;
+				break;
+			case 'b':
+				home_first = true;
 				break;
 			case 'c':
 				commands = true;
@@ -304,7 +308,7 @@ int main(int argc, char **argv)
 	else
 		usage |= apkless;
 	usage |= (n_apps > 0 && !package) + (package != NULL) + (uninstall != NULL) != 1 || (install && !n_apps) ||
-	         (!app && (commands || openers)) || (install && n_apps > 1) || (allow_fake_signature && !install) ||
+	         (!app && (commands || openers || home_first)) || (install && n_apps > 1) || (allow_fake_signature && !install) ||
 	         (commands && n_apps > 1);
 	if (usage) {
 		fprintf(stderr, USAGE, argv[0], argv[0], argv[0], argv[0]);
@@ -327,6 +331,8 @@ int main(int argc, char **argv)
 	(*env)->GetJavaVM(env, &vm);
 	for (int i = 0; i < n_apps; i++) {
 		apps[i].app = atl_app_new();
+		if (home_first)
+			atl_nav_home(apps[i].app);
 		if (atl_app_prepare(env, apps[i].app, apps[i].apks, apps[i].napks, package) < 0)
 			atl_exit(env, 1);
 	}

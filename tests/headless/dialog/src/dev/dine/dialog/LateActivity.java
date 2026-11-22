@@ -2,7 +2,9 @@ package dev.dine.dialog;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ComponentCallbacks;
 import android.content.DialogInterface;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -12,7 +14,8 @@ import android.widget.TextView;
 
 /* An alert with three buttons that change while it is drawn: "No" keeps it open, disables "Yes" and
  * hides "Later"; before that "Later" closes it. Its dismissal finishes the only activity, so ATL
- * exits by itself. */
+ * exits by itself. Its Application logs a night change ("late night <bits>"), for the phone's
+ * two-app smoke. */
 public class LateActivity extends Activity {
 	private static final String TAG = "dialog";
 
@@ -20,6 +23,13 @@ public class LateActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(new TextView(this));
+		getApplication().registerComponentCallbacks(new ComponentCallbacks() {
+			public void onConfigurationChanged(Configuration config) {
+				Log.i(TAG, "late night " + (config.uiMode & Configuration.UI_MODE_NIGHT_MASK));
+			}
+
+			public void onLowMemory() {}
+		});
 		// after the activity's start, so the alert shows at once
 		new Handler().post(new Runnable() {
 			public void run() {

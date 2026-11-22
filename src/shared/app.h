@@ -61,8 +61,9 @@ struct atl_app {
 	bool frame_sent; // frame went to the ui slot
 	bool toast_shown; // a text toast is up (android_widget_Toast.c)
 
-	// insets.c and night.c; set from any thread, under insets_lock
+	// insets.c, night.c and nav's task state (activity.c); set from any thread, under insets_lock
 	pthread_mutex_t insets_lock;
+	bool front_wanted; // the host's last atl_nav_home or atl_nav_front, which the start takes
 	struct atl_window_insets insets;
 	int window_width, window_height; // px; 0 until the host sets them or the app starts (the screen's)
 	int night;                       // Configuration.UI_MODE_NIGHT_*, or UI_DISPLAY_UNKNOWN
@@ -99,6 +100,8 @@ void atl_window_state_reset(struct atl_app *app);
 /* night.c: the app's configuration and Resources take its night (atl_nav_set_night), on its main
  * thread; also at its start, as its configuration copies the VM's. */
 void atl_night_apply(JNIEnv *env, struct atl_app *app);
+/* activity.c: the start takes the task state the host asked for before it (atl_nav_home). */
+void atl_task_apply(struct atl_app *app);
 /* The state a Java Window's natives set: its sub-window's, the shown activity's, else NULL. */
 struct atl_window_state *atl_window_state_of(JNIEnv *env, struct atl_app *app, jobject window, jlong subwindow);
 /* android_widget_Toast.c: the task went to the back: a text toast up goes */

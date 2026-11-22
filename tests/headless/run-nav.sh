@@ -13,7 +13,8 @@
 # dp; then results: an activity started for one from inside a tap and from the caller's onCreate, its
 # result or Back's RESULT_CANCELED handed over once before the caller restarts; an activity that
 # finishes inside its own onCreate, onStart or onResume; the only activity finishing and starting the
-# next; last, an activity started and one finished while the task is in the back.
+# next; last, an activity started and one finished while the task is in the back, and Home before the
+# app's start (-b).
 # Usage: run-nav.sh <headless build dir> <nav.apk>
 set -euo pipefail
 
@@ -27,11 +28,11 @@ log="$work/log"
 : >"$log"
 
 cd "$build"
-# start <activity> [<dpi>]
+# start <activity> [<dpi> [<option>]]
 start() {
   coproc ATL {
     exec env "${headless_env[@]}" DINE_PREFIX="$work/data" timeout 60 \
-      ./android-translation-layer -c ${2:+-d "$2"} "$apk" -l "dev/dine/nav/$1" -X -Xint 2>&1
+      ./android-translation-layer -c ${2:+-d "$2"} ${3:+"$3"} "$apk" -l "dev/dine/nav/$1" -X -Xint 2>&1
   }
   session
 }
@@ -188,6 +189,15 @@ send home
 expect "nav: E onPause" "nav: E onStop" "host: task back host" "nav: E onDestroy"
 send front
 expect "nav: T onRestart" "nav: T onStart" "nav: T insets $none" "nav: T onResume" "host: task front host"
+stop
+
+# Home before the start (-b): the first activity is only created until the task comes to the front
+start BackStartActivity "" -b
+expect "host: task back host" "nav: T onCreate"
+send front
+expect "nav: T onStart" "$a_frame" "nav: T insets $none" "nav: T onResume" "host: task front host"
+send home
+expect "nav: T onPause" "nav: T onStop" "host: task back host"
 stop
 # A gesture belongs to the window its DOWN went to, and no other window gets a part of it. P starts
 # Q from its DOWN: P is hidden, and a hidden window gets no input (AOSP's InputMonitor skips it), so

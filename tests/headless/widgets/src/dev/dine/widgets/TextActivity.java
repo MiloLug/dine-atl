@@ -2,7 +2,9 @@ package dev.dine.widgets;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ComponentCallbacks;
 import android.content.DialogInterface;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -15,6 +17,7 @@ import android.text.method.PasswordTransformationMethod;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
@@ -220,7 +223,7 @@ public class TextActivity extends Activity {
 		longAlert.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
 				StringBuilder message = new StringBuilder();
-				for (int i = 0; i < 100; i++)
+				for (int i = 0; i < 120; i++) // over 4 KB: the agent's tap sends the whole label
 					message.append("A line of a long message that wraps. ");
 				final CheckBox box = new CheckBox(TextActivity.this);
 				box.setText("keep");
@@ -249,6 +252,25 @@ public class TextActivity extends Activity {
 			}
 		});
 		column.addView(longAlert, 6);
+
+		column.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+			private int ime;
+
+			public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+				int bottom = insets.getInsets(WindowInsets.Type.ime()).bottom;
+				if (bottom != ime)
+					Log.i(TAG, "text ime " + bottom);
+				ime = bottom;
+				return insets;
+			}
+		});
+		getApplication().registerComponentCallbacks(new ComponentCallbacks() {
+			public void onConfigurationChanged(Configuration config) {
+				Log.i(TAG, "text night " + (config.uiMode & Configuration.UI_MODE_NIGHT_MASK));
+			}
+
+			public void onLowMemory() {}
+		});
 
 		setContentView(column);
 	}
