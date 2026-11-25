@@ -27,7 +27,7 @@ import android.widget.TextView;
 import android.widget.ToggleButton;
 
 /* The Button family and ImageButton, for run-controls.sh on headless and checks by eye on gtk and
- * iOS; labels differ case-insensitively, as the debug agent matches them. */
+ * iOS; labels differ case-insensitively, as `tools/dine dbg ui` matches them. */
 public class ControlsActivity extends Activity {
 	private static final String TAG = "controls";
 

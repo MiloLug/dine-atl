@@ -13,15 +13,16 @@
 
 #include "gtk_ui.h"
 
-/* Debug agent behind `tools/dine dbg ui …` on the gtk build (ATL_DBG_AGENT), with the iOS agent's
- * wire format (native/dev/dbgagent/agent.mm): one request line, one JSON reply line per connection.
+/* Debug agent behind `tools/dine dbg ui …` on the gtk build (ATL_DBG_AGENT), with uidrive's wire
+ * format (PROTOCOL.md in github.com/MiloLug/dine-uidrive, which lists this agent's differences): one
+ * request line, one JSON reply line per connection.
  *   ls               {"labels": [[isElement, label], …]}: the shown text of the app window, then of
- *                    the other toplevels; an element is one tap can act on
- *   tap N "LABEL"    acts on element N of the last walk if it still has LABEL: a view gets a tap at
- *                    its centre through Java's dispatch, an EditText GTK's focus, a dialog's own
+ *                    the other toplevels; an element is one `activate` can act on
+ *   activate N "LABEL"  acts on element N of the last walk if it still has LABEL: a view gets a tap
+ *                    at its centre through Java's dispatch, an EditText GTK's focus, a dialog's own
  *                    button or row its activation; replies before the action runs
- *   type N ["LABEL", "TEXT"]  inserts TEXT at the cursor of element N's EditText, focusing it first;
- *                    also run after the reply
+ *   insert N ["LABEL", "TEXT"]  inserts TEXT at the cursor of element N's EditText, focusing it
+ *                    first; also run after the reply
  *   back             Android's Back, also run after the reply
  *   settle MS        waits until the last action ran and the labels hold still, or MS pass (at most
  *                    10 s): {"labels", "settled", "ran", "result": the action's bool}
@@ -131,7 +132,7 @@ static bool actionable(GtkWidget *widget)
 	       || gtk_widget_get_ancestor(widget, GTK_TYPE_BUTTON) || gtk_widget_get_ancestor(widget, GTK_TYPE_LIST_BOX_ROW);
 }
 
-// an EditText's hint stays in its label once it holds text, so `tap name` still finds it
+// an EditText's hint stays in its label once it holds text, so `activate name` still finds it
 static char *label_of(GtkWidget *widget)
 {
 	if (GTK_IS_LABEL(widget))
@@ -190,7 +191,7 @@ static bool moving(void)
 }
 
 // GTK keeps a real press on an EditText; a dialog's own buttons and rows are GTK's
-static bool tap(GtkWidget *widget)
+static bool activate(GtkWidget *widget)
 {
 	if (GTK_IS_TEXT(widget))
 		return gtk_widget_grab_focus(widget);
@@ -201,7 +202,7 @@ static bool tap(GtkWidget *widget)
 	return control && gtk_widget_activate(control);
 }
 
-static bool type(GtkWidget *widget, const char *text)
+static bool insert(GtkWidget *widget, const char *text)
 {
 	if (!GTK_IS_TEXT(widget) || !(gtk_widget_has_focus(widget) || gtk_widget_grab_focus(widget)))
 		return false;
@@ -280,11 +281,11 @@ static void feed_key(void *data)
 }
 
 struct action {
-	enum { ACTION_TAP, ACTION_TYPE, ACTION_BACK } kind;
+	enum { ACTION_ACTIVATE, ACTION_INSERT, ACTION_BACK } kind;
 	int n;
 	char *label; // the element's, as the caller saw it
 	char *text;
-	guint keyval, keycode; // ACTION_TYPE: a key pressed and released right after the text, in the same main-loop call; 0: none
+	guint keyval, keycode; // ACTION_INSERT: a key pressed and released right after the text, in the same main-loop call; 0: none
 	GtkWidget *widget;
 };
 
@@ -301,10 +302,10 @@ static gboolean run_action(gpointer data)
 	struct action *action = data;
 	if (action->kind == ACTION_BACK)
 		result = atl_nav_back(host_app);
-	else if (action->kind == ACTION_TAP)
-		result = tap(action->widget);
+	else if (action->kind == ACTION_ACTIVATE)
+		result = activate(action->widget);
 	else {
-		result = type(action->widget, action->text);
+		result = insert(action->widget, action->text);
 		if (result && action->keyval) {
 			feed_key(&(struct feed_key){.action = ATL_KEY_DOWN, .keyval = action->keyval, .keycode = action->keycode});
 			feed_key(&(struct feed_key){.action = ATL_KEY_UP, .keyval = action->keyval, .keycode = action->keycode});
@@ -424,7 +425,7 @@ static void get_snapshot(void *data)
 }
 
 // The minimum wait when the screen looks unchanged: a new activity can show a frame or two after
-// the tap.
+// the action.
 static void settle(int fd, int ms)
 {
 	gint64 start = g_get_monotonic_time();
@@ -499,10 +500,10 @@ static void handle(int fd)
 		ask(fd, g_memdup2(&(struct action){.kind = ACTION_BACK}, sizeof(struct action)));
 	} else if (g_str_has_prefix(line, "settle ") && (n = atoi(line + 7)) > 0) {
 		settle(fd, MIN(n, 10000));
-	} else if (g_str_has_prefix(line, "tap ") && (rest = line + 4) && index_arg(&rest, &n)) {
+	} else if (g_str_has_prefix(line, "activate ") && (rest = line + 9) && index_arg(&rest, &n)) {
 		char *label = parse_json_string(&rest);
 		if (label)
-			ask(fd, g_memdup2(&(struct action){.kind = ACTION_TAP, .n = n, .label = label}, sizeof(struct action)));
+			ask(fd, g_memdup2(&(struct action){.kind = ACTION_ACTIVATE, .n = n, .label = label}, sizeof(struct action)));
 	} else if (g_str_has_prefix(line, "at ") && (rest = line + 3) && index_arg(&rest, &n)) {
 		char *label = parse_json_string(&rest);
 		if (label) {
@@ -560,14 +561,14 @@ static void handle(int fd)
 			reply(fd, json);
 			g_free(json);
 		}
-	} else if (g_str_has_prefix(line, "type ") && (rest = line + 5) && index_arg(&rest, &n)) {
+	} else if (g_str_has_prefix(line, "insert ") && (rest = line + 7) && index_arg(&rest, &n)) {
 		char *label = NULL, *text = NULL;
 		unsigned keyval = 0, keycode = 0;
 		int parsed = 0;
 		// ["LABEL", "TEXT"], or ["LABEL", "TEXT", KEYVAL, KEYCODE]: the key follows the text in one call
 		if (*rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ',' && (text = parse_json_string(&rest))
 		    && (*rest == ']' || (sscanf(rest, ",%u,%u]%n", &keyval, &keycode, &parsed) == 2 && rest[parsed] == '\0')))
-			ask(fd, g_memdup2(&(struct action){.kind = ACTION_TYPE, .n = n, .label = label, .text = text, .keyval = keyval, .keycode = keycode},
+			ask(fd, g_memdup2(&(struct action){.kind = ACTION_INSERT, .n = n, .label = label, .text = text, .keyval = keyval, .keycode = keycode},
 			                  sizeof(struct action)));
 		else {
 			g_free(label);

@@ -477,7 +477,7 @@ static UIImage *box_image(enum ui_button kind, bool checked)
 #define SWITCH_SPACING 8 // pt between a switch's text and its UISwitch
 
 /* A button record's view: a UIButton, or a label and a UISwitch, showing Java's state only; the touches
- * go to input.m as any view's. Accessibility activation (VoiceOver, the debug agent's tap) is a click,
+ * go to input.m as any view's. Accessibility activation (VoiceOver, uidrive's `activate`) is a click,
  * as TalkBack's is. */
 @interface ATLButton : UIView <ATLText>
 @property(nonatomic) bool enabled;
@@ -2150,7 +2150,7 @@ static void editor_ended(UIView *editor, ATLEditState *state)
 	return self;
 }
 
-// the label a UILabel derives from its text, for VoiceOver and the debug agent; Java's font, color
+// the label a UILabel derives from its text, for VoiceOver and uidrive's walk; Java's font, color
 // and alignment kept as ATLLabel's
 - (void)atlSetText:(NSString *)text runs:(NSData *)runs font:(UIFont *)font alignment:(NSTextAlignment)alignment
 {

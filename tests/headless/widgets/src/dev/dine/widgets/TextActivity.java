@@ -223,7 +223,7 @@ public class TextActivity extends Activity {
 		longAlert.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
 				StringBuilder message = new StringBuilder();
-				for (int i = 0; i < 120; i++) // over 4 KB: the agent's tap sends the whole label
+				for (int i = 0; i < 120; i++) // over 4 KB: `activate` sends the whole label
 					message.append("A line of a long message that wraps. ");
 				final CheckBox box = new CheckBox(TextActivity.this);
 				box.setText("keep");
@@ -288,7 +288,7 @@ public class TextActivity extends Activity {
 		return keys;
 	}
 
-	// the hint is the debug agent's label; name has its own watcher, the others log their text
+	// the hint is the field's label in `tools/dine dbg ui`; name has its own watcher, the others log their text
 	private EditText field(LinearLayout column, final String label) {
 		EditText field = new EditText(this);
 		field.setHint(label);

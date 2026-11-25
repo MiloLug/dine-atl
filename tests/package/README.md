@@ -21,7 +21,7 @@ check runs in a prefix of its own (`DINE_PREFIX`).
   its own provider), one process per scenario, its dialogs answered in order by `ATL_DIALOG_ANSWERS`;
   after each, every stored APK must exist and staging and the trash must be empty.
 - On the phone, the dev build's atl screen has an `installer` tile: `driver` installs `ext` through a
-  session and confirms from its Application context, the dialog answered by hand or `dbg ui tap`.
+  session and confirms from its Application context, the dialog answered by hand or `dbg ui activate`.
 - `expectations/linux-x86_64-headless.json`: rows expected to fail; `.tests.txt` beside it: the rows a
   whole run executes (the superproject's `tests/harness/README.md` "Baselines").
 
