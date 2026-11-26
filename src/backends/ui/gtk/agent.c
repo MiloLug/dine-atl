@@ -38,7 +38,8 @@
  *                    hardware keycode, GdkModifierType bits), the capture phase's and, when that
  *                    leaves it, the bubble phase's, as a key a text widget left goes on; runs before the
  *                    reply: {"ok": true, "handled": whether Java took it}
- * Anything else closes the connection unanswered. */
+ * A line that doesn't parse gets {"error": "usage: …"}, an unknown verb {"error": "unknown verb \"…\""},
+ * a line over 4095 bytes or not UTF-8 an error saying so. */
 
 extern GtkWidget *window; // the gtk host's app window
 
@@ -458,7 +459,9 @@ static void settle(int fd, int ms)
 	g_free(snap.before);
 }
 
-static char *read_line(int fd)
+// NULL when the connection ends before the newline, or (*too_long) when the line doesn't fit; the
+// rest of a long line is read, since closing on unread bytes resets the connection before the reply
+static char *read_line(int fd, bool *too_long)
 {
 	char buf[4096];
 	for (size_t n = 0; n < sizeof(buf); n++) {
@@ -467,7 +470,29 @@ static char *read_line(int fd)
 		if (buf[n] == '\n')
 			return g_strndup(buf, n);
 	}
+	for (ssize_t got; (got = recv(fd, buf, sizeof(buf), 0)) > 0;) {
+		if (memchr(buf, '\n', got)) {
+			*too_long = true;
+			break;
+		}
+	}
 	return NULL;
+}
+
+static void fail(int fd, const char *error)
+{
+	GString *out = g_string_new("{\"error\":");
+	json_string(out, error);
+	g_string_append_c(out, '}');
+	reply(fd, out->str);
+	g_string_free(out, TRUE);
+}
+
+// the bound uidrive's iOS agent takes
+static bool digits(const char *s)
+{
+	size_t len = strspn(s, "0123456789");
+	return len > 0 && len < 9 && !s[len];
 }
 
 // "N <json>" after a verb: N, and *json past it
@@ -484,29 +509,54 @@ static bool index_arg(const char **rest, int *n)
 
 static void handle(int fd)
 {
-	char *line = read_line(fd);
-	if (!line)
+	bool too_long = false;
+	char *line = read_line(fd, &too_long);
+	if (!line) {
+		if (too_long)
+			fail(fd, "the request is over 4095 bytes");
 		return;
-	const char *rest;
+	}
+	if (!g_utf8_validate(line, -1, NULL)) {
+		fail(fd, "the request isn't UTF-8");
+		g_free(line);
+		return;
+	}
+	size_t verb_len = strcspn(line, " ");
+	char *verb = g_strndup(line, verb_len);
+	const char *rest = line[verb_len] ? line + verb_len + 1 : NULL; // NULL: no arguments
 	int n;
-	if (!strcmp(line, "ls")) {
-		char *json;
-		on_main(get_labels, &json);
-		char *out = g_strdup_printf("{\"labels\":%s}", json);
-		reply(fd, out);
-		g_free(out);
-		g_free(json);
-	} else if (!strcmp(line, "back")) {
-		ask(fd, g_memdup2(&(struct action){.kind = ACTION_BACK}, sizeof(struct action)));
-	} else if (g_str_has_prefix(line, "settle ") && (n = atoi(line + 7)) > 0) {
-		settle(fd, MIN(n, 10000));
-	} else if (g_str_has_prefix(line, "activate ") && (rest = line + 9) && index_arg(&rest, &n)) {
-		char *label = parse_json_string(&rest);
+	if (!strcmp(verb, "ls")) {
+		if (rest) {
+			fail(fd, "usage: ls");
+		} else {
+			char *json;
+			on_main(get_labels, &json);
+			char *out = g_strdup_printf("{\"labels\":%s}", json);
+			reply(fd, out);
+			g_free(out);
+			g_free(json);
+		}
+	} else if (!strcmp(verb, "back")) {
+		if (rest)
+			fail(fd, "usage: back");
+		else
+			ask(fd, g_memdup2(&(struct action){.kind = ACTION_BACK}, sizeof(struct action)));
+	} else if (!strcmp(verb, "settle")) {
+		if (rest && digits(rest))
+			settle(fd, MIN(atoi(rest), 10000));
+		else
+			fail(fd, "usage: settle MS");
+	} else if (!strcmp(verb, "activate")) {
+		char *label = rest && index_arg(&rest, &n) ? parse_json_string(&rest) : NULL;
 		if (label)
 			ask(fd, g_memdup2(&(struct action){.kind = ACTION_ACTIVATE, .n = n, .label = label}, sizeof(struct action)));
-	} else if (g_str_has_prefix(line, "at ") && (rest = line + 3) && index_arg(&rest, &n)) {
-		char *label = parse_json_string(&rest);
-		if (label) {
+		else
+			fail(fd, "usage: activate N \"LABEL\"");
+	} else if (!strcmp(verb, "at")) {
+		char *label = rest && index_arg(&rest, &n) ? parse_json_string(&rest) : NULL;
+		if (!label) {
+			fail(fd, "usage: at N \"LABEL\"");
+		} else {
 			struct {
 				int n;
 				const char *label;
@@ -519,9 +569,11 @@ static void handle(int fd)
 			g_free(json);
 			g_free(label);
 		}
-	} else if (g_str_has_prefix(line, "state ") && (rest = line + 6) && index_arg(&rest, &n)) {
-		char *label = parse_json_string(&rest);
-		if (label) {
+	} else if (!strcmp(verb, "state")) {
+		char *label = rest && index_arg(&rest, &n) ? parse_json_string(&rest) : NULL;
+		if (!label) {
+			fail(fd, "usage: state N \"LABEL\"");
+		} else {
 			struct element_state state = {.n = n, .label = label};
 			on_main(element_state, &state);
 			char *json = state.ok ? g_strdup_printf("{\"sensitive\":%s,\"focused\":%s}", state.sensitive ? "true" : "false", state.focused ? "true" : "false")
@@ -530,7 +582,7 @@ static void handle(int fd)
 			g_free(json);
 			g_free(label);
 		}
-	} else if (g_str_has_prefix(line, "touch ")) {
+	} else if (!strcmp(verb, "touch")) {
 		static const char *const kinds[] = {[INPUT_POINTER_DOWN] = "down", [INPUT_POINTER_MOVE] = "move", [INPUT_POINTER_UP] = "up", [INPUT_POINTER_CANCEL] = "cancel"};
 		char kind[8];
 		struct feed feed;
@@ -546,8 +598,10 @@ static void handle(int fd)
 			char *json = g_strdup_printf("{\"ok\":true,\"claimed\":%s}", feed.claimed ? "true" : "false");
 			reply(fd, json);
 			g_free(json);
+		} else {
+			fail(fd, "usage: touch down|move|up|cancel SEQ X Y");
 		}
-	} else if (g_str_has_prefix(line, "key ")) {
+	} else if (!strcmp(verb, "key")) {
 		char kind[8];
 		struct feed_key feed = {0};
 		unsigned keyval, keycode, state = 0;
@@ -560,21 +614,38 @@ static void handle(int fd)
 			char *json = g_strdup_printf("{\"ok\":true,\"handled\":%s}", feed.handled ? "true" : "false");
 			reply(fd, json);
 			g_free(json);
+		} else {
+			fail(fd, "usage: key down|up KEYVAL KEYCODE [STATE]");
 		}
-	} else if (g_str_has_prefix(line, "insert ") && (rest = line + 7) && index_arg(&rest, &n)) {
+	} else if (!strcmp(verb, "insert")) {
 		char *label = NULL, *text = NULL;
 		unsigned keyval = 0, keycode = 0;
 		int parsed = 0;
 		// ["LABEL", "TEXT"], or ["LABEL", "TEXT", KEYVAL, KEYCODE]: the key follows the text in one call
-		if (*rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ',' && (text = parse_json_string(&rest))
-		    && (*rest == ']' || (sscanf(rest, ",%u,%u]%n", &keyval, &keycode, &parsed) == 2 && rest[parsed] == '\0')))
+		if (rest && index_arg(&rest, &n) && *rest++ == '[' && (label = parse_json_string(&rest)) && *rest++ == ','
+		    && (text = parse_json_string(&rest))
+		    && (*rest == ']' || (sscanf(rest, ",%u,%u]%n", &keyval, &keycode, &parsed) == 2 && rest[parsed] == '\0'))) {
 			ask(fd, g_memdup2(&(struct action){.kind = ACTION_INSERT, .n = n, .label = label, .text = text, .keyval = keyval, .keycode = keycode},
 			                  sizeof(struct action)));
-		else {
+		} else {
 			g_free(label);
 			g_free(text);
+			fail(fd, "usage: insert N [\"LABEL\", \"TEXT\"[, KEYVAL, KEYCODE]]");
 		}
+	} else {
+		// a gesture line missing its space would echo its whole JSON
+		GString *error = g_string_new("unknown verb \"");
+		if (g_utf8_strlen(verb, -1) > 32) {
+			g_string_append_len(error, verb, g_utf8_offset_to_pointer(verb, 32) - verb);
+			g_string_append(error, "…");
+		} else {
+			g_string_append(error, verb);
+		}
+		g_string_append_c(error, '"');
+		fail(fd, error->str);
+		g_string_free(error, TRUE);
 	}
+	g_free(verb);
 	g_free(line);
 }
 
